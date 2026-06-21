@@ -9,6 +9,7 @@ import type {
 } from '@shared/ipc'
 import type { PendingShot } from './PreviewPane'
 import Markdown from './Markdown'
+import logo from '../assets/logo.png'
 
 export interface UIChatMessage extends ChatMessage {
   /** Correlates streamed events to the active assistant bubble (live only). */
@@ -41,6 +42,46 @@ interface Props {
 const MODEL_SUGGESTIONS = ['claude-sonnet-4.5', 'gpt-5.4', 'gpt-5-mini', 'gpt-4.1', 'o4-mini']
 
 const EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
+
+/** Starter prompts shown on the empty state; clicking one prefills the composer. */
+const SUGGESTIONS = [
+  'Add a new page that lists items from a table',
+  'Create a form to add and save a record',
+  'Improve the layout and color theme',
+  'Add a chart that summarizes the data'
+]
+
+function UserIcon(): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 20c0-4 4-6 8-6s8 2 8 6" />
+    </svg>
+  )
+}
+
+function SendIcon(): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 19V5" />
+      <path d="M5 12l7-7 7 7" />
+    </svg>
+  )
+}
 
 function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
@@ -95,6 +136,7 @@ export default function ChatPanel({
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   const scrollRef = useRef<HTMLDivElement>(null)
+  const taRef = useRef<HTMLTextAreaElement>(null)
 
   function saveOptions(nextModel: string, nextEffort: ReasoningEffort | ''): void {
     void window.api.chat.setOptions(project.id, {
@@ -119,6 +161,14 @@ export default function ChatPanel({
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight
   }, [messages])
+
+  // Auto-grow the composer textarea with its content (capped).
+  useEffect(() => {
+    const ta = taRef.current
+    if (!ta) return
+    ta.style.height = 'auto'
+    ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`
+  }, [input])
 
   async function send(): Promise<void> {
     const text = input.trim()
@@ -190,6 +240,11 @@ export default function ChatPanel({
     onClearHistory?.()
   }
 
+  function applySuggestion(text: string): void {
+    setInput(text)
+    taRef.current?.focus()
+  }
+
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -243,20 +298,26 @@ export default function ChatPanel({
           disabled={sending || messages.length === 0}
           title="Start a new conversation"
         >
-          New chat
+          + New chat
         </button>
       </div>
 
       <div className="chat-scroll" ref={scrollRef}>
         {messages.length === 0 && (
-          <div className="chat-empty">
+          <div className="chat-welcome">
+            <img className="chat-welcome-mark" src={logo} alt="" />
+            <h2>Build {project.name}</h2>
             <p>
-              Ask Copilot to build or change <strong>{project.name}</strong>. It will edit the code
-              and run <code>rayfin up</code> to deploy.
+              Ask Copilot to add features or fix issues. It edits the code and Studio deploys with
+              <code> rayfin up</code> — then the live app loads in the preview.
             </p>
-            <p className="chat-empty-hint">
-              e.g. “Add a page that lists tasks from a new <code>tasks</code> table, then deploy.”
-            </p>
+            <div className="chat-suggestions">
+              {SUGGESTIONS.map((s) => (
+                <button key={s} className="chat-suggestion" onClick={() => applySuggestion(s)}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
@@ -269,59 +330,68 @@ export default function ChatPanel({
             !prevUser.attachments &&
             prevUser.text !== '(screenshot)'
           return (
-            <div key={m.id} className={`msg msg--${m.role}`}>
-              <div className="msg-role">{m.role === 'user' ? 'You' : 'Copilot'}</div>
-              {m.tools.length > 0 && (
-                <div className="tool-activity">
-                  {m.tools.map((t) => (
-                    <details key={t.id} className={`tool-call tool-call--${t.state}`}>
-                      <summary>
-                        <span className="tool-call-icon">{TOOL_ICON[t.state]}</span>
-                        <span className="tool-call-name">{t.name}</span>
-                        <span className="tool-call-title">{t.title}</span>
-                      </summary>
-                      {t.output && <pre className="tool-call-output">{t.output}</pre>}
-                    </details>
-                  ))}
-                </div>
-              )}
-              {m.text &&
-                (m.role === 'assistant' ? (
-                  <div className="msg-text msg-text--md">
-                    <Markdown>{m.text}</Markdown>
+            <div key={m.id} className={`turn turn--${m.role}`}>
+              <div className={`turn-avatar${m.pending ? ' turn-avatar--pending' : ''}`}>
+                {m.role === 'user' ? <UserIcon /> : <img src={logo} alt="" />}
+              </div>
+              <div className="turn-main">
+                <div className="turn-role">{m.role === 'user' ? 'You' : 'Copilot'}</div>
+                {m.tools.length > 0 && (
+                  <div className="tool-activity">
+                    {m.tools.map((t) => (
+                      <details key={t.id} className={`tool-call tool-call--${t.state}`}>
+                        <summary>
+                          <span className="tool-call-icon">{TOOL_ICON[t.state]}</span>
+                          <span className="tool-call-name">{t.name}</span>
+                          <span className="tool-call-title">{t.title}</span>
+                        </summary>
+                        {t.output && <pre className="tool-call-output">{t.output}</pre>}
+                      </details>
+                    ))}
                   </div>
-                ) : (
-                  <div className="msg-text">{m.text}</div>
-                ))}
-              {m.attachments ? (
-                <div className="msg-attach">
-                  ⛶ {m.attachments} screenshot{m.attachments > 1 ? 's' : ''} attached
-                </div>
-              ) : null}
-              {m.notice && <div className="msg-notice">↻ {m.notice}</div>}
-              {m.pending && !m.text && m.tools.length === 0 && (
-                <div className="msg-thinking">Thinking…</div>
-              )}
-              {m.error && (
-                <div className="alert alert--error msg-error">
-                  <span className="msg-error-text">{m.error}</span>
-                  {canRetry && (
-                    <button
-                      className="btn btn--xs btn--ghost msg-error-retry"
-                      onClick={() => void retry(m.id)}
-                      title="Re-send this message"
-                    >
-                      ↻ Retry
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+                {m.text &&
+                  (m.role === 'assistant' ? (
+                    <div className="msg-text msg-text--md">
+                      <Markdown>{m.text}</Markdown>
+                    </div>
+                  ) : (
+                    <div className="msg-text">{m.text}</div>
+                  ))}
+                {m.attachments ? (
+                  <div className="msg-attach">
+                    ⛶ {m.attachments} screenshot{m.attachments > 1 ? 's' : ''} attached
+                  </div>
+                ) : null}
+                {m.notice && <div className="msg-notice">↻ {m.notice}</div>}
+                {m.pending && !m.text && m.tools.length === 0 && (
+                  <div className="msg-typing" aria-label="Thinking">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                )}
+                {m.error && (
+                  <div className="alert alert--error msg-error">
+                    <span className="msg-error-text">{m.error}</span>
+                    {canRetry && (
+                      <button
+                        className="btn btn--xs btn--ghost msg-error-retry"
+                        onClick={() => void retry(m.id)}
+                        title="Re-send this message"
+                      >
+                        ↻ Retry
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )
         })}
       </div>
 
-      <div className="chat-input">
+      <div className="composer">
         {(attachments?.length ?? 0) > 0 && (
           <div className="chat-attachments">
             {attachments!.map((a) => (
@@ -338,29 +408,33 @@ export default function ChatPanel({
             ))}
           </div>
         )}
-        <textarea
-          className="chat-textarea"
-          placeholder={`Message Copilot about ${project.name}…`}
-          value={input}
-          rows={3}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
-        />
-        <div className="chat-input-actions">
-          <span className="chat-hint">Enter to send · Shift+Enter for newline</span>
-          {sending ? (
-            <button className="btn btn--sm btn--ghost" onClick={stop}>
-              Stop
-            </button>
-          ) : (
-            <button
-              className="btn btn--primary btn--sm"
-              onClick={send}
-              disabled={!input.trim() && (attachments?.length ?? 0) === 0}
-            >
-              Send
-            </button>
-          )}
+        <div className="composer-box">
+          <textarea
+            ref={taRef}
+            className="composer-input"
+            placeholder={`Message Copilot about ${project.name}…`}
+            value={input}
+            rows={1}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={onKeyDown}
+          />
+          <div className="composer-actions">
+            <span className="composer-hint">Enter to send · Shift+Enter for newline</span>
+            {sending ? (
+              <button className="btn btn--sm btn--ghost composer-stop" onClick={stop}>
+                ■ Stop
+              </button>
+            ) : (
+              <button
+                className="composer-send"
+                onClick={send}
+                disabled={!input.trim() && (attachments?.length ?? 0) === 0}
+                title="Send (Enter)"
+              >
+                <SendIcon />
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
