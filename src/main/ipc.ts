@@ -51,7 +51,7 @@ import {
 import { listProjectFiles, readProjectFile } from './services/files'
 import { gitChanges, gitFileDiff, gitLog, revertTo } from './services/git'
 import { getProjectRayfinVersion } from './services/rayfinVersion'
-import { listSkills, setSkill } from './services/skills'
+import { listSkills, setSkill, getSkillSource } from './services/skills'
 import { openLogs } from './services/crashlog'
 import { saveScreenshot, cleanupScreenshots } from './services/screenshot'
 
@@ -172,6 +172,9 @@ export function registerIpc(): void {
   ipcMain.handle(IpcChannels.skillsList, (_event, id: string) => listSkills(id))
   ipcMain.handle(IpcChannels.skillsSet, (_event, id: string, skillId: string, active: boolean) =>
     setSkill(id, skillId, active)
+  )
+  ipcMain.handle(IpcChannels.skillsSource, (_event, id: string, skillId: string) =>
+    getSkillSource(id, skillId)
   )
 
   // Chat (Copilot CLI)

@@ -76,7 +76,9 @@ const api: RayfinStudioApi = {
   skills: {
     list: (id: string) => ipcRenderer.invoke(IpcChannels.skillsList, id),
     set: (id: string, skillId: string, active: boolean) =>
-      ipcRenderer.invoke(IpcChannels.skillsSet, id, skillId, active)
+      ipcRenderer.invoke(IpcChannels.skillsSet, id, skillId, active),
+    source: (id: string, skillId: string) =>
+      ipcRenderer.invoke(IpcChannels.skillsSource, id, skillId)
   },
 
   chat: {

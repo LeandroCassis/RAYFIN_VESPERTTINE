@@ -18,7 +18,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync
 import { join } from 'path'
 import { run } from './exec'
 import { findProject } from './store'
-import type { SkillActionResult, SkillInfo } from '../../shared/ipc'
+import type { SkillActionResult, SkillInfo, SkillSource } from '../../shared/ipc'
 
 interface SkillDef {
   id: string
@@ -26,6 +26,8 @@ interface SkillDef {
   /** One-line description shown on the card. */
   description: string
   icon: string
+  /** Catalog grouping shown as a section header in the Skills tab. */
+  category: string
   /** Frontmatter `description` — tells the agent when to apply the skill. */
   trigger: string
   /** Markdown guidance (the SKILL.md body). */
@@ -34,15 +36,33 @@ interface SkillDef {
 
 /**
  * The add-on skill catalog. These are the skills the Skills tab offers to install.
- * Order here is the display order. The base Rayfin skill is NOT in this catalog —
- * it is the CLI-managed `.agents/skills/rayfin` skill, surfaced as a locked card.
+ * Order here is the display order; skills are grouped by {@link SkillDef.category}
+ * in the UI. The base Rayfin skill is NOT in this catalog — it is the CLI-managed
+ * `.agents/skills/rayfin` skill, surfaced as a locked card.
  */
 const CATALOG: SkillDef[] = [
   {
+    id: 'polished-ui',
+    title: 'Polished, modern UI',
+    description: 'A clean, consistent visual style with good spacing, type and color.',
+    icon: '🎨',
+    category: 'Design & feel',
+    trigger:
+      'Use when creating or styling UI to give it a clean, modern, consistent look. Triggers: design, styling, CSS, layout, spacing, typography, color, theme, dark mode, light mode, design tokens, components, visual polish',
+    body: `Give the app a clean, modern, consistent look:
+- Use a consistent spacing scale (4/8px rhythm), a clear type hierarchy and generous whitespace.
+- Establish reusable design tokens (colors, radius, shadows) instead of one-off values; keep a
+  single accent color and use it sparingly for primary actions.
+- Flat and modern: subtle borders and soft shadows over heavy gradients; align elements to a grid.
+- Support both light and dark themes with accessible contrast in each.
+- Keep components visually consistent — buttons, inputs and cards should share sizing and shape.`
+  },
+  {
     id: 'buttery-animations',
     title: 'Buttery-smooth animations',
-    description: 'Add tasteful, performant motion — transitions, springs and micro-interactions.',
+    description: 'Tasteful, performant motion — transitions, springs and micro-interactions.',
     icon: '✨',
+    category: 'Design & feel',
     trigger:
       'Use when building or refining any UI to add smooth, performant motion. Triggers: animation, transition, motion, micro-interaction, hover, spring, easing, fade, slide, reveal, prefers-reduced-motion, 60fps, keyframes',
     body: `Make the app feel alive with smooth, tasteful motion:
@@ -55,25 +75,11 @@ const CATALOG: SkillDef[] = [
 - Always respect \`prefers-reduced-motion\`: drop to instant/opacity-only when the user asks.`
   },
   {
-    id: 'polished-ui',
-    title: 'Polished, modern UI',
-    description: 'A clean, consistent visual style with good spacing, type and color.',
-    icon: '🎨',
-    trigger:
-      'Use when creating or styling UI to give it a clean, modern, consistent look. Triggers: design, styling, CSS, layout, spacing, typography, color, theme, dark mode, light mode, design tokens, components, visual polish',
-    body: `Give the app a clean, modern, consistent look:
-- Use a consistent spacing scale (4/8px rhythm), a clear type hierarchy and generous whitespace.
-- Establish reusable design tokens (colors, radius, shadows) instead of one-off values; keep a
-  single accent color and use it sparingly for primary actions.
-- Flat and modern: subtle borders and soft shadows over heavy gradients; align elements to a grid.
-- Support both light and dark themes with accessible contrast in each.
-- Keep components visually consistent — buttons, inputs and cards should share sizing and shape.`
-  },
-  {
     id: 'responsive-layout',
     title: 'Responsive on every screen',
     description: 'Layouts that adapt cleanly from mobile to large desktop.',
     icon: '📱',
+    category: 'Layout & responsiveness',
     trigger:
       'Use when building layouts so they adapt to any screen size. Triggers: responsive, mobile, tablet, desktop, breakpoint, media query, flexbox, grid, fluid layout, viewport, small screen, overflow',
     body: `Make the UI work on any screen size:
@@ -88,6 +94,7 @@ const CATALOG: SkillDef[] = [
     title: 'Accessible to everyone',
     description: 'Semantic, keyboard-friendly UI that works with screen readers.',
     icon: '♿',
+    category: 'Inclusive & resilient',
     trigger:
       'Use when building UI to make it usable by everyone, including assistive tech. Triggers: accessibility, a11y, ARIA, screen reader, keyboard navigation, focus, semantic HTML, alt text, contrast, WCAG, labels, tab order',
     body: `Build the app to be usable by everyone:
@@ -102,6 +109,7 @@ const CATALOG: SkillDef[] = [
     title: 'Great loading & empty states',
     description: 'Skeletons, spinners and friendly empty/error states everywhere data loads.',
     icon: '⏳',
+    category: 'Inclusive & resilient',
     trigger:
       'Use when fetching or mutating data to handle every async state gracefully. Triggers: loading, spinner, skeleton, empty state, error state, retry, async, fetch, pending, optimistic update, no data, placeholder',
     body: `Handle every async state gracefully:
@@ -113,10 +121,45 @@ const CATALOG: SkillDef[] = [
 - Disable buttons and show progress while a submit is in flight to prevent double submits.`
   },
   {
+    id: 'data-modeling',
+    title: 'Thoughtful data model',
+    description: 'Clean Rayfin tables and relationships your app can grow into.',
+    icon: '🗂️',
+    category: 'Data & forms',
+    trigger:
+      "Use when designing or changing the app's data — tables, fields, relationships, queries. Triggers: data model, schema, table, entity, relationship, field, query, dataset, Rayfin data, migration, primary key, normalization",
+    body: `Design the app's data well (it lives in Rayfin's data service):
+- Model entities and relationships explicitly; give each table a clear primary key and meaningful,
+  well-typed field names.
+- Prefer normalized tables with relationships over one giant denormalized blob; avoid stuffing data
+  into JSON columns you'll later need to query or filter on.
+- Add only the fields the app needs now, but name them so the schema can grow without churn.
+- Read and write through the Rayfin data SDK; filter, sort and page on the server rather than
+  pulling whole tables to the client.
+- Shape queries around how the UI actually uses the data, and keep reads cheap.`
+  },
+  {
+    id: 'data-viz',
+    title: 'Beautiful charts & dashboards',
+    description: 'Turn your Rayfin data into clear, attractive charts and summaries.',
+    icon: '📊',
+    category: 'Data & forms',
+    trigger:
+      'Use when presenting data, metrics or dashboards. Triggers: chart, graph, dashboard, visualization, KPI, metric, line chart, bar chart, donut, analytics, summary card, data viz, trends',
+    body: `Visualize the app's data well (it lives in Rayfin's data service):
+- Pick the right chart for the question: trends over time → line, comparisons → bar,
+  parts of a whole → donut (sparingly). Avoid 3D and chart junk.
+- Lead with the headline numbers (KPIs/summary cards), then the supporting charts.
+- Use clear axis labels, readable tick counts, accessible colors and tooltips on hover.
+- Keep charts responsive and show a tidy empty state when there's no data yet.
+- Aggregate/query data through Rayfin rather than pulling everything to the client.`
+  },
+  {
     id: 'friendly-forms',
     title: 'Friendly forms & validation',
     description: 'Clear inputs, inline validation and helpful, human error messages.',
     icon: '📝',
+    category: 'Data & forms',
     trigger:
       'Use when building forms or data entry to make them clear and forgiving. Triggers: form, input, validation, error message, required field, submit, field, placeholder, autofocus, helper text, data entry',
     body: `Make data entry painless:
@@ -127,19 +170,20 @@ const CATALOG: SkillDef[] = [
 - Preserve the user's input on error and confirm success clearly after submit.`
   },
   {
-    id: 'data-viz',
-    title: 'Beautiful charts & dashboards',
-    description: 'Turn your Rayfin data into clear, attractive charts and summaries.',
-    icon: '📊',
+    id: 'performance',
+    title: 'Fast & snappy',
+    description: 'Keep the app quick to load and smooth to use as it grows.',
+    icon: '⚡',
+    category: 'Performance',
     trigger:
-      'Use when presenting data, metrics or dashboards. Triggers: chart, graph, dashboard, visualization, KPI, metric, line chart, bar chart, donut, analytics, summary card, data viz, trends',
-    body: `Visualize the app's data well (it lives in Rayfin's data service):
-- Pick the right chart for the question: trends over time → line, comparisons → bar,
-  parts of a whole → donut (sparingly). Avoid 3D and chart junk.
-- Lead with the headline numbers (KPIs/summary cards), then the supporting charts.
-- Use clear axis labels, readable tick counts, accessible colors and tooltips on hover.
-- Keep charts responsive and show a tidy empty state when there's no data yet.
-- Aggregate/query data through Rayfin rather than pulling everything to the client.`
+      'Use when the app feels slow or to keep it fast as it grows. Triggers: performance, speed, fast, slow, bundle size, lazy load, code splitting, memoization, re-render, cache, debounce, throttle, virtualization, optimize',
+    body: `Keep the app fast and responsive:
+- Load less up front: code-split heavy routes/components and lazy-load rarely-used or below-the-fold UI.
+- Avoid unnecessary work: memoize expensive computations, debounce/throttle high-frequency events,
+  and don't refetch data you already have.
+- Keep long lists snappy with pagination or virtualization instead of rendering thousands of rows.
+- Cache server responses where safe and revalidate in the background rather than blocking the UI.
+- Measure before optimizing, then fix the biggest bottleneck first (usually network or large renders).`
   }
 ]
 
@@ -271,7 +315,8 @@ function buildList(dir: string): SkillInfo[] {
     used.add(id)
   }
 
-  // 2) Our curated add-on catalog (active when installed and unmanaged).
+  // 2) Our curated add-on catalog (active when installed and unmanaged), grouped
+  // by category in the UI.
   for (const def of CATALOG) {
     if (used.has(def.id)) continue
     const onDisk = installed.get(def.id)
@@ -280,17 +325,27 @@ function buildList(dir: string): SkillInfo[] {
       title: def.title,
       description: def.description,
       icon: def.icon,
+      category: def.category,
       base: false,
       active: Boolean(onDisk && !onDisk.managed)
     })
     used.add(def.id)
   }
 
-  // 3) Any other installed unmanaged skills (e.g. agent-authored) — shown, removable.
+  // 3) Any other installed unmanaged skills (e.g. agent-authored) — shown in their
+  // own "custom" group, removable.
   for (const [id, d] of installed) {
     if (used.has(id) || d.managed) continue
     const p = presentationFor(id)
-    list.push({ id, title: p.title, description: p.description, icon: p.icon, base: false, active: true })
+    list.push({
+      id,
+      title: p.title,
+      description: p.description,
+      icon: p.icon,
+      base: false,
+      active: true,
+      custom: true
+    })
   }
 
   return list
@@ -367,6 +422,23 @@ export function listSkills(projectId: string): SkillInfo[] {
   const project = findProject(projectId)
   if (!project) return []
   return buildList(project.path)
+}
+
+/**
+ * Read the raw SKILL.md behind a skill for the read-only preview: the on-disk file
+ * when the skill is installed, otherwise the sample we'd write for a catalog skill.
+ */
+export function getSkillSource(projectId: string, skillId: string): SkillSource {
+  const project = findProject(projectId)
+  if (!project) return { ok: false, installed: false, error: 'Project not found.' }
+  const file = join(project.path, SKILLS_REL, skillId, 'SKILL.md')
+  try {
+    return { ok: true, installed: true, content: readFileSync(file, 'utf8') }
+  } catch {
+    const def = byId(skillId)
+    if (def) return { ok: true, installed: false, content: renderSkillFile(def) }
+    return { ok: false, installed: false, error: 'This skill has no preview.' }
+  }
 }
 
 /** Ensure a local git identity exists so commits don't fail on a fresh machine. */

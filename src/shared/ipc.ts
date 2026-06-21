@@ -643,6 +643,10 @@ export interface SkillInfo {
   base: boolean
   /** Whether the skill is currently active for the project. */
   active: boolean
+  /** Catalog grouping (e.g. 'Design & feel'); absent for base/custom skills. */
+  category?: string
+  /** True for an on-disk skill that isn't part of our curated catalog. */
+  custom?: boolean
 }
 
 /** Result of toggling a skill: ok plus the refreshed skill list. */
@@ -650,6 +654,17 @@ export interface SkillActionResult {
   ok: boolean
   /** The project's full skill catalog with updated active flags. */
   skills: SkillInfo[]
+  /** Set when ok is false. */
+  error?: string
+}
+
+/** The raw SKILL.md behind a skill, for the read-only preview. */
+export interface SkillSource {
+  ok: boolean
+  /** True when the content is the file on disk; false when it's a catalog sample. */
+  installed: boolean
+  /** The SKILL.md text (frontmatter + markdown body) when ok. */
+  content?: string
   /** Set when ok is false. */
   error?: string
 }
@@ -725,6 +740,7 @@ export const IpcChannels = {
 
   skillsList: 'skills:list',
   skillsSet: 'skills:set',
+  skillsSource: 'skills:source',
 
   chatSend: 'chat:send',
   chatCancel: 'chat:cancel',
@@ -863,6 +879,8 @@ export interface RayfinStudioApi {
     list: (id: string) => Promise<SkillInfo[]>
     /** Turn a skill on/off; updates instructions + commits. Base can't be removed. */
     set: (id: string, skillId: string, active: boolean) => Promise<SkillActionResult>
+    /** Read the raw SKILL.md behind a skill (on-disk file, or a catalog sample). */
+    source: (id: string, skillId: string) => Promise<SkillSource>
   }
 
   chat: {
