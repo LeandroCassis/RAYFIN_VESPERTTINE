@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
+  AppSettings,
   AppVersions,
   AuthStatus,
   ChatMessage,
@@ -10,6 +11,7 @@ import type {
 } from '@shared/ipc'
 import NewProjectModal from '../components/NewProjectModal'
 import ConfirmModal from '../components/ConfirmModal'
+import SettingsModal from '../components/SettingsModal'
 import ChatPanel, { type UIChatMessage } from '../components/ChatPanel'
 import PreviewPane, { type DeployUiState, type PendingShot } from '../components/PreviewPane'
 import GitControl from '../components/GitControl'
@@ -37,11 +39,19 @@ function toStored(messages: UIChatMessage[]): ChatMessage[] {
 interface Props {
   auth: AuthStatus
   onSignOut: () => Promise<void> | void
+  settings: AppSettings | null
+  onSettingsChange: (patch: Partial<AppSettings>) => void
 }
 
-export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
+export default function Workbench({
+  auth,
+  onSignOut,
+  settings,
+  onSettingsChange
+}: Props): JSX.Element {
   const [versions, setVersions] = useState<AppVersions | null>(null)
   const [signingOut, setSigningOut] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
   const [projects, setProjects] = useState<ProjectsState | null>(null)
   const [showNewProject, setShowNewProject] = useState(false)
   const [opening, setOpening] = useState(false)
@@ -286,6 +296,13 @@ export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
         </div>
         <div className="titlebar-status">
           <span className="who">{auth.rayfin.user ?? 'Signed in'}</span>
+          <button
+            className="btn btn--sm btn--ghost"
+            onClick={() => setShowSettings(true)}
+            title="Settings"
+          >
+            ⚙ Settings
+          </button>
           <button className="btn btn--sm btn--ghost" disabled={signingOut} onClick={signOut}>
             {signingOut ? 'Signing out…' : 'Sign out'}
           </button>
@@ -510,6 +527,15 @@ export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
         <span className="statusbar-sep">·</span>
         <span className="statusbar-item">Electron {versions?.electron ?? '—'}</span>
       </footer>
+
+      {showSettings && settings && (
+        <SettingsModal
+          settings={settings}
+          versions={versions}
+          onChange={onSettingsChange}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
 
       {showNewProject && (
         <NewProjectModal

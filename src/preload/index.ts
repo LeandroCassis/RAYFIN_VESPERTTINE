@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannels,
+  type AppSettings,
   type ChatEventEnvelope,
   type CreateProjectInput,
   type ProcLogEvent,
@@ -80,6 +81,11 @@ const api: RayfinStudioApi = {
       ipcRenderer.invoke(IpcChannels.deploySwitch, projectId, workspace, byId),
     status: (projectId: string) => ipcRenderer.invoke(IpcChannels.deployStatus, projectId),
     hasChanges: (projectId: string) => ipcRenderer.invoke(IpcChannels.deployHasChanges, projectId)
+  },
+
+  settings: {
+    get: () => ipcRenderer.invoke(IpcChannels.settingsGet),
+    set: (patch: Partial<AppSettings>) => ipcRenderer.invoke(IpcChannels.settingsSet, patch)
   },
 
   onProcLog: (cb: (event: ProcLogEvent) => void) => {

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AuthStatus, DoctorReport } from '@shared/ipc'
+import type { AppSettings, AuthStatus, DoctorReport } from '@shared/ipc'
 import SetupScreen from './screens/SetupScreen'
 import Workbench from './screens/Workbench'
+import { watchTheme } from './theme'
 import logo from './assets/logo.png'
 
 type Phase = 'loading' | 'setup' | 'ready'
@@ -10,6 +11,7 @@ function App(): JSX.Element {
   const [phase, setPhase] = useState<Phase>('loading')
   const [doctor, setDoctor] = useState<DoctorReport | null>(null)
   const [auth, setAuth] = useState<AuthStatus | null>(null)
+  const [settings, setSettings] = useState<AppSettings | null>(null)
   const [refreshing, setRefreshing] = useState(false)
 
   const refresh = useCallback(async (): Promise<void> => {
@@ -27,7 +29,19 @@ function App(): JSX.Element {
 
   useEffect(() => {
     void refresh()
+    void window.api.settings.get().then(setSettings)
   }, [refresh])
+
+  // Apply the theme app-wide (covers splash + setup, not just the workbench)
+  // and follow the OS when set to 'system'.
+  useEffect(() => {
+    if (!settings) return
+    return watchTheme(settings.theme)
+  }, [settings])
+
+  const updateSettings = useCallback(async (patch: Partial<AppSettings>): Promise<void> => {
+    setSettings(await window.api.settings.set(patch))
+  }, [])
 
   if (phase === 'loading') {
     return (
@@ -39,12 +53,17 @@ function App(): JSX.Element {
   }
 
   if (phase === 'ready' && auth) {
-    return <Workbench auth={auth} onSignOut={refresh} />
+    return (
+      <Workbench
+        auth={auth}
+        onSignOut={refresh}
+        settings={settings}
+        onSettingsChange={updateSettings}
+      />
+    )
   }
 
-  return (
-    <SetupScreen doctor={doctor} auth={auth} refreshing={refreshing} onRefresh={refresh} />
-  )
+  return <SetupScreen doctor={doctor} auth={auth} refreshing={refreshing} onRefresh={refresh} />
 }
 
 export default App

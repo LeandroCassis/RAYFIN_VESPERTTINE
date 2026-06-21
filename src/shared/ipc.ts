@@ -205,6 +205,15 @@ export interface ProjectsState {
   projects: StudioProject[]
 }
 
+export type ThemePreference = 'dark' | 'light' | 'system'
+
+export interface AppSettings {
+  /** UI theme; 'system' follows the OS dark/light setting. */
+  theme: ThemePreference
+  /** Opt-in (stored-only) flag for future anonymous usage telemetry. */
+  telemetry: boolean
+}
+
 export interface CreateProjectInput {
   name: string
   /**
@@ -391,6 +400,9 @@ export const IpcChannels = {
   deployList: 'deploy:list',
   deploySwitch: 'deploy:switch',
 
+  settingsGet: 'settings:get',
+  settingsSet: 'settings:set',
+
   // main -> renderer events
   procLog: 'proc:log',
   chatEvent: 'chat:event'
@@ -513,6 +525,12 @@ export interface RayfinStudioApi {
      * recorded workspace name; pass `byId` to switch by workspace GUID instead.
      */
     switch: (projectId: string, workspace: string, byId?: boolean) => Promise<DeployResult>
+  }
+
+  /** App-wide settings (theme, telemetry opt-in). */
+  settings: {
+    get: () => Promise<AppSettings>
+    set: (patch: Partial<AppSettings>) => Promise<AppSettings>
   }
 
   /** Subscribe to streamed process output. Returns an unsubscribe function. */

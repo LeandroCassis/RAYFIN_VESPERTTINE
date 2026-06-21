@@ -10,7 +10,7 @@
 import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
-import type { ProjectsState, StudioProject, DeployInfo } from '../../shared/ipc'
+import type { ProjectsState, StudioProject, DeployInfo, AppSettings } from '../../shared/ipc'
 
 function storeFile(): string {
   return join(app.getPath('userData'), 'studio.json')
@@ -24,30 +24,57 @@ function defaults(): ProjectsState {
   }
 }
 
+function defaultSettings(): AppSettings {
+  return { theme: 'system', telemetry: false }
+}
+
 let cache: ProjectsState | null = null
+let settingsCache: AppSettings | null = null
+
+/** Read + parse the persisted file once into the projects and settings caches. */
+function load(): void {
+  try {
+    const raw = readFileSync(storeFile(), 'utf8')
+    const parsed = JSON.parse(raw) as Partial<ProjectsState> & { settings?: Partial<AppSettings> }
+    const { settings, ...projState } = parsed
+    cache = {
+      ...defaults(),
+      ...projState,
+      projects: Array.isArray(parsed.projects) ? parsed.projects : []
+    }
+    settingsCache = { ...defaultSettings(), ...(settings ?? {}) }
+  } catch {
+    cache = defaults()
+    settingsCache = defaultSettings()
+  }
+}
 
 /** Load the persisted state (cached after first read). */
 export function getState(): ProjectsState {
-  if (cache) return cache
-  try {
-    const raw = readFileSync(storeFile(), 'utf8')
-    const parsed = JSON.parse(raw) as Partial<ProjectsState>
-    cache = {
-      ...defaults(),
-      ...parsed,
-      projects: Array.isArray(parsed.projects) ? parsed.projects : []
-    }
-  } catch {
-    cache = defaults()
-  }
-  return cache
+  if (!cache) load()
+  return cache as ProjectsState
+}
+
+/** Load persisted app settings (cached after first read). */
+export function getSettings(): AppSettings {
+  if (!settingsCache) load()
+  return settingsCache as AppSettings
 }
 
 function persist(next: ProjectsState): ProjectsState {
   cache = next
+  if (!settingsCache) settingsCache = defaultSettings()
   const dir = app.getPath('userData')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(storeFile(), JSON.stringify(next, null, 2), 'utf8')
+  writeFileSync(storeFile(), JSON.stringify({ ...next, settings: settingsCache }, null, 2), 'utf8')
+  return next
+}
+
+/** Merge a settings patch and persist. */
+export function setSettings(patch: Partial<AppSettings>): AppSettings {
+  const next = { ...getSettings(), ...patch }
+  settingsCache = next
+  persist(getState())
   return next
 }
 

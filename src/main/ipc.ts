@@ -1,6 +1,7 @@
 import { ipcMain, app, shell, type IpcMainInvokeEvent } from 'electron'
 import {
   IpcChannels,
+  type AppSettings,
   type AppVersions,
   type ChatEvent,
   type ChatMessage,
@@ -25,7 +26,7 @@ import {
   setProjectWorkspace,
   setWorkspaceRoot
 } from './services/projects'
-import { getState } from './services/store'
+import { getSettings, getState, setSettings } from './services/store'
 import { cancelMessage, resetSession, sendMessage, setChatOptions } from './services/chat'
 import { loadHistory, saveHistory, clearHistory } from './services/history'
 import {
@@ -176,5 +177,11 @@ export function registerIpc(): void {
   )
   ipcMain.handle(IpcChannels.deployHasChanges, (_event, projectId: string) =>
     hasPendingChanges(projectId)
+  )
+
+  // App settings (theme, telemetry opt-in)
+  ipcMain.handle(IpcChannels.settingsGet, () => getSettings())
+  ipcMain.handle(IpcChannels.settingsSet, (_event, patch: Partial<AppSettings>) =>
+    setSettings(patch)
   )
 }
