@@ -20,9 +20,13 @@ import type {
   GitChangeStatus,
   GitFileDiff,
   GitHistory,
-  GitCommitSummary
+  GitCommitSummary,
+  RevertResult
 } from '../../shared/ipc'
 import { GIT_WORKING_REF } from '../../shared/ipc'
+
+/** Identity used for Studio's own commits to user projects (matches deploys). */
+const COMMIT_IDENT = ['-c', 'user.name=Rayfin Fabricator', '-c', 'user.email=fabricator@rayfin.local']
 
 /** Cap the timeline so a long-lived repo can't blow up the IPC payload. */
 const MAX_COMMITS = 200
@@ -94,13 +98,16 @@ export async function gitLog(id: string): Promise<GitHistory> {
     ? status.stdout.split('\n').filter((l) => l.trim().length > 0).length
     : 0
 
+  const headRes = await git(cwd, ['rev-parse', 'HEAD'])
+  const head = headRes.ok ? headRes.stdout.trim() || undefined : undefined
+
   const fmt = `${RECORD}%H${FIELD}%h${FIELD}%an${FIELD}%ar${FIELD}%aI${FIELD}%s`
   const log = await git(cwd, ['log', '-n', String(MAX_COMMITS), '--shortstat', `--pretty=format:${fmt}`])
   if (!log.ok) {
     // A brand-new repo with no commits yet has nothing to log (but is a repo).
-    return { isRepo: true, noCommits: true, commits: [], workingChanges }
+    return { isRepo: true, noCommits: true, commits: [], workingChanges, head }
   }
-  return { isRepo: true, commits: parseLog(log.stdout), workingChanges }
+  return { isRepo: true, commits: parseLog(log.stdout), workingChanges, head }
 }
 
 /** Map a single git status letter (name-status / porcelain) to our union. */
@@ -273,4 +280,71 @@ export async function gitFileDiff(
     return { path, oldPath, status, before: '', after: '', tooLarge: true }
   }
   return { path, oldPath, status, before, after }
+}
+
+/**
+ * Restore the project's files to the snapshot at `ref` (a commit SHA), recorded
+ * as a NEW commit on top of the current history — so nothing is lost and the
+ * restore itself shows up in the timeline (and can be undone the same way).
+ *
+ * Steps: commit any pending work first (a dirty tree would otherwise be lost),
+ * then the classic `reset --hard <ref>` → `reset --soft <orig>` → `commit`, so
+ * the new commit's tree exactly equals `ref` (correctly re-adding/removing
+ * files) while keeping the previous tip as its parent. Never throws.
+ */
+export async function revertTo(id: string, ref: string): Promise<RevertResult> {
+  const project = findProject(id)
+  if (!project) return { ok: false, error: 'Project not found.' }
+  const cwd = project.path
+
+  if (!ref || ref === GIT_WORKING_REF) return { ok: false, error: 'Pick a saved version to restore.' }
+
+  const inside = await git(cwd, ['rev-parse', '--is-inside-work-tree'])
+  if (!inside.ok || inside.stdout.trim() !== 'true') {
+    return { ok: false, error: 'This project isn’t tracked by git, so there’s nothing to restore.' }
+  }
+
+  // Resolve the target to a full sha + a friendly label for the commit message.
+  const target = await git(cwd, ['rev-parse', '--verify', `${ref}^{commit}`])
+  if (!target.ok || !target.stdout.trim()) return { ok: false, error: 'That version no longer exists.' }
+  const targetSha = target.stdout.trim()
+  const subjectRes = await git(cwd, ['log', '-1', '--pretty=%s', targetSha])
+  const subject = (subjectRes.ok && subjectRes.stdout.trim()) || targetSha.slice(0, 7)
+
+  // 1) Don't lose uncommitted work — commit it first so it stays in history.
+  const dirty = await git(cwd, ['status', '--porcelain'])
+  if (dirty.ok && dirty.stdout.trim()) {
+    await git(cwd, ['add', '-A'])
+    const saved = await git(cwd, [...COMMIT_IDENT, 'commit', '-m', 'Save before restoring an earlier version'])
+    if (!saved.ok) return { ok: false, error: 'Could not save your current changes before restoring.' }
+  }
+
+  const origRes = await git(cwd, ['rev-parse', 'HEAD'])
+  if (!origRes.ok || !origRes.stdout.trim()) {
+    return { ok: false, error: 'Could not read the current version.' }
+  }
+  const orig = origRes.stdout.trim()
+  if (orig === targetSha) return { ok: true, noChanges: true, head: orig }
+
+  // 2) Make the working tree + index exactly match the target tree…
+  const hard = await git(cwd, ['reset', '--hard', targetSha])
+  if (!hard.ok) return { ok: false, error: hard.stderr.trim() || 'Could not restore that version.' }
+  // 3) …then move the branch pointer back so the change becomes a new commit.
+  const soft = await git(cwd, ['reset', '--soft', orig])
+  if (!soft.ok) {
+    await git(cwd, ['reset', '--hard', orig]) // best-effort: leave the branch intact
+    return { ok: false, error: soft.stderr.trim() || 'Could not restore that version.' }
+  }
+
+  // If the target tree equals the current tree there's nothing to commit.
+  const staged = await git(cwd, ['diff', '--cached', '--quiet'])
+  if (staged.ok) return { ok: true, noChanges: true, head: orig }
+
+  const commit = await git(cwd, [...COMMIT_IDENT, 'commit', '-m', `Restore earlier version — ${subject}`])
+  if (!commit.ok) {
+    await git(cwd, ['reset', '--hard', orig])
+    return { ok: false, error: commit.stderr.trim() || 'Could not save the restored version.' }
+  }
+  const newHead = await git(cwd, ['rev-parse', 'HEAD'])
+  return { ok: true, head: newHead.ok ? newHead.stdout.trim() || undefined : undefined }
 }

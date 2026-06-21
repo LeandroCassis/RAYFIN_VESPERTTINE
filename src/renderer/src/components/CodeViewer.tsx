@@ -8,6 +8,8 @@ interface Props {
   project: StudioProject
   /** Bumped by the parent when files may have changed (e.g. after a chat turn). */
   refreshKey: number
+  /** Ask the parent to deploy the current code (used by History → Restore). */
+  onRequestDeploy?: () => void
 }
 
 function formatBytes(n: number): string {
@@ -218,7 +220,7 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
  * with a segmented control. Both share one resolved Monaco theme so the editor
  * and diff editor stay in sync with the app's light/dark mode.
  */
-export default function CodeViewer({ project, refreshKey }: Props): JSX.Element {
+export default function CodeViewer({ project, refreshKey, onRequestDeploy }: Props): JSX.Element {
   const [tab, setTab] = useState<'files' | 'history'>('files')
   const theme = useEditorTheme()
 
@@ -252,7 +254,12 @@ export default function CodeViewer({ project, refreshKey }: Props): JSX.Element 
       {tab === 'files' ? (
         <FilesView project={project} refreshKey={refreshKey} theme={theme} />
       ) : (
-        <HistoryView project={project} refreshKey={refreshKey} theme={theme} />
+        <HistoryView
+          project={project}
+          refreshKey={refreshKey}
+          theme={theme}
+          onRequestDeploy={onRequestDeploy}
+        />
       )}
     </div>
   )

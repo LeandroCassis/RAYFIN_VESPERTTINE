@@ -118,6 +118,12 @@ async function commitCheckpoint(dir: string, message: string): Promise<void> {
   await run('git', ['commit', '-m', message], { cwd: dir, timeout: 30_000 })
 }
 
+/** Resolve the project's current HEAD commit sha (undefined when unavailable). */
+async function headSha(dir: string): Promise<string | undefined> {
+  const res = await run('git', ['rev-parse', 'HEAD'], { cwd: dir, timeout: 30_000 })
+  return res.ok ? res.stdout.trim() || undefined : undefined
+}
+
 /**
  * Run a full `rayfin up` for the project and resolve the live URL.
  * Never throws — failures are reported via the returned DeployResult.
@@ -203,6 +209,10 @@ export async function runDeploy(
   })
 
   await commitCheckpoint(project.path, `Deploy ${project.name} (${new Date().toISOString()})`)
+  // Record the commit that is now live so we can detect later drift (e.g. after
+  // restoring an older version, current HEAD will differ from this).
+  const commit = await headSha(project.path)
+  if (commit) updateDeploy(projectId, { commit })
   onData?.('system', `\n✅ Deployed. ${url ? `Live at ${url}` : ''}\n`)
 
   return { ok: true, outcome: 'success', url, apiUrl, portalUrl }

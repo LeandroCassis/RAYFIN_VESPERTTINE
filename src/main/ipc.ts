@@ -12,7 +12,7 @@ import {
 } from '../shared/ipc'
 import { checkEnvironment, installTool } from './services/doctor'
 import { getAuthStatus, loginCopilot, loginRayfin, logoutRayfin } from './services/auth'
-import { listFabricWorkspaces } from './services/fabric'
+import { listFabricWorkspaces, deleteFabricApps } from './services/fabric'
 import {
   createProject,
   getProjectsState,
@@ -39,7 +39,7 @@ import {
   switchDeployment
 } from './services/deploy'
 import { listProjectFiles, readProjectFile } from './services/files'
-import { gitChanges, gitFileDiff, gitLog } from './services/git'
+import { gitChanges, gitFileDiff, gitLog, revertTo } from './services/git'
 import { getProjectRayfinVersion } from './services/rayfinVersion'
 import { listSkills, setSkill } from './services/skills'
 import { openLogs } from './services/crashlog'
@@ -98,6 +98,9 @@ export function registerIpc(): void {
 
   // Fabric account (workspace enumeration for the picker)
   ipcMain.handle(IpcChannels.fabricWorkspaces, () => listFabricWorkspaces())
+  ipcMain.handle(IpcChannels.fabricDeleteApps, (_event, projectId: string) =>
+    deleteFabricApps(projectId)
+  )
 
   // Projects
   ipcMain.handle(IpcChannels.projectsState, () => getProjectsState())
@@ -140,6 +143,9 @@ export function registerIpc(): void {
     IpcChannels.projectsGitFileDiff,
     (_event, id: string, ref: string, path: string, oldPath?: string) =>
       gitFileDiff(id, ref, path, oldPath)
+  )
+  ipcMain.handle(IpcChannels.projectsGitRevert, (_event, id: string, ref: string) =>
+    revertTo(id, ref)
   )
   ipcMain.handle(IpcChannels.projectsFilesTree, (_event, id: string) => listProjectFiles(id))
   ipcMain.handle(IpcChannels.projectsFilesRead, (_event, id: string, path: string) =>

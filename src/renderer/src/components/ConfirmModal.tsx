@@ -9,6 +9,8 @@ interface Props {
   danger?: boolean
   /** Disable controls while the confirmed action runs. */
   busy?: boolean
+  /** Label shown on the confirm button while busy (default: 'Working…'). */
+  busyLabel?: string
   onConfirm: () => void
   onCancel: () => void
 }
@@ -21,6 +23,7 @@ export default function ConfirmModal({
   cancelLabel = 'Cancel',
   danger = false,
   busy = false,
+  busyLabel = 'Working…',
   onConfirm,
   onCancel
 }: Props): JSX.Element {
@@ -51,7 +54,7 @@ export default function ConfirmModal({
             disabled={busy}
             autoFocus
           >
-            {busy ? 'Working…' : confirmLabel}
+            {busy ? busyLabel : confirmLabel}
           </button>
         </div>
       </div>

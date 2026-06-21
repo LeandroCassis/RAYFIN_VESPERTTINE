@@ -23,7 +23,9 @@ import { app } from 'electron'
 import { join } from 'path'
 import { existsSync, writeFileSync } from 'fs'
 import { run } from './exec'
-import type { FabricWorkspacesResult } from '../../shared/ipc'
+import { findProject } from './store'
+import { listDeployments } from './deploy'
+import type { FabricWorkspacesResult, FabricDeleteResult } from '../../shared/ipc'
 
 const FABRIC_API_BASE = 'https://api.fabric.microsoft.com/v1'
 
@@ -162,5 +164,112 @@ export async function listFabricWorkspaces(): Promise<FabricWorkspacesResult> {
       res.stderr.trim() || out || `Workspace lookup failed (exit ${res.exitCode ?? 'unknown'}).`
     const needsLogin = /silent|cached|account|login|token|sign/i.test(err)
     return { ok: false, needsLogin, error: err }
+  }
+}
+
+/**
+ * Helper executed by the system `node` to delete Fabric items. argv:
+ * <authModulePath> <apiBase> <itemsJsonPath>, where the JSON file is an array of
+ * `{ workspaceId, itemId, name }`. Deletes each via the Fabric REST API and
+ * emits one JSON summary line. As with the workspace lookup, the access token
+ * is acquired silently and never leaves this short-lived child process.
+ */
+const DELETE_HELPER_SOURCE = `
+console.log = (...a) => process.stderr.write(a.map(String).join(' ') + '\\n')
+console.debug = console.log
+console.info = console.log
+
+import { pathToFileURL } from 'node:url'
+import { readFileSync } from 'node:fs'
+
+async function main() {
+  const [authPath, base, itemsPath] = process.argv.slice(2)
+  const items = JSON.parse(readFileSync(itemsPath, 'utf8'))
+  const auth = await import(pathToFileURL(authPath).href)
+  const rf = await auth.getRayfinAuth()
+  // silentOnly: never pop a browser — fail fast if there's no cached session.
+  const { token } = await rf.acquireToken(undefined, { silentOnly: true })
+  const headers = { Authorization: 'Bearer ' + token }
+
+  let deleted = 0
+  const failures = []
+  for (const it of items) {
+    const label = it.name || it.itemId
+    try {
+      const url = base + '/workspaces/' + it.workspaceId + '/items/' + it.itemId
+      const res = await fetch(url, { method: 'DELETE', headers })
+      if (res.status === 404) continue // already gone — nothing to do
+      if (res.ok) { deleted++; continue }
+      const body = await res.text().catch(() => '')
+      failures.push({ name: label, error: 'Fabric returned ' + res.status + (body ? ': ' + body.slice(0, 200) : '') })
+    } catch (e) {
+      failures.push({ name: label, error: String((e && e.message) || e) })
+    }
+  }
+  process.stdout.write(JSON.stringify({ ok: failures.length === 0, deleted, failures }))
+}
+
+main().catch((err) => {
+  const msg = err && err.message ? String(err.message) : String(err)
+  const needsLogin = /silent|cached|account|login|token|interactive|sign/i.test(msg)
+  process.stdout.write(JSON.stringify({ ok: false, deleted: 0, failures: [], needsLogin, error: msg }))
+})
+`
+
+/** Write the delete helper to a stable per-user path and return it. */
+function ensureDeleteHelperScript(): string {
+  const scriptPath = join(app.getPath('userData'), 'fabric-delete.mjs')
+  writeFileSync(scriptPath, DELETE_HELPER_SOURCE, 'utf8')
+  return scriptPath
+}
+
+/**
+ * Delete the Fabric items behind a project's recorded deployments. Enumerates
+ * the deployments (`rayfin up list --json`) for their workspace/item ids, then
+ * deletes each via the Fabric REST API. Must be called *before* the project
+ * folder is removed (it needs the on-disk project to enumerate). Never throws —
+ * returns a structured summary so the UI can report partial failures.
+ */
+export async function deleteFabricApps(projectId: string): Promise<FabricDeleteResult> {
+  const project = findProject(projectId)
+  if (!project) return { ok: false, deleted: 0, failures: [], error: 'Project not found.' }
+
+  const deployments = await listDeployments(projectId)
+  const items = deployments
+    .filter((d) => d.workspaceId && d.itemId)
+    .map((d) => ({ workspaceId: d.workspaceId, itemId: d.itemId, name: d.name || d.workspaceName }))
+  // Nothing recorded in Fabric (never deployed, or list unavailable) — no-op.
+  if (items.length === 0) return { ok: true, deleted: 0, failures: [] }
+
+  const authPath = await resolveCliAuthModule()
+  if (!authPath) {
+    return {
+      ok: false,
+      deleted: 0,
+      failures: [],
+      error: 'Could not locate the Rayfin CLI to reach Fabric. Make sure the rayfin CLI is installed.'
+    }
+  }
+
+  let scriptPath: string
+  let itemsPath: string
+  try {
+    scriptPath = ensureDeleteHelperScript()
+    itemsPath = join(app.getPath('userData'), 'fabric-delete-items.json')
+    writeFileSync(itemsPath, JSON.stringify(items), 'utf8')
+  } catch (err) {
+    return { ok: false, deleted: 0, failures: [], error: `Could not prepare the delete helper: ${String(err)}` }
+  }
+
+  const res = await run('node', [scriptPath, authPath, FABRIC_API_BASE, itemsPath], { timeout: 120_000 })
+  if (res.notFound) return { ok: false, deleted: 0, failures: [], error: 'Node.js was not found on PATH.' }
+
+  const out = res.stdout.trim()
+  try {
+    return JSON.parse(out) as FabricDeleteResult
+  } catch {
+    const err = res.stderr.trim() || out || `Fabric delete failed (exit ${res.exitCode ?? 'unknown'}).`
+    const needsLogin = /silent|cached|account|login|token|sign/i.test(err)
+    return { ok: false, deleted: 0, failures: [], needsLogin, error: err }
   }
 }

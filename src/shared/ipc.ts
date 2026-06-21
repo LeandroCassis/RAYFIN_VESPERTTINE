@@ -93,6 +93,18 @@ export interface FabricWorkspacesResult {
   error?: string
 }
 
+/** Outcome of deleting a project's deployed app(s) from Fabric (never throws). */
+export interface FabricDeleteResult {
+  ok: boolean
+  /** Number of Fabric items successfully deleted. */
+  deleted: number
+  /** Per-deployment failures (the local delete proceeds regardless). */
+  failures: Array<{ name: string; error: string }>
+  /** True when there was no cached Fabric session to authorize the delete. */
+  needsLogin?: boolean
+  error?: string
+}
+
 /* ------------------------------------------------------------------ *
  * Long-running / streaming processes (logins, installs, deploys)
  * ------------------------------------------------------------------ */
@@ -144,6 +156,12 @@ export interface DeployInfo {
   error?: string
   /** ISO timestamp of the last deploy attempt. */
   at?: string
+  /**
+   * Git commit (HEAD sha) that was live as of the last successful deploy. Used
+   * to detect "drift" — when the project's current code differs from what is
+   * actually deployed (e.g. after restoring an older version).
+   */
+  commit?: string
 }
 
 /** Outcome of a Studio-driven `rayfin up`. */
@@ -334,6 +352,18 @@ export interface GitHistory {
   commits: GitCommitSummary[]
   /** Number of files with uncommitted (working-tree) changes. */
   workingChanges: number
+  /** Current HEAD commit sha (used to flag the deployed commit + drift). */
+  head?: string
+}
+
+/** Outcome of restoring a project to a past commit (never throws across IPC). */
+export interface RevertResult {
+  ok: boolean
+  /** The new HEAD sha created by the restore (a fresh commit on top). */
+  head?: string
+  /** True when the project was already at that version (nothing to restore). */
+  noChanges?: boolean
+  error?: string
 }
 
 /** One file changed within a commit or the working tree. */
@@ -549,6 +579,7 @@ export const IpcChannels = {
   authLogoutRayfin: 'auth:logoutRayfin',
 
   fabricWorkspaces: 'fabric:workspaces',
+  fabricDeleteApps: 'fabric:deleteApps',
 
   projectsState: 'projects:state',
   projectsTemplates: 'projects:templates',
@@ -566,6 +597,7 @@ export const IpcChannels = {
   projectsGitLog: 'projects:gitLog',
   projectsGitChanges: 'projects:gitChanges',
   projectsGitFileDiff: 'projects:gitFileDiff',
+  projectsGitRevert: 'projects:gitRevert',
   projectsFilesTree: 'projects:filesTree',
   projectsFilesRead: 'projects:filesRead',
 
@@ -629,6 +661,12 @@ export interface RayfinStudioApi {
   fabric: {
     /** List the signed-in user's Fabric workspaces (with capacity / F-SKU info). */
     listWorkspaces: () => Promise<FabricWorkspacesResult>
+    /**
+     * Delete the project's deployed app(s) from Fabric (the Fabric items behind
+     * its recorded deployments). Used when removing a project so the Fabric side
+     * is cleaned up too. Never throws — reports per-deployment failures.
+     */
+    deleteApps: (projectId: string) => Promise<FabricDeleteResult>
   }
 
   projects: {
@@ -673,6 +711,12 @@ export interface RayfinStudioApi {
       changes: (id: string, ref: string) => Promise<GitChange[]>
       /** Before/after content for one changed file (drives the diff view). */
       fileDiff: (id: string, ref: string, path: string, oldPath?: string) => Promise<GitFileDiff>
+      /**
+       * Restore the project to the snapshot at `ref` (a commit SHA) by recording
+       * it as a new commit on top of the current history (nothing is lost). The
+       * caller then redeploys to publish the restored version.
+       */
+      revert: (id: string, ref: string) => Promise<RevertResult>
     }
     files: {
       /** The project's pruned, sorted file tree (read-only browsing). */

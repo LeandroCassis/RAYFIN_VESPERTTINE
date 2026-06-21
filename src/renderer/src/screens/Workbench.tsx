@@ -66,6 +66,10 @@ export default function Workbench({
   const [renameValue, setRenameValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<StudioProject | null>(null)
   const [deleting, setDeleting] = useState(false)
+  /** Whether to also delete the project's deployed app(s) from Fabric. */
+  const [alsoDeleteFabric, setAlsoDeleteFabric] = useState(false)
+  /** Friendly message when deleting the Fabric app fails (keeps the modal open). */
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   /** Bumped whenever the working tree likely changed (deploy / chat turn). */
   const [gitRefresh, setGitRefresh] = useState(0)
   /** Active project's local Rayfin (CLI + SDK) version + upgrade availability. */
@@ -308,14 +312,35 @@ export default function Workbench({
     await refreshProjects()
   }
 
+  // Default "also delete from Fabric" on when the project has been deployed.
+  useEffect(() => {
+    setDeleteError(null)
+    setAlsoDeleteFabric(Boolean(confirmDelete?.lastDeploy?.url))
+  }, [confirmDelete])
+
   async function deleteFromDisk(): Promise<void> {
     if (!confirmDelete) return
     setDeleting(true)
+    setDeleteError(null)
     try {
+      // Delete the deployed app(s) from Fabric first (needs the project on disk
+      // to enumerate). On failure, stay in the modal so the user can retry or
+      // untick the option and remove locally only.
+      if (alsoDeleteFabric) {
+        const res = await window.api.fabric.deleteApps(confirmDelete.id)
+        if (!res.ok) {
+          setDeleteError(
+            res.needsLogin
+              ? 'You need to be signed in to Fabric to delete the app there. Sign in and try again, or untick the option to remove it from this app only.'
+              : (res.failures[0]?.error ?? res.error ?? 'Could not delete the app from Fabric.')
+          )
+          return
+        }
+      }
       setProjects(await window.api.projects.remove(confirmDelete.id, true))
+      setConfirmDelete(null)
     } finally {
       setDeleting(false)
-      setConfirmDelete(null)
     }
   }
 
@@ -535,7 +560,14 @@ export default function Workbench({
               </div>
               {viewMode === 'code' ? (
                 <Suspense fallback={<div className="code-empty">Loading editor…</div>}>
-                  <CodeViewer project={active} refreshKey={gitRefresh} />
+                  <CodeViewer
+                    project={active}
+                    refreshKey={gitRefresh}
+                    onRequestDeploy={() => {
+                      setViewMode('build')
+                      void runDeploy(active.id)
+                    }}
+                  />
                 </Suspense>
               ) : viewMode === 'skills' ? (
                 <SkillsView
@@ -641,10 +673,11 @@ export default function Workbench({
 
       {confirmDelete && (
         <ConfirmModal
-          title="Delete project from disk?"
+          title="Delete project?"
           danger
           busy={deleting}
-          confirmLabel="Move to trash"
+          busyLabel={alsoDeleteFabric ? 'Deleting…' : 'Moving to trash…'}
+          confirmLabel={alsoDeleteFabric ? 'Delete everywhere' : 'Move to trash'}
           onCancel={() => {
             if (!deleting) setConfirmDelete(null)
           }}
@@ -656,7 +689,31 @@ export default function Workbench({
                 system trash:
               </p>
               <p className="confirm-path">{confirmDelete.path}</p>
-              <p>The deployed Fabric app is not affected — only the local code is removed.</p>
+              {confirmDelete.lastDeploy?.url ? (
+                <label className="confirm-check">
+                  <input
+                    type="checkbox"
+                    checked={alsoDeleteFabric}
+                    disabled={deleting}
+                    onChange={(e) => setAlsoDeleteFabric(e.target.checked)}
+                  />
+                  <span>
+                    Also delete the deployed app from Fabric
+                    {confirmDelete.workspaceName ? (
+                      <span className="confirm-check-hint">
+                        {' '}
+                        — permanently removes the app and its data in{' '}
+                        <strong>{confirmDelete.workspaceName}</strong>
+                      </span>
+                    ) : (
+                      <span className="confirm-check-hint"> — permanently removes the app and its data</span>
+                    )}
+                  </span>
+                </label>
+              ) : (
+                <p>The deployed Fabric app is not affected — only the local code is removed.</p>
+              )}
+              {deleteError && <p className="confirm-error">{deleteError}</p>}
             </>
           }
         />
