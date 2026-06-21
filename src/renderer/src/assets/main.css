@@ -3419,6 +3419,93 @@ code {
   line-height: 1.4;
 }
 
+/* Skeleton placeholder cards while templates / the gallery load */
+.template-card--skel {
+  pointer-events: none;
+  gap: 8px;
+  min-height: 78px;
+}
+.skel-line {
+  display: block;
+  height: 10px;
+  border-radius: 5px;
+  background: linear-gradient(
+    90deg,
+    var(--bg-elev-3) 0%,
+    color-mix(in srgb, var(--text) 12%, var(--bg-elev-3)) 50%,
+    var(--bg-elev-3) 100%
+  );
+  background-size: 200% 100%;
+  animation: skelSweep 1.2s ease-in-out infinite;
+}
+.skel-line--title {
+  height: 13px;
+  width: 60%;
+  margin-bottom: 2px;
+}
+.skel-line--short {
+  width: 40%;
+}
+@keyframes skelSweep {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* Community gallery footer + empty/error state */
+.gallery-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+}
+.gallery-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 22px 16px;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.gallery-empty-msg {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  max-width: 46ch;
+  line-height: 1.5;
+}
+.gallery-empty-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Inline text button (e.g. "Use a custom URL") */
+.link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--accent);
+  cursor: pointer;
+  align-self: flex-start;
+}
+.link-btn:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.link-btn:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
 .log-console {
   background: var(--code-bg);
   border: 1px solid var(--border);

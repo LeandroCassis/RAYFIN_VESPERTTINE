@@ -35,6 +35,8 @@ const api: RayfinStudioApi = {
   projects: {
     state: () => ipcRenderer.invoke(IpcChannels.projectsState),
     templates: () => ipcRenderer.invoke(IpcChannels.projectsTemplates),
+    communityTemplates: (repoUrl?: string) =>
+      ipcRenderer.invoke(IpcChannels.projectsCommunityTemplates, repoUrl),
     pickFolder: () => ipcRenderer.invoke(IpcChannels.projectsPickFolder),
     pickWorkspaceRoot: () => ipcRenderer.invoke(IpcChannels.projectsPickWorkspaceRoot),
     setWorkspaceRoot: (path: string) =>

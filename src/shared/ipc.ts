@@ -141,6 +141,33 @@ export interface TemplateInfo {
   description: string
 }
 
+/** One template entry from a community gallery repo's root `rayfin-template.yml`. */
+export interface CommunityTemplate {
+  /** Gallery repo URL this is scaffolded from (`rayfin init -t <repoUrl>`). */
+  repoUrl: string
+  /** Path within the repo (e.g. `templates/field-technician`). */
+  path: string
+  /** Template name — passed to `--template-name` to pick it non-interactively. */
+  name: string
+  /** Human-readable description from the manifest. */
+  description: string
+}
+
+/** A community template gallery (defaults to microsoft/awesome-rayfin). */
+export interface CommunityGallery {
+  repoUrl: string
+  displayName?: string
+  description?: string
+  templates: CommunityTemplate[]
+}
+
+/** Result of fetching a community gallery (friendly error instead of a throw). */
+export interface CommunityGalleryResult {
+  ok: boolean
+  error?: string
+  gallery?: CommunityGallery
+}
+
 export interface DeployInfo {
   /** Best URL to load in the preview (hostingUrl → rayfinApiUrl → fabricPortalUrl). */
   url?: string
@@ -583,6 +610,7 @@ export const IpcChannels = {
 
   projectsState: 'projects:state',
   projectsTemplates: 'projects:templates',
+  projectsCommunityTemplates: 'projects:communityTemplates',
   projectsPickFolder: 'projects:pickFolder',
   projectsPickWorkspaceRoot: 'projects:pickWorkspaceRoot',
   projectsSetWorkspaceRoot: 'projects:setWorkspaceRoot',
@@ -674,6 +702,8 @@ export interface RayfinStudioApi {
     state: () => Promise<ProjectsState>
     /** Available scaffolding templates. */
     templates: () => Promise<TemplateInfo[]>
+    /** Fetch a community template gallery (defaults to microsoft/awesome-rayfin). */
+    communityTemplates: (repoUrl?: string) => Promise<CommunityGalleryResult>
     /** Native folder picker; returns the chosen path or null if cancelled. */
     pickFolder: () => Promise<string | null>
     /** Native folder picker for the workspace root; persists and returns state. */

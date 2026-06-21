@@ -18,6 +18,7 @@ import {
   getProjectsState,
   gitCommit,
   gitStatus,
+  listCommunityTemplates,
   listTemplates,
   openProject,
   pickFolder,
@@ -105,6 +106,9 @@ export function registerIpc(): void {
   // Projects
   ipcMain.handle(IpcChannels.projectsState, () => getProjectsState())
   ipcMain.handle(IpcChannels.projectsTemplates, () => listTemplates())
+  ipcMain.handle(IpcChannels.projectsCommunityTemplates, (_event, repoUrl?: string) =>
+    listCommunityTemplates(repoUrl)
+  )
   ipcMain.handle(IpcChannels.projectsPickFolder, () => pickFolder('Open a Rayfin project'))
   ipcMain.handle(IpcChannels.projectsPickWorkspaceRoot, async () => {
     const picked = await pickFolder('Choose a workspace folder', getState().workspaceRoot)

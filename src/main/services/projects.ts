@@ -13,10 +13,14 @@ import { BrowserWindow, dialog, shell } from 'electron'
 import { basename, join, resolve } from 'path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { randomUUID } from 'crypto'
+import { parse as parseYaml } from 'yaml'
 import { run } from './exec'
 import { ensureProjectSkills } from './skills'
 import * as store from './store'
 import type {
+  CommunityGallery,
+  CommunityGalleryResult,
+  CommunityTemplate,
   CreateProjectInput,
   GitCommitResult,
   GitStatus,
@@ -126,6 +130,103 @@ export async function listTemplates(): Promise<TemplateInfo[]> {
     templatesCache = FALLBACK_TEMPLATES
   }
   return templatesCache
+}
+
+/** Default community gallery (the user can point at any compatible repo). */
+const DEFAULT_GALLERY = 'https://github.com/microsoft/awesome-rayfin'
+
+/** Shape of a gallery repo's root `rayfin-template.yml` (only fields we use). */
+interface RawGalleryDoc {
+  metadata?: { displayName?: unknown; description?: unknown }
+  entries?: Array<{ path?: unknown; name?: unknown; description?: unknown }>
+}
+
+const galleryCache = new Map<string, CommunityGallery>()
+
+/** Extract { owner, repo } from a GitHub repo URL (https or git@). */
+function parseGitHubRepo(url: string): { owner: string; repo: string } | null {
+  const m = url.trim().match(/github\.com[/:]([^/]+)\/([^/#?]+?)(?:\.git)?\/?$/i)
+  return m ? { owner: m[1], repo: m[2] } : null
+}
+
+/** Fetch text with a timeout; returns null on any non-2xx / network error. */
+async function fetchText(url: string, timeoutMs = 15_000): Promise<string | null> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const res = await fetch(url, { signal: ctrl.signal })
+    return res.ok ? await res.text() : null
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : '')
+
+/**
+ * Fetch + parse a community gallery's root `rayfin-template.yml` (the same file
+ * the Rayfin CLI reads for its interactive picker) and return its templates so
+ * the user can pick one instead of typing a URL. Cached per repo URL.
+ */
+export async function listCommunityTemplates(repoUrl?: string): Promise<CommunityGalleryResult> {
+  const url = repoUrl?.trim() || DEFAULT_GALLERY
+  const cached = galleryCache.get(url)
+  if (cached) return { ok: true, gallery: cached }
+
+  const repo = parseGitHubRepo(url)
+  if (!repo) {
+    return {
+      ok: false,
+      error: 'Enter a GitHub repo URL, e.g. https://github.com/microsoft/awesome-rayfin'
+    }
+  }
+
+  // `rayfin-template.yml` lives at the repo root; try the common default branches.
+  let raw: string | null = null
+  for (const branch of ['main', 'master']) {
+    raw = await fetchText(
+      `https://raw.githubusercontent.com/${repo.owner}/${repo.repo}/${branch}/rayfin-template.yml`
+    )
+    if (raw) break
+  }
+  if (!raw) {
+    return {
+      ok: false,
+      error: `Couldn't reach ${repo.owner}/${repo.repo}. Check you're online and the repo has a rayfin-template.yml at its root.`
+    }
+  }
+
+  let doc: RawGalleryDoc
+  try {
+    doc = parseYaml(raw) as RawGalleryDoc
+  } catch {
+    return { ok: false, error: 'This gallery’s rayfin-template.yml could not be parsed.' }
+  }
+
+  const entries = Array.isArray(doc?.entries) ? doc.entries : []
+  const templates: CommunityTemplate[] = entries
+    .filter((e) => e && str(e.name))
+    .map((e) => ({
+      repoUrl: url,
+      path: str(e.path),
+      name: str(e.name),
+      description: str(e.description)
+    }))
+
+  if (templates.length === 0) {
+    return { ok: false, error: 'No templates were found in this gallery.' }
+  }
+
+  const gallery: CommunityGallery = {
+    repoUrl: url,
+    displayName: str(doc?.metadata?.displayName) || undefined,
+    description: str(doc?.metadata?.description) || undefined,
+    templates
+  }
+  galleryCache.set(url, gallery)
+  return { ok: true, gallery }
 }
 
 /** Initialize a git repo with a baseline commit (best-effort). */
