@@ -1597,7 +1597,136 @@ code {
 .preview-webview-host {
   flex: 1;
   min-height: 0;
+  min-width: 0;
   display: flex;
+}
+
+/* Preview-depth: device-width framing + console drawer. */
+.preview-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.preview-stage {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+  transition: width 0.15s ease;
+}
+
+.preview-stage--desktop {
+  flex: 1;
+  width: 100%;
+}
+
+.preview-stage--tablet,
+.preview-stage--phone {
+  flex: 1;
+  margin: 0 auto;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  box-shadow: 0 0 24px rgba(0, 0, 0, 0.35);
+}
+
+.device-select {
+  cursor: pointer;
+}
+
+.console-badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  min-width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  border-radius: 8px;
+  color: #fff;
+  background: var(--danger);
+}
+
+.preview-console {
+  flex: 0 0 200px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.preview-console-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.preview-console-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.preview-console-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  font-size: 12px;
+}
+
+.preview-console-empty {
+  padding: 14px;
+  color: var(--text-dim);
+}
+
+.console-row {
+  display: flex;
+  gap: 8px;
+  padding: 3px 10px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.console-row-level {
+  flex: 0 0 auto;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding-top: 1px;
+  color: var(--text-dim);
+}
+
+.console-row-text {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+}
+
+.console-row--warn {
+  background: color-mix(in srgb, var(--pending) 12%, transparent);
+}
+.console-row--warn .console-row-level {
+  color: var(--pending);
+}
+
+.console-row--error {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+.console-row--error .console-row-level,
+.console-row--error .console-row-text {
+  color: var(--danger);
 }
 
 .preview-overlay {

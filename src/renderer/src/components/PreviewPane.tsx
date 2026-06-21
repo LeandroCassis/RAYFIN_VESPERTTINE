@@ -18,6 +18,42 @@ export interface PendingShot {
   thumb: string
 }
 
+/** Responsive preview presets — constrain the webview width to emulate devices. */
+type DeviceId = 'desktop' | 'tablet' | 'phone'
+const DEVICE_WIDTHS: Record<DeviceId, number | null> = {
+  desktop: null,
+  tablet: 820,
+  phone: 390
+}
+
+/** A single line captured from the preview's `console-message` stream. */
+interface ConsoleEntry {
+  id: number
+  level: 'log' | 'info' | 'warn' | 'error'
+  text: string
+}
+
+/** Normalize Electron's numeric (legacy) or string console level to our union. */
+function consoleLevel(level: number | string | undefined): ConsoleEntry['level'] {
+  if (typeof level === 'string') {
+    const l = level.toLowerCase()
+    if (l.startsWith('warn')) return 'warn'
+    if (l.startsWith('err')) return 'error'
+    if (l.startsWith('info')) return 'info'
+    return 'log'
+  }
+  switch (level) {
+    case 2:
+      return 'warn'
+    case 3:
+      return 'error'
+    case 1:
+      return 'info'
+    default:
+      return 'log'
+  }
+}
+
 interface Props {
   project: StudioProject
   deploy: DeployUiState | undefined
@@ -99,6 +135,13 @@ export default function PreviewPane({
   const dragRef = useRef<{ x: number; y: number } | null>(null)
   const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
 
+  // Preview-depth: responsive device width + captured console output.
+  const [device, setDevice] = useState<DeviceId>('desktop')
+  const [consoleLogs, setConsoleLogs] = useState<ConsoleEntry[]>([])
+  const [showConsole, setShowConsole] = useState(false)
+  const consoleSeq = useRef(0)
+  const consoleListRef = useRef<HTMLDivElement>(null)
+
   // Auto-reload the preview after a successful (re)deploy.
   useEffect(() => {
     const wasRunning = prevRunningRef.current
@@ -121,6 +164,13 @@ export default function PreviewPane({
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [deploy?.log])
 
+  // Keep the console panel pinned to the newest line while it's open.
+  useEffect(() => {
+    if (showConsole && consoleListRef.current) {
+      consoleListRef.current.scrollTop = consoleListRef.current.scrollHeight
+    }
+  }, [consoleLogs, showConsole])
+
   // Build the <webview> imperatively inside its host container so `allowpopups`
   // and `partition` are present BEFORE the element is connected to the DOM.
   // Electron reads those attributes when the guest attaches (on DOM-connect),
@@ -142,6 +192,7 @@ export default function PreviewPane({
     webviewRef.current = wv
     setLoadError(null)
     setLoading(true)
+    setConsoleLogs([])
     const syncNav = (): void => {
       try {
         setCanBack(wv.canGoBack())
@@ -172,6 +223,20 @@ export default function PreviewPane({
         setLoadError(errorDescription || 'Failed to load the preview.')
         setLoading(false)
       }
+    })
+    // Capture the guest's console into a panel so deploy issues are visible
+    // without opening devtools (Electron 33 emits numeric `level`).
+    wv.addEventListener('console-message', (e: Event) => {
+      const ev = e as unknown as { level?: number | string; message?: string }
+      const entry: ConsoleEntry = {
+        id: ++consoleSeq.current,
+        level: consoleLevel(ev.level),
+        text: ev.message ?? ''
+      }
+      setConsoleLogs((prev) => {
+        const next = prev.concat(entry)
+        return next.length > 200 ? next.slice(next.length - 200) : next
+      })
     })
     host.appendChild(wv)
   }, [])
@@ -292,6 +357,12 @@ export default function PreviewPane({
   // A finished dry run keeps its output visible in the body until dismissed.
   const dryRunDone = !running && mode === 'dryrun' && (deploy?.log.length ?? 0) > 0
   const showWebview = !running && !dryRunDone && Boolean(deployedUrl)
+  const stageWidth = DEVICE_WIDTHS[device]
+  const stageStyle = stageWidth ? { width: stageWidth, maxWidth: '100%' } : undefined
+  const consoleIssues = consoleLogs.reduce(
+    (n, l) => (l.level === 'warn' || l.level === 'error' ? n + 1 : n),
+    0
+  )
 
   return (
     <div className="preview">
@@ -334,6 +405,26 @@ export default function PreviewPane({
         <span className="preview-toolbar-spacer" />
         {capturing && <span className="preview-loading">Capturing…</span>}
         {loading && showWebview && <span className="preview-loading">Loading…</span>}
+        <select
+          className="chat-effort device-select"
+          value={device}
+          onChange={(e) => setDevice(e.target.value as DeviceId)}
+          disabled={!showWebview}
+          title="Preview at a device width"
+        >
+          <option value="desktop">🖥 Desktop</option>
+          <option value="tablet">▭ Tablet · 820</option>
+          <option value="phone">▯ Phone · 390</option>
+        </select>
+        <button
+          className={`btn btn--sm ${showConsole ? 'btn--primary' : 'btn--ghost'}`}
+          onClick={() => setShowConsole((s) => !s)}
+          disabled={!showWebview && consoleLogs.length === 0}
+          title="Show the preview's console output"
+        >
+          Console
+          {consoleIssues > 0 && <span className="console-badge">{consoleIssues}</span>}
+        </button>
         <button
           className={`btn btn--sm ${selecting ? 'btn--primary' : 'btn--ghost'}`}
           onClick={() => setSelecting((s) => !s)}
@@ -461,37 +552,76 @@ export default function PreviewPane({
             </div>
           </div>
         ) : showWebview ? (
-          <>
-            <div
-              key={`${deployedUrl}#${reloadNonce}`}
-              className="preview-webview-host"
-              ref={attachWebviewHost}
-            />
-            {loadError && (
-              <div className="preview-overlay">
-                <div className="alert alert--error">{loadError}</div>
-                <button className="btn btn--sm btn--ghost" onClick={reload}>
-                  Retry
-                </button>
-              </div>
-            )}
-            {selecting && (
+          <div className={`preview-canvas${showConsole ? ' has-console' : ''}`}>
+            <div className={`preview-stage preview-stage--${device}`} style={stageStyle}>
               <div
-                className="shot-overlay"
-                onMouseDown={onShotDown}
-                onMouseMove={onShotMove}
-                onMouseUp={onShotUp}
-              >
-                {box && (
-                  <div
-                    className="shot-box"
-                    style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
-                  />
-                )}
-                <div className="shot-hint">Drag to capture a region · Esc to cancel</div>
+                key={`${deployedUrl}#${reloadNonce}`}
+                className="preview-webview-host"
+                ref={attachWebviewHost}
+              />
+              {loadError && (
+                <div className="preview-overlay">
+                  <div className="alert alert--error">{loadError}</div>
+                  <button className="btn btn--sm btn--ghost" onClick={reload}>
+                    Retry
+                  </button>
+                </div>
+              )}
+              {selecting && (
+                <div
+                  className="shot-overlay"
+                  onMouseDown={onShotDown}
+                  onMouseMove={onShotMove}
+                  onMouseUp={onShotUp}
+                >
+                  {box && (
+                    <div
+                      className="shot-box"
+                      style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
+                    />
+                  )}
+                  <div className="shot-hint">Drag to capture a region · Esc to cancel</div>
+                </div>
+              )}
+            </div>
+            {showConsole && (
+              <div className="preview-console">
+                <div className="preview-console-head">
+                  <span>Console{consoleLogs.length ? ` · ${consoleLogs.length}` : ''}</span>
+                  <span className="preview-console-actions">
+                    <button
+                      className="btn btn--xs btn--ghost"
+                      onClick={() => setConsoleLogs([])}
+                      disabled={consoleLogs.length === 0}
+                    >
+                      Clear
+                    </button>
+                    <button
+                      className="deployments-close"
+                      onClick={() => setShowConsole(false)}
+                      title="Close console"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </div>
+                <div className="preview-console-list" ref={consoleListRef}>
+                  {consoleLogs.length === 0 ? (
+                    <div className="preview-console-empty">
+                      No console output yet. Messages logged by the deployed app appear here.
+                    </div>
+                  ) : (
+                    consoleLogs.map((l) => (
+                      <div key={l.id} className={`console-row console-row--${l.level}`}>
+                        <span className="console-row-level">{l.level}</span>
+                        <span className="console-row-text">{l.text}</span>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
-          </>
+          </div>
         ) : needsWorkspace ? (
           <div className="preview-placeholder">
             <div className="ws-prompt">
