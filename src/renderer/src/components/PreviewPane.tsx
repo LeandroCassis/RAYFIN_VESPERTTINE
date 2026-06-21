@@ -367,147 +367,148 @@ export default function PreviewPane({
   return (
     <div className="preview">
       <div className="preview-toolbar">
-        <div className="preview-nav">
-          <button
-            className="preview-navbtn"
-            onClick={goBack}
-            disabled={!showWebview || !canBack}
-            title="Back"
-          >
-            ‹
-          </button>
-          <button
-            className="preview-navbtn"
-            onClick={goForward}
-            disabled={!showWebview || !canForward}
-            title="Forward"
-          >
-            ›
-          </button>
-          <button
-            className="preview-navbtn"
-            onClick={reload}
-            disabled={!showWebview}
-            title="Reload"
-          >
-            ⟳
-          </button>
+        <div className="preview-toolbar-left">
+          <div className="preview-nav">
+            <button
+              className="preview-navbtn"
+              onClick={goBack}
+              disabled={!showWebview || !canBack}
+              title="Back"
+            >
+              ‹
+            </button>
+            <button
+              className="preview-navbtn"
+              onClick={goForward}
+              disabled={!showWebview || !canForward}
+              title="Forward"
+            >
+              ›
+            </button>
+            <button
+              className="preview-navbtn"
+              onClick={reload}
+              disabled={!showWebview}
+              title="Reload"
+            >
+              ⟳
+            </button>
+          </div>
+          <span className={`preview-status preview-status--${dotClass}`}>
+            <span className="preview-dot" />
+            {statusLabel(running, status, mode)}
+          </span>
+          {(displayUrl || deployedUrl) && (
+            <button
+              className="preview-url"
+              title={displayUrl || deployedUrl}
+              onClick={openExternal}
+            >
+              {displayUrl || deployedUrl}
+            </button>
+          )}
         </div>
-        <span className={`preview-status preview-status--${dotClass}`}>
-          <span className="preview-dot" />
-          {statusLabel(running, status, mode)}
-        </span>
-        {(displayUrl || deployedUrl) && (
-          <button className="preview-url" title={displayUrl || deployedUrl} onClick={openExternal}>
-            {displayUrl || deployedUrl}
+        <div className="preview-toolbar-right">
+          {capturing && <span className="preview-loading">Capturing…</span>}
+          {loading && showWebview && <span className="preview-loading">Loading…</span>}
+          <select
+            className="chat-effort device-select"
+            value={device}
+            onChange={(e) => setDevice(e.target.value as DeviceId)}
+            disabled={!showWebview}
+            title="Preview at a device width"
+          >
+            <option value="desktop">🖥 Desktop</option>
+            <option value="tablet">▭ Tablet · 820</option>
+            <option value="phone">▯ Phone · 390</option>
+          </select>
+          <button
+            className={`btn btn--sm ${showConsole ? 'btn--primary' : 'btn--ghost'}`}
+            onClick={() => setShowConsole((s) => !s)}
+            disabled={!showWebview && consoleLogs.length === 0}
+            title="Show the preview's console output"
+          >
+            Console
+            {consoleIssues > 0 && <span className="console-badge">{consoleIssues}</span>}
           </button>
-        )}
-        <span className="preview-toolbar-spacer" />
-        {capturing && <span className="preview-loading">Capturing…</span>}
-        {loading && showWebview && <span className="preview-loading">Loading…</span>}
-        <select
-          className="chat-effort device-select"
-          value={device}
-          onChange={(e) => setDevice(e.target.value as DeviceId)}
-          disabled={!showWebview}
-          title="Preview at a device width"
-        >
-          <option value="desktop">🖥 Desktop</option>
-          <option value="tablet">▭ Tablet · 820</option>
-          <option value="phone">▯ Phone · 390</option>
-        </select>
-        <button
-          className={`btn btn--sm ${showConsole ? 'btn--primary' : 'btn--ghost'}`}
-          onClick={() => setShowConsole((s) => !s)}
-          disabled={!showWebview && consoleLogs.length === 0}
-          title="Show the preview's console output"
-        >
-          Console
-          {consoleIssues > 0 && <span className="console-badge">{consoleIssues}</span>}
-        </button>
-        <button
-          className={`btn btn--sm ${selecting ? 'btn--primary' : 'btn--ghost'}`}
-          onClick={() => setSelecting((s) => !s)}
-          disabled={!showWebview || capturing}
-          title="Drag a region of the preview to attach it to chat"
-        >
-          {selecting ? 'Cancel' : '⛶ Capture'}
-        </button>
-        <span className="deployments-wrap">
+          <button
+            className={`btn btn--sm ${selecting ? 'btn--primary' : 'btn--ghost'}`}
+            onClick={() => setSelecting((s) => !s)}
+            disabled={!showWebview || capturing}
+            title="Drag a region of the preview to attach it to chat"
+          >
+            {selecting ? 'Cancel' : '⛶ Capture'}
+          </button>
+          <span className="deployments-wrap">
+            <button
+              className="btn btn--sm btn--ghost"
+              onClick={() => void toggleDeployments()}
+              disabled={running}
+              title="Switch between Fabric deployments"
+            >
+              ⇄ Deployments
+            </button>
+            {showDeployments && (
+              <div className="deployments-pop">
+                <div className="deployments-pop-head">
+                  <span>Deployments</span>
+                  <button
+                    className="deployments-close"
+                    onClick={() => setShowDeployments(false)}
+                    title="Close"
+                  >
+                    ✕
+                  </button>
+                </div>
+                {deployments === null ? (
+                  <div className="deployments-empty">Loading…</div>
+                ) : deployments.length === 0 ? (
+                  <div className="deployments-empty">No deployments recorded yet.</div>
+                ) : (
+                  <ul className="deployments-list">
+                    {deployments.map((d) => {
+                      const key = (d.workspaceId ?? d.workspaceName) + (d.itemId ?? '')
+                      const target = d.workspaceId ?? d.workspaceName
+                      return (
+                        <li key={key} className={`deployments-item${d.active ? ' is-active' : ''}`}>
+                          <div className="deployments-item-main">
+                            <span className="deployments-item-name">{d.workspaceName}</span>
+                            {d.active && <span className="deployments-badge">active</span>}
+                          </div>
+                          {(d.hostingUrl || d.apiUrl) && (
+                            <span className="deployments-item-url" title={d.hostingUrl || d.apiUrl}>
+                              {d.hostingUrl || d.apiUrl}
+                            </span>
+                          )}
+                          {!d.active && (
+                            <button
+                              className="btn btn--xs btn--ghost"
+                              disabled={Boolean(switching)}
+                              onClick={() => void doSwitch(d)}
+                            >
+                              {switching === target ? 'Switching…' : 'Switch'}
+                            </button>
+                          )}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+          </span>
           <button
             className="btn btn--sm btn--ghost"
-            onClick={() => void toggleDeployments()}
+            onClick={submitDryRun}
             disabled={running}
-            title="Switch between Fabric deployments"
+            title="Preview the deploy without changing Fabric"
           >
-            ⇄ Deployments
+            Dry run
           </button>
-          {showDeployments && (
-            <div className="deployments-pop">
-              <div className="deployments-pop-head">
-                <span>Deployments</span>
-                <button
-                  className="deployments-close"
-                  onClick={() => setShowDeployments(false)}
-                  title="Close"
-                >
-                  ✕
-                </button>
-              </div>
-              {deployments === null ? (
-                <div className="deployments-empty">Loading…</div>
-              ) : deployments.length === 0 ? (
-                <div className="deployments-empty">No deployments recorded yet.</div>
-              ) : (
-                <ul className="deployments-list">
-                  {deployments.map((d) => {
-                    const key = (d.workspaceId ?? d.workspaceName) + (d.itemId ?? '')
-                    const target = d.workspaceId ?? d.workspaceName
-                    return (
-                      <li
-                        key={key}
-                        className={`deployments-item${d.active ? ' is-active' : ''}`}
-                      >
-                        <div className="deployments-item-main">
-                          <span className="deployments-item-name">{d.workspaceName}</span>
-                          {d.active && <span className="deployments-badge">active</span>}
-                        </div>
-                        {(d.hostingUrl || d.apiUrl) && (
-                          <span
-                            className="deployments-item-url"
-                            title={d.hostingUrl || d.apiUrl}
-                          >
-                            {d.hostingUrl || d.apiUrl}
-                          </span>
-                        )}
-                        {!d.active && (
-                          <button
-                            className="btn btn--xs btn--ghost"
-                            disabled={Boolean(switching)}
-                            onClick={() => void doSwitch(d)}
-                          >
-                            {switching === target ? 'Switching…' : 'Switch'}
-                          </button>
-                        )}
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          )}
-        </span>
-        <button
-          className="btn btn--sm btn--ghost"
-          onClick={submitDryRun}
-          disabled={running}
-          title="Preview the deploy without changing Fabric"
-        >
-          Dry run
-        </button>
-        <button className="btn btn--sm btn--primary" onClick={submitDeploy} disabled={running}>
-          {running ? statusLabel(true, status, mode) : deployedUrl ? 'Redeploy' : 'Deploy'}
-        </button>
+          <button className="btn btn--sm btn--primary" onClick={submitDeploy} disabled={running}>
+            {running ? statusLabel(true, status, mode) : deployedUrl ? 'Redeploy' : 'Deploy'}
+          </button>
+        </div>
       </div>
 
       {status === 'error' && error && !running && !needsWorkspace && !needsForce && (
@@ -627,8 +628,8 @@ export default function PreviewPane({
             <div className="ws-prompt">
               <h3 className="ws-prompt-title">Choose a Fabric workspace</h3>
               <p className="ws-prompt-sub">
-                <strong>{project.name}</strong> hasn’t been deployed yet. Pick the Fabric
-                workspace to deploy into — enter its name, portal URL, or workspace ID.
+                <strong>{project.name}</strong> hasn’t been deployed yet. Pick the Fabric workspace
+                to deploy into — enter its name, portal URL, or workspace ID.
               </p>
               <div className="ws-prompt-row">
                 <input
@@ -652,8 +653,8 @@ export default function PreviewPane({
               </div>
               <p className="ws-prompt-hint">
                 e.g. <code>Rayfin Apps</code>, a portal URL like{' '}
-                <code>https://app.fabric.microsoft.com/groups/&lt;id&gt;/list</code>, or a
-                workspace GUID.
+                <code>https://app.fabric.microsoft.com/groups/&lt;id&gt;/list</code>, or a workspace
+                GUID.
               </p>
               {error && <div className="alert alert--error ws-prompt-err">{error}</div>}
             </div>
