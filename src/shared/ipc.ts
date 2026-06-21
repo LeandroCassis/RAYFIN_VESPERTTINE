@@ -338,8 +338,10 @@ export interface RayfinStudioApi {
     /**
      * Run a full `rayfin up` for the project (streams progress on the
      * 'deploy:run' channel) and resolve the live URL. Studio owns deploys.
+     * `workspace` optionally targets a Fabric workspace by display name (first
+     * deploy); subsequent deploys reuse the recorded active deployment.
      */
-    run: (projectId: string) => Promise<DeployResult>
+    run: (projectId: string, workspace?: string) => Promise<DeployResult>
     /** Read the persisted deployment status (`rayfin up status --json`). */
     status: (projectId: string) => Promise<DeployStatus>
     /** True when the project has uncommitted changes not yet deployed. */

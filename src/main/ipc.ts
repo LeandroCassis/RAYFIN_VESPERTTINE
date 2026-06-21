@@ -114,8 +114,8 @@ export function registerIpc(): void {
   )
 
   // Deploy loop (Studio-owned `rayfin up`)
-  ipcMain.handle(IpcChannels.deployRun, (event, projectId: string) =>
-    runDeploy(projectId, streamer(event, 'deploy:run'))
+  ipcMain.handle(IpcChannels.deployRun, (event, projectId: string, workspace?: string) =>
+    runDeploy(projectId, streamer(event, 'deploy:run'), workspace)
   )
   ipcMain.handle(IpcChannels.deployStatus, (_event, projectId: string) =>
     getDeployStatus(projectId)

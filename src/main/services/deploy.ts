@@ -2,10 +2,10 @@
  * Deploy engine: Studio owns the deploy loop (the chat agent edits code only).
  *
  * Flow (verified against rayfin 1.22):
- *  - Run `rayfin up -y` in human mode, streaming progress to the UI. `--json`
- *    suppresses progress, and slow deploys need visible feedback, so we stream
- *    the human output and capture it.
- *  - After a successful deploy, run `rayfin up status --json` for the canonical
+ *  - Run `npx rayfin up -y` in human mode (the project's pinned CLI, not a global
+ *    rayfin), streaming progress to the UI. `--json` suppresses progress, and slow
+ *    deploys need visible feedback, so we stream the human output and capture it.
+ *  - After a successful deploy, run `npx rayfin up status --json` for the canonical
  *    record (`deployment.rayfinApiUrl`, `fabricPortalUrl`). We also scrape the
  *    deploy stdout for the static `Hosting URL:` (only emitted at deploy time).
  *  - Preview URL priority: hostingUrl → rayfinApiUrl → fabricPortalUrl.
@@ -64,7 +64,7 @@ export async function getDeployStatus(projectId: string): Promise<DeployStatus> 
   const project = findProject(projectId)
   if (!project) return { deployed: false }
 
-  const res = await run('rayfin', ['up', 'status', '--json'], {
+  const res = await run('npx', ['rayfin', 'up', 'status', '--json'], {
     cwd: project.path,
     timeout: 60_000
   })
@@ -100,15 +100,21 @@ async function commitCheckpoint(dir: string, message: string): Promise<void> {
  * Run a full `rayfin up` for the project and resolve the live URL.
  * Never throws — failures are reported via the returned DeployResult.
  */
-export async function runDeploy(projectId: string, onData?: StreamFn): Promise<DeployResult> {
+export async function runDeploy(
+  projectId: string,
+  onData?: StreamFn,
+  workspace?: string
+): Promise<DeployResult> {
   const project = findProject(projectId)
   if (!project) return { ok: false, outcome: 'not-found', error: 'Project not found.' }
 
   updateDeploy(projectId, { status: 'deploying', at: new Date().toISOString() })
   onData?.('system', `Deploying ${project.name} to Fabric…\n`)
 
+  const upArgs = ['up', '-y', ...(workspace ? ['-w', workspace] : [])]
   let captured = ''
-  const result = await run('rayfin', ['up', '-y'], {
+  // Use the project's pinned CLI (devDependency) via npx, not a global rayfin.
+  const result = await run('npx', ['rayfin', ...upArgs], {
     cwd: project.path,
     timeout: DEPLOY_TIMEOUT_MS,
     onData: (stream, chunk) => {

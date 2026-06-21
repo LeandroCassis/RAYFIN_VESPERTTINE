@@ -51,7 +51,8 @@ const api: RayfinStudioApi = {
   },
 
   deploy: {
-    run: (projectId: string) => ipcRenderer.invoke(IpcChannels.deployRun, projectId),
+    run: (projectId: string, workspace?: string) =>
+      ipcRenderer.invoke(IpcChannels.deployRun, projectId, workspace),
     status: (projectId: string) => ipcRenderer.invoke(IpcChannels.deployStatus, projectId),
     hasChanges: (projectId: string) => ipcRenderer.invoke(IpcChannels.deployHasChanges, projectId)
   },
