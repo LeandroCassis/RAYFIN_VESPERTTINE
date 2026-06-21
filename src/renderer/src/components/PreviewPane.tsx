@@ -40,7 +40,11 @@ function statusLabel(running: boolean, status: string | undefined): string {
 
 export default function PreviewPane({ project, deploy, onDeploy, onCapture }: Props): JSX.Element {
   const running = deploy?.running ?? false
-  const deployedUrl = project.lastDeploy?.url
+  // Prefer the Fabric portal shell URL: it embeds the deployed app and handles
+  // Fabric auth itself (embedded/postMessage mode), so the app never needs to
+  // open a sign-in popup — which Electron's <webview> blocks. Fall back to the
+  // standalone hosting URL only when no portal URL was recorded.
+  const deployedUrl = project.lastDeploy?.portalUrl ?? project.lastDeploy?.url
   const status = running ? 'deploying' : project.lastDeploy?.status
   const error = project.lastDeploy?.error
 
@@ -82,6 +86,10 @@ export default function PreviewPane({ project, deploy, onDeploy, onCapture }: Pr
     const wv = node as PreviewWebview | null
     webviewRef.current = wv
     if (!wv) return
+    // React drops `allowpopups={true}` (it never reaches the DOM), so set it
+    // imperatively — without it Electron blocks the deployed app's window.open
+    // sign-in popup before our main-process window-open handler can run.
+    wv.setAttribute('allowpopups', 'true')
     setLoadError(null)
     setLoading(true)
     const syncNav = (): void => {
@@ -273,7 +281,6 @@ export default function PreviewPane({ project, deploy, onDeploy, onCapture }: Pr
               src={deployedUrl}
               className="preview-webview"
               partition="persist:rayfin-preview"
-              allowpopups={true}
             />
             {loadError && (
               <div className="preview-overlay">
