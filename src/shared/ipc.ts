@@ -438,6 +438,40 @@ export interface ChatTurnResult {
   ranDeploy: boolean
 }
 
+/* ------------------------------------------------------------------ *
+ * Rayfin CLI / SDK versions
+ * ------------------------------------------------------------------ */
+
+/** Installed vs. latest version for one of a project's @microsoft/rayfin-* packages. */
+export interface RayfinPackageVersion {
+  /** npm package name, e.g. '@microsoft/rayfin-cli'. */
+  name: string
+  /** 'cli' for @microsoft/rayfin-cli, otherwise 'sdk' (the runtime libraries). */
+  kind: 'cli' | 'sdk'
+  /** Version resolved in the project's node_modules, or null when not installed. */
+  installed: string | null
+  /** Latest stable version on npm (null when offline / the lookup failed). */
+  latest: string | null
+  /** True when {@link latest} is a newer stable release than {@link installed}. */
+  upgradable: boolean
+}
+
+/**
+ * The project's local Rayfin toolchain version — the CLI plus the SDK libraries
+ * pinned in its package.json — and whether a newer release is available. Drives
+ * the status-bar version chip and the "update with Copilot" hand-off.
+ */
+export interface RayfinVersionInfo {
+  /** Headline installed version (the CLI, falling back to the SDK), or null. */
+  version: string | null
+  /** Newest stable version available across the project's Rayfin packages. */
+  latest: string | null
+  /** True when at least one Rayfin package can be upgraded. */
+  upgradeAvailable: boolean
+  /** Per-package detail, used to build the upgrade prompt + popover. */
+  packages: RayfinPackageVersion[]
+}
+
 /** Per-project chat configuration (model + reasoning effort). */
 export interface ChatOptions {
   /** Copilot model id (`--model`); 'auto' or undefined lets Copilot pick. */
@@ -501,6 +535,8 @@ export const IpcChannels = {
   projectsGitFileDiff: 'projects:gitFileDiff',
   projectsFilesTree: 'projects:filesTree',
   projectsFilesRead: 'projects:filesRead',
+
+  rayfinVersions: 'rayfin:versions',
 
   chatSend: 'chat:send',
   chatCancel: 'chat:cancel',
@@ -608,6 +644,11 @@ export interface RayfinStudioApi {
       /** Read one project file's text (size-capped, traversal-guarded). */
       read: (id: string, path: string) => Promise<FileContent>
     }
+  }
+
+  rayfin: {
+    /** The project's local Rayfin CLI + SDK versions, with upgrade availability. */
+    versions: (id: string) => Promise<RayfinVersionInfo>
   }
 
   chat: {

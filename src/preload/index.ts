@@ -64,6 +64,10 @@ const api: RayfinStudioApi = {
     }
   },
 
+  rayfin: {
+    versions: (id: string) => ipcRenderer.invoke(IpcChannels.rayfinVersions, id)
+  },
+
   chat: {
     send: (projectId: string, turnId: string, text: string, attachments?: string[]) =>
       ipcRenderer.invoke(IpcChannels.chatSend, projectId, turnId, text, attachments),

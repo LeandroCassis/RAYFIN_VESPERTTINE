@@ -40,6 +40,7 @@ import {
 } from './services/deploy'
 import { listProjectFiles, readProjectFile } from './services/files'
 import { gitChanges, gitFileDiff, gitLog } from './services/git'
+import { getProjectRayfinVersion } from './services/rayfinVersion'
 import { openLogs } from './services/crashlog'
 import { saveScreenshot, cleanupScreenshots } from './services/screenshot'
 
@@ -143,6 +144,9 @@ export function registerIpc(): void {
   ipcMain.handle(IpcChannels.projectsFilesRead, (_event, id: string, path: string) =>
     readProjectFile(id, path)
   )
+
+  // Local Rayfin CLI / SDK version + upgrade availability
+  ipcMain.handle(IpcChannels.rayfinVersions, (_event, id: string) => getProjectRayfinVersion(id))
 
   // Chat (Copilot CLI)
   ipcMain.handle(

@@ -7,14 +7,16 @@ import type {
   ChatTurnResult,
   DeployResult,
   ProjectsState,
+  RayfinVersionInfo,
   StudioProject
 } from '@shared/ipc'
 import NewProjectModal from '../components/NewProjectModal'
 import ConfirmModal from '../components/ConfirmModal'
 import SettingsModal from '../components/SettingsModal'
-import ChatPanel, { type UIChatMessage } from '../components/ChatPanel'
+import ChatPanel, { type UIChatMessage, type OutboundPrompt } from '../components/ChatPanel'
 import PreviewPane, { type DeployUiState, type PendingShot } from '../components/PreviewPane'
 import DeploymentsControl from '../components/DeploymentsControl'
+import RayfinVersionControl from '../components/RayfinVersionControl'
 import logo from '../assets/logo.png'
 
 // Monaco is heavy (~7 MB); only load the code viewer when the Code tab is opened.
@@ -65,6 +67,12 @@ export default function Workbench({
   const [deleting, setDeleting] = useState(false)
   /** Bumped whenever the working tree likely changed (deploy / chat turn). */
   const [gitRefresh, setGitRefresh] = useState(0)
+  /** Active project's local Rayfin (CLI + SDK) version + upgrade availability. */
+  const [rayfinVer, setRayfinVer] = useState<RayfinVersionInfo | null>(null)
+  /** A prompt queued for the chat composer (e.g. the Rayfin upgrade hand-off). */
+  const [chatOutbound, setChatOutbound] = useState<
+    (OutboundPrompt & { projectId: string }) | null
+  >(null)
   /** Project content view: the build loop (chat + preview) or the code browser. */
   const [viewMode, setViewMode] = useState<'build' | 'code'>('build')
   /** Build-view focus: expand a single pane to fill the area (null = split). */
@@ -78,6 +86,9 @@ export default function Workbench({
   /** Latest chats snapshot, for reading inside async callbacks / save timers. */
   const chatsRef = useRef(chats)
   chatsRef.current = chats
+  /** Latest active project id, for guarding async (per-project) responses. */
+  const activeIdRef = useRef<string | null>(null)
+  activeIdRef.current = projects?.activeProjectId ?? null
   /** Projects whose persisted history has been loaded this session. */
   const hydratedRef = useRef<Set<string>>(new Set())
 
@@ -103,6 +114,13 @@ export default function Workbench({
 
   const refreshProjects = useCallback(async (): Promise<void> => {
     setProjects(await window.api.projects.state())
+  }, [])
+
+  /** Re-read the active project's local Rayfin versions (after deploys / chat turns). */
+  const refreshRayfinVer = useCallback(async (projectId: string): Promise<void> => {
+    const info = await window.api.rayfin.versions(projectId)
+    // Guard against a stale response after the user switches projects.
+    if (activeIdRef.current === projectId) setRayfinVer(info)
   }, [])
 
   // Route streamed `rayfin up` output to the deploying project's log buffer.
@@ -134,9 +152,10 @@ export default function Workbench({
       } finally {
         deployingIdRef.current = null
         setGitRefresh((n) => n + 1)
+        void refreshRayfinVer(projectId)
       }
     },
-    [refreshProjects]
+    [refreshProjects, refreshRayfinVer]
   )
 
   // Switch the active Fabric deployment, then reflect the new URL/status.
@@ -157,11 +176,13 @@ export default function Workbench({
       await refreshProjects()
       setGitRefresh((n) => n + 1)
       void window.api.chat.saveHistory(projectId, toStored(chatsRef.current[projectId] ?? []))
+      // The agent may have changed the Rayfin deps (e.g. an upgrade) — re-check.
+      void refreshRayfinVer(projectId)
       if (!result.ok) return
       const changed = await window.api.deploy.hasChanges(projectId)
       if (changed) void runDeploy(projectId)
     },
-    [refreshProjects, runDeploy]
+    [refreshProjects, refreshRayfinVer, runDeploy]
   )
 
   // Hydrate a project's persisted chat history the first time it becomes active.
@@ -173,6 +194,43 @@ export default function Workbench({
       setChats((all) => (all[id] !== undefined ? all : { ...all, [id]: stored.map(toUi) }))
     })
   }, [projects?.activeProjectId])
+
+  // Hand a Rayfin upgrade to the Copilot agent: build a precise "from X → to Y"
+  // prompt and queue it into the chat (the agent edits package.json + installs).
+  const requestRayfinUpdate = useCallback((info: RayfinVersionInfo): void => {
+    const id = activeIdRef.current
+    if (!id) return
+    const ups = info.packages.filter((p) => p.upgradable && p.installed && p.latest)
+    if (ups.length === 0) return
+    const lines = ups.map((p) => `- ${p.name}: ${p.installed} → ${p.latest}`).join('\n')
+    const to = info.latest ?? ups[0].latest
+    const prompt =
+      "Please upgrade this app's Rayfin packages to the latest version.\n\n" +
+      'Set these exact versions in package.json, then run `npm install`:\n' +
+      `${lines}\n\n` +
+      'After installing, check for any breaking changes between these versions and update ' +
+      'the app code so it still builds and runs. Do not run `rayfin up` or deploy — Rayfin ' +
+      'Fabricator redeploys automatically.'
+    setViewMode('build')
+    setFocusPane(null)
+    setChatOutbound({
+      id: `rayfin-up-${Date.now()}`,
+      projectId: id,
+      display: `Update Rayfin to ${to}`,
+      prompt
+    })
+  }, [])
+
+  // Load the active project's local Rayfin version + upgrade availability.
+  useEffect(() => {
+    const id = projects?.activeProjectId
+    if (!id) {
+      setRayfinVer(null)
+      return
+    }
+    setRayfinVer(null)
+    void refreshRayfinVer(id)
+  }, [projects?.activeProjectId, refreshRayfinVer])
 
   // Debounce-persist chat transcripts whenever they change (after streaming settles).
   useEffect(() => {
@@ -488,6 +546,9 @@ export default function Workbench({
                       onAttachmentsConsumed={() => clearShots(active.id)}
                       onClearHistory={() => void window.api.chat.saveHistory(active.id, [])}
                       onOptionsChanged={() => void refreshProjects()}
+                      outbound={
+                        chatOutbound?.projectId === active.id ? chatOutbound : null
+                      }
                       focused={focusPane === 'chat'}
                       onToggleFocus={() =>
                         setFocusPane((f) => (f === 'chat' ? null : 'chat'))
@@ -535,6 +596,12 @@ export default function Workbench({
         <span className="statusbar-item">Copilot {auth.copilot.signedIn ? '✓' : '—'}</span>
         <span className="statusbar-sep">·</span>
         <span className="statusbar-item">Fabric {auth.rayfin.signedIn ? '✓' : '—'}</span>
+        {active && (
+          <>
+            <span className="statusbar-sep">·</span>
+            <RayfinVersionControl info={rayfinVer} onUpdate={requestRayfinUpdate} />
+          </>
+        )}
         <span className="statusbar-sep">·</span>
         <span className="statusbar-item">Electron {versions?.electron ?? '—'}</span>
       </footer>

@@ -20,6 +20,17 @@ export interface UIChatMessage extends ChatMessage {
   notice?: string
 }
 
+/**
+ * A prompt queued from outside the chat (e.g. the status-bar "Update with
+ * Copilot" hand-off). When a new `id` arrives the panel sends it as a turn —
+ * `display` is the user-bubble text, `prompt` is what Copilot actually receives.
+ */
+export interface OutboundPrompt {
+  id: string
+  display: string
+  prompt: string
+}
+
 interface Props {
   project: StudioProject
   messages: UIChatMessage[]
@@ -36,6 +47,8 @@ interface Props {
   onClearHistory?: () => void
   /** Called after the model / effort options change (parent refreshes project). */
   onOptionsChanged?: () => void
+  /** A prompt to send on behalf of the user (e.g. the Rayfin upgrade hand-off). */
+  outbound?: OutboundPrompt | null
   /** True when chat is expanded to fill the build view (preview hidden). */
   focused?: boolean
   /** Toggle chat focus (full-width chat ⇄ split with preview). */
@@ -243,6 +256,7 @@ export default function ChatPanel({
   onAttachmentsConsumed,
   onClearHistory,
   onOptionsChanged,
+  outbound,
   focused,
   onToggleFocus
 }: Props): JSX.Element {
@@ -382,6 +396,20 @@ export default function ChatPanel({
       void send()
     }
   }
+
+  // Send a prompt queued from outside (e.g. the status-bar Rayfin upgrade). If a
+  // turn is mid-flight we drop it into the composer instead of dropping it.
+  const handledOutbound = useRef<string | null>(null)
+  useEffect(() => {
+    if (!outbound || outbound.id === handledOutbound.current) return
+    handledOutbound.current = outbound.id
+    if (sending) {
+      setInput(outbound.prompt)
+      taRef.current?.focus()
+    } else {
+      void dispatch(outbound.display, outbound.prompt, [])
+    }
+  }, [outbound?.id])
 
   return (
     <div className="chat">
