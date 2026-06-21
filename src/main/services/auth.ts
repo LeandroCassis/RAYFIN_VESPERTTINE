@@ -96,7 +96,12 @@ export async function getCopilotAuth(): Promise<CopilotAuthStatus> {
 export async function getRayfinAuth(): Promise<RayfinAuthStatus> {
   const res = await run('rayfin', ['login', 'status'], { timeout: 30_000 })
   const text = `${res.stdout}\n${res.stderr}`
-  const signedIn = res.ok && /signed in/i.test(text)
+  // `rayfin login status` prints "✅ Signed in" when authenticated and
+  // "❌ Not signed in" otherwise. The negative message still contains the
+  // substring "signed in", so a bare /signed in/ test reports a signed-out
+  // user as signed in — which made "Sign out" appear to do nothing (the app
+  // never routed back to the setup screen). Guard against the negative form.
+  const signedIn = res.ok && !/not\s+signed\s+in/i.test(text) && /signed\s+in/i.test(text)
   if (!signedIn) return { signedIn: false }
   return {
     signedIn: true,
