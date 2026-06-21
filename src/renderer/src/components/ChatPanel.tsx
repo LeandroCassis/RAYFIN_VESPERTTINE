@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import type {
   ChatEvent,
   ChatMessage,
@@ -47,13 +47,124 @@ const MODEL_SUGGESTIONS = ['claude-sonnet-4.5', 'gpt-5.4', 'gpt-5-mini', 'gpt-4.
 
 const EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'max']
 
-/** Starter prompts shown on the empty state; clicking one prefills the composer. */
-const SUGGESTIONS = [
-  'Add a new page that lists items from a table',
-  'Create a form to add and save a record',
-  'Improve the layout and color theme',
-  'Add a chart that summarizes the data'
-]
+/** A clickable starter prompt shown on the empty state. */
+interface Suggestion {
+  icon: string
+  text: string
+}
+
+/** Words to drop when guessing what an app is "about" from its name. */
+const STOP_WORDS = new Set([
+  'app',
+  'apps',
+  'application',
+  'my',
+  'the',
+  'a',
+  'an',
+  'rayfin',
+  'fabric',
+  'fabricator',
+  'demo',
+  'test',
+  'sample',
+  'project',
+  'tracker',
+  'manager',
+  'management',
+  'hub',
+  'board',
+  'tool',
+  'studio',
+  'dashboard',
+  'system',
+  'portal',
+  'keeper',
+  'book',
+  'box',
+  'list',
+  'log',
+  'mate',
+  'buddy',
+  'pro',
+  'plus',
+  'lite'
+])
+
+/** Naive English pluralization — good enough for friendly UI copy. */
+function pluralize(w: string): string {
+  if (!w) return w
+  if (w.endsWith('s')) return w
+  if (/[^aeiou]y$/i.test(w)) return `${w.slice(0, -1)}ies`
+  if (/(x|z|ch|sh)$/i.test(w)) return `${w}es`
+  return `${w}s`
+}
+
+/** Naive singularization paired with {@link pluralize}. */
+function singularize(w: string): string {
+  if (w.endsWith('ies')) return `${w.slice(0, -3)}y`
+  if (w.endsWith('ses')) return w.slice(0, -2)
+  if (w.endsWith('s') && !w.endsWith('ss')) return w.slice(0, -1)
+  return w
+}
+
+/**
+ * Guess the "thing" an app manages from its name + template, so starter prompts
+ * can be tailored ("Show all your plants" for a Plant Tracker). Falls back to a
+ * sensible generic noun by template.
+ */
+function deriveThings(project: StudioProject): { thing: string; things: string } {
+  const tpl = (project.template ?? '').toLowerCase()
+  const words = (project.name ?? '')
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .filter((w) => !STOP_WORDS.has(w) && !/^\d+$/.test(w))
+  let base = words.length ? words[words.length - 1] : ''
+  if (!base || base.length < 2) {
+    base = tpl.includes('todo') ? 'task' : tpl.includes('data') ? 'record' : 'item'
+  }
+  return { thing: singularize(base), things: pluralize(base) }
+}
+
+/**
+ * Build the empty-state starter prompts. These intentionally only cover what
+ * Rayfin natively provides — data (lists/forms/search/charts), authentication,
+ * file storage and design — never anything needing an external service (e.g.
+ * payments or email).
+ */
+function suggestionsFor(project: StudioProject): Suggestion[] {
+  const { thing, things } = deriveThings(project)
+  const cards = {
+    list: { icon: '📋', text: `Show all my ${things} on a clean page` },
+    create: { icon: '✏️', text: `Add a form to create and edit a ${thing}` },
+    search: { icon: '🔍', text: `Add search and filters to my ${things}` },
+    chart: { icon: '📊', text: `Add a dashboard that charts my ${things}` },
+    auth: { icon: '🔒', text: `Require sign-in so everyone gets their own ${things}` },
+    photo: { icon: '🖼️', text: `Let me attach a photo to each ${thing}` },
+    design: { icon: '🎨', text: 'Give the whole app a fresh, modern look' }
+  }
+  const tpl = (project.template ?? '').toLowerCase()
+  let order: (keyof typeof cards)[]
+  if (tpl.includes('auth')) order = ['auth', 'list', 'create', 'design']
+  else if (tpl.includes('todo')) order = ['list', 'create', 'auth', 'design']
+  else if (tpl.includes('data')) order = ['list', 'search', 'chart', 'create']
+  else order = ['list', 'create', 'chart', 'design']
+  return order.map((k) => cards[k])
+}
+
+/** Friendly, non-jargon label for a Copilot tool call (for non-coders). */
+function friendlyTool(name: string): string {
+  const n = name.toLowerCase()
+  if (n.includes('powershell') || n.includes('bash') || n.includes('shell')) return 'Running a command'
+  if (n.includes('create')) return 'Creating a file'
+  if (n.includes('edit') || n.includes('replace') || n.includes('str_replace')) return 'Editing code'
+  if (n.includes('view') || n.includes('read') || n.includes('cat')) return 'Reading a file'
+  if (n.includes('grep') || n.includes('search') || n.includes('glob') || n.includes('find'))
+    return 'Searching the project'
+  if (n.includes('delete') || n.includes('remove')) return 'Removing a file'
+  return 'Working'
+}
 
 function UserIcon(): JSX.Element {
   return (
@@ -139,10 +250,24 @@ export default function ChatPanel({
   const [sending, setSending] = useState(false)
   const [model, setModel] = useState(project.model ?? '')
   const [effort, setEffort] = useState<ReasoningEffort | ''>(project.effort ?? '')
+  const [showModel, setShowModel] = useState(false)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+
+  const suggestions = useMemo(
+    () => suggestionsFor(project),
+    [project.id, project.name, project.template]
+  )
+
+  // Close the model/effort popover on any outside click.
+  useEffect(() => {
+    if (!showModel) return
+    const close = (): void => setShowModel(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [showModel])
 
   function saveOptions(nextModel: string, nextEffort: ReasoningEffort | ''): void {
     void window.api.chat.setOptions(project.id, {
@@ -263,48 +388,69 @@ export default function ChatPanel({
       <div className="chat-toolbar">
         <span className="chat-toolbar-title">Chat</span>
         <span className="chat-toolbar-spacer" />
-        <input
-          className="chat-model"
-          list="copilot-models"
-          value={model}
-          placeholder="Model: auto"
-          title="Copilot model (blank = auto)"
-          spellCheck={false}
-          onChange={(e) => setModel(e.target.value)}
-          onBlur={() => saveOptions(model, effort)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') e.currentTarget.blur()
-          }}
-        />
-        <datalist id="copilot-models">
-          {MODEL_SUGGESTIONS.map((m) => (
-            <option key={m} value={m} />
-          ))}
-        </datalist>
-        <select
-          className="chat-effort"
-          value={effort}
-          title="Reasoning effort"
-          onChange={(e) => {
-            const next = e.target.value as ReasoningEffort | ''
-            setEffort(next)
-            saveOptions(model, next)
-          }}
-        >
-          <option value="">Effort: auto</option>
-          {EFFORT_OPTIONS.map((o) => (
-            <option key={o} value={o}>
-              {o}
-            </option>
-          ))}
-        </select>
+        <div className="chat-model-menu" onClick={(e) => e.stopPropagation()}>
+          <button
+            className="chat-model-btn"
+            title="Choose the AI model and reasoning effort"
+            onClick={() => setShowModel((s) => !s)}
+          >
+            <span className="chat-model-btn-icon">✨</span>
+            <span className="chat-model-btn-label">{model || 'Auto'}</span>
+            <span className="chat-model-btn-caret">▾</span>
+          </button>
+          {showModel && (
+            <div className="chat-model-pop" role="dialog">
+              <label className="chat-model-field">
+                <span className="chat-model-field-label">Model</span>
+                <input
+                  className="chat-model-input"
+                  list="copilot-models"
+                  value={model}
+                  placeholder="Auto (recommended)"
+                  spellCheck={false}
+                  autoFocus
+                  onChange={(e) => setModel(e.target.value)}
+                  onBlur={() => saveOptions(model, effort)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') e.currentTarget.blur()
+                  }}
+                />
+                <datalist id="copilot-models">
+                  {MODEL_SUGGESTIONS.map((m) => (
+                    <option key={m} value={m} />
+                  ))}
+                </datalist>
+              </label>
+              <label className="chat-model-field">
+                <span className="chat-model-field-label">Reasoning effort</span>
+                <select
+                  className="chat-model-input"
+                  value={effort}
+                  onChange={(e) => {
+                    const next = e.target.value as ReasoningEffort | ''
+                    setEffort(next)
+                    saveOptions(model, next)
+                  }}
+                >
+                  <option value="">Auto</option>
+                  {EFFORT_OPTIONS.map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="chat-model-hint">Leave on Auto unless you know what you need.</p>
+            </div>
+          )}
+        </div>
         <button
           className="btn btn--xs btn--ghost"
           onClick={newChat}
           disabled={sending || messages.length === 0}
           title="Start a new conversation"
         >
-          + New chat
+          ＋ New chat
         </button>
         {onToggleFocus && (
           <button
@@ -320,19 +466,28 @@ export default function ChatPanel({
       <div className="chat-scroll" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="chat-welcome">
-            <img className="chat-welcome-mark" src={logo} alt="" />
-            <h2>Build {project.name}</h2>
-            <p>
-              Ask Copilot to add features or fix issues. It edits the code and Studio deploys with
-              <code> rayfin up</code> — then the live app loads in the preview.
+            <div className="chat-welcome-badge">
+              <img src={logo} alt="" />
+            </div>
+            <h2 className="chat-welcome-title">Let’s build {project.name}</h2>
+            <p className="chat-welcome-sub">
+              Describe what you want in plain language — I’ll write the code and deploy it live.
+              No coding required.
             </p>
             <div className="chat-suggestions">
-              {SUGGESTIONS.map((s) => (
-                <button key={s} className="chat-suggestion" onClick={() => applySuggestion(s)}>
-                  {s}
+              {suggestions.map((s) => (
+                <button
+                  key={s.text}
+                  className="chat-suggestion"
+                  onClick={() => applySuggestion(s.text)}
+                >
+                  <span className="chat-suggestion-icon">{s.icon}</span>
+                  <span className="chat-suggestion-text">{s.text}</span>
+                  <span className="chat-suggestion-arrow">→</span>
                 </button>
               ))}
             </div>
+            <p className="chat-welcome-foot">Or just type your own idea below ↓</p>
           </div>
         )}
 
@@ -357,7 +512,7 @@ export default function ChatPanel({
                       <details key={t.id} className={`tool-call tool-call--${t.state}`}>
                         <summary>
                           <span className="tool-call-icon">{TOOL_ICON[t.state]}</span>
-                          <span className="tool-call-name">{t.name}</span>
+                          <span className="tool-call-name">{friendlyTool(t.name)}</span>
                           <span className="tool-call-title">{t.title}</span>
                         </summary>
                         {t.output && <pre className="tool-call-output">{t.output}</pre>}

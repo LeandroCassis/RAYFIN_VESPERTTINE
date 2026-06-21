@@ -276,7 +276,7 @@ export default function Workbench({
       <header className="titlebar">
         <div className="brand">
           <img className="brand-mark" src={logo} alt="" />
-          <span className="brand-name">Rayfin Studio</span>
+          <span className="brand-name">Rayfin Fabricator</span>
         </div>
         <div className="titlebar-status">
           <span className="who">{auth.rayfin.user ?? 'Signed in'}</span>
@@ -515,7 +515,7 @@ export default function Workbench({
           ) : (
             <div className="content-empty">
               <img className="content-empty-mark" src={logo} alt="" />
-              <h1>Welcome to Rayfin Studio</h1>
+              <h1>Welcome to Rayfin Fabricator</h1>
               <p>
                 Create a new Rayfin app or open an existing project to start building with chat.
               </p>
@@ -533,7 +533,7 @@ export default function Workbench({
       </div>
 
       <footer className="statusbar">
-        <span className="statusbar-item">Rayfin Studio v{versions?.app ?? '—'}</span>
+        <span className="statusbar-item">Rayfin Fabricator v{versions?.app ?? '—'}</span>
         <span className="statusbar-sep">·</span>
         <span className="statusbar-item">Copilot {auth.copilot.signedIn ? '✓' : '—'}</span>
         <span className="statusbar-sep">·</span>

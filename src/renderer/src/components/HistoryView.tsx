@@ -76,7 +76,7 @@ export default function HistoryView({ project, refreshKey, theme }: Props): JSX.
   const [file, setFile] = useState<GitChange | null>(null)
   const [diff, setDiff] = useState<GitFileDiff | null>(null)
   const [diffLoading, setDiffLoading] = useState(false)
-  const [sideBySide, setSideBySide] = useState(true)
+  const [sideBySide, setSideBySide] = useState(false)
 
   // Load (and refresh) the timeline; default the selection to the newest entry.
   useEffect(() => {
@@ -162,8 +162,8 @@ export default function HistoryView({ project, refreshKey, theme }: Props): JSX.
       <div className="hist-empty">
         <div className="hist-empty-title">No history yet</div>
         <div className="hist-empty-sub">
-          Every time you deploy or save, Studio records a snapshot here so you can see exactly
-          what changed.
+          Every time you deploy or save, Rayfin Fabricator records a snapshot here so you can see
+          exactly what changed.
         </div>
       </div>
     )

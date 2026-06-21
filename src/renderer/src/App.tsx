@@ -46,8 +46,8 @@ function App(): JSX.Element {
   if (phase === 'loading') {
     return (
       <div className="splash">
-        <img className="brand-mark" src={logo} alt="Rayfin Studio" />
-        <span>Starting Rayfin Studio…</span>
+        <img className="brand-mark" src={logo} alt="Rayfin Fabricator" />
+        <span>Starting Rayfin Fabricator…</span>
       </div>
     )
   }

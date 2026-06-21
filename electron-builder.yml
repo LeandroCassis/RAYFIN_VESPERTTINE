@@ -1,6 +1,6 @@
-appId: com.rayfin.studio
-productName: Rayfin Studio
-copyright: Copyright © Rayfin Studio
+appId: com.rayfin.fabricator
+productName: Rayfin Fabricator
+copyright: Copyright © Rayfin Fabricator
 
 # electron-builder reads platform icons from this directory. We ship a single
 # 512x512 build/icon.png and let electron-builder generate the .ico / .icns.
@@ -31,7 +31,7 @@ asarUnpack:
   - resources/**
 
 win:
-  executableName: rayfin-studio
+  executableName: rayfin-fabricator
   target:
     - target: nsis
       arch:

@@ -55,7 +55,7 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
         <header className="setup-header">
           <div className="brand">
             <img className="brand-mark" src={logo} alt="" />
-            <span className="brand-name">Rayfin Studio</span>
+            <span className="brand-name">Rayfin Fabricator</span>
           </div>
           <p className="setup-sub">
             Build and ship Rayfin apps by chatting with an AI agent. Let&apos;s get your
@@ -145,7 +145,7 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
               disabled={!allReady || busy !== null}
               onClick={() => onRefresh()}
             >
-              Enter Rayfin Studio →
+              Enter Rayfin Fabricator →
             </button>
           </div>
         </footer>

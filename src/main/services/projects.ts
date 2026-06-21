@@ -48,22 +48,22 @@ export function isRayfinProject(dir: string): boolean {
   return existsSync(join(dir, 'rayfin', 'rayfin.yml'))
 }
 
-const AGENT_INSTRUCTIONS = `# Rayfin Studio — agent guidance
+const AGENT_INSTRUCTIONS = `# Rayfin Fabricator — agent guidance
 
 This is a **Rayfin app** (a Microsoft Fabric Backend-as-a-Service app). You are the
-coding agent running inside **Rayfin Studio**, a desktop app that drives you plus the
+coding agent running inside **Rayfin Fabricator**, a desktop app that drives you plus the
 Rayfin CLI to build and deploy this app.
 
 ## Rules
 - **Make the requested code changes only.** Edit files to implement what the user asks.
-- **Do NOT run \`rayfin up\` or otherwise deploy.** Rayfin Studio runs the full
+- **Do NOT run \`rayfin up\` or otherwise deploy.** Rayfin Fabricator runs the full
   \`rayfin up\` automatically after your changes and shows the deployed app in its preview.
 - Do **not** start dev servers or run the app locally — it is only ever run via deploy.
 - Keep the project building; prefer small, correct changes.
 - Rayfin project config lives under \`rayfin/\` (e.g. \`rayfin/rayfin.yml\`); the data model
   and services (auth/data/storage/functions/static hosting) are configured there.
 
-When you finish editing, briefly summarize what you changed — Studio handles the deploy.
+When you finish editing, briefly summarize what you changed — Rayfin Fabricator handles the deploy.
 `
 
 /**
@@ -171,8 +171,8 @@ async function initGitRepo(dir: string, summary: string, onData?: StreamFn): Pro
   // Respect the user's configured identity; supply a local fallback only if unset.
   const email = await run('git', ['config', 'user.email'], { cwd: dir })
   if (!email.stdout.trim()) {
-    await run('git', ['config', 'user.email', 'studio@rayfin.local'], { cwd: dir })
-    await run('git', ['config', 'user.name', 'Rayfin Studio'], { cwd: dir })
+    await run('git', ['config', 'user.email', 'fabricator@rayfin.local'], { cwd: dir })
+    await run('git', ['config', 'user.name', 'Rayfin Fabricator'], { cwd: dir })
   }
   await run('git', ['commit', '-m', summary], { cwd: dir, onData })
 }
@@ -398,8 +398,8 @@ export async function gitCommit(id: string, message: string): Promise<GitCommitR
   // Scaffolds may lack a committer identity — set a local fallback if missing.
   const email = await run('git', ['config', 'user.email'], { cwd: dir, timeout: 15_000 })
   if (!email.ok || !email.stdout.trim()) {
-    await run('git', ['config', 'user.email', 'studio@rayfin.local'], { cwd: dir, timeout: 15_000 })
-    await run('git', ['config', 'user.name', 'Rayfin Studio'], { cwd: dir, timeout: 15_000 })
+    await run('git', ['config', 'user.email', 'fabricator@rayfin.local'], { cwd: dir, timeout: 15_000 })
+    await run('git', ['config', 'user.name', 'Rayfin Fabricator'], { cwd: dir, timeout: 15_000 })
   }
 
   const add = await run('git', ['add', '-A'], { cwd: dir, timeout: 30_000 })

@@ -1,5 +1,5 @@
 /**
- * Environment doctor: detects the external tools Rayfin Studio depends on and
+ * Environment doctor: detects the external tools Rayfin Fabricator depends on and
  * can auto-install the npm-distributed ones (rayfin, copilot).
  */
 

@@ -56,9 +56,9 @@ function createWindow(): BrowserWindow {
     minHeight: 640,
     show: false,
     autoHideMenuBar: true,
-    title: 'Rayfin Studio',
+    title: 'Rayfin Fabricator',
     icon: appIconPath(),
-    backgroundColor: '#0f1115',
+    backgroundColor: '#0b0e14',
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -96,7 +96,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   // Identify the app to Windows so the taskbar uses our icon and groups windows.
-  if (process.platform === 'win32') app.setAppUserModelId('com.rayfin.studio')
+  if (process.platform === 'win32') app.setAppUserModelId('com.rayfin.fabricator')
   try {
     registerIpc()
     createWindow()

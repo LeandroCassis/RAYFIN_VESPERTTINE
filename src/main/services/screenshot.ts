@@ -13,7 +13,7 @@ import { randomUUID } from 'crypto'
 
 /** Directory that holds all transient preview screenshots. */
 function shotsDir(): string {
-  return join(app.getPath('temp'), 'rayfin-studio-shots')
+  return join(app.getPath('temp'), 'rayfin-fabricator-shots')
 }
 
 /** Decode a PNG data URL and write it to a temp file; returns the absolute path. */

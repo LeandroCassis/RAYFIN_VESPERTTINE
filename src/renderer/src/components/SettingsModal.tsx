@@ -106,7 +106,9 @@ export default function SettingsModal({
 
         <div className="modal-footer settings-footer">
           <span className="settings-version">
-            {versions ? `Rayfin Studio · Electron ${versions.electron} · Node ${versions.node}` : ''}
+            {versions
+              ? `Rayfin Fabricator · Electron ${versions.electron} · Node ${versions.node}`
+              : ''}
           </span>
           <button className="btn btn--primary" onClick={onClose}>
             Done

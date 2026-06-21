@@ -1,9 +1,9 @@
 {
   "name": "rayfin-desktop",
   "version": "0.0.1",
-  "description": "Rayfin Studio — a desktop app for building Rayfin apps via chat, wrapping the GitHub Copilot CLI and the Rayfin CLI.",
+  "description": "Rayfin Fabricator — a desktop app for building Rayfin apps via chat, wrapping the GitHub Copilot CLI and the Rayfin CLI.",
   "main": "./out/main/index.js",
-  "author": "Rayfin Studio",
+  "author": "Rayfin Fabricator",
   "license": "MIT",
   "private": true,
   "scripts": {
