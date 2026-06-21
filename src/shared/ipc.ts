@@ -106,7 +106,6 @@ export type ProcStreamId =
   | 'install:copilot'
   | 'create:project'
   | 'deploy:run'
-  | 'deploy:dryrun'
 
 export interface ProcLogEvent {
   channel: ProcStreamId
@@ -173,14 +172,6 @@ export interface DeployStatus {
   url?: string
   apiUrl?: string
   portalUrl?: string
-}
-
-/** Result of a `rayfin up --dry-run` preview (no API calls made). */
-export interface DryRunResult {
-  ok: boolean
-  /** The captured human-readable preview output. */
-  output: string
-  error?: string
 }
 
 /** One Fabric deployment recorded for a project (`rayfin up list`). */
@@ -290,6 +281,78 @@ export interface GitCommitResult {
   error?: string
   /** The working-tree status after the commit attempt. */
   status: GitStatus
+}
+
+/** Sentinel ref for "uncommitted working-tree changes" (vs a commit SHA). */
+export const GIT_WORKING_REF = 'WORKING'
+
+/** How one file changed in a commit or the working tree. */
+export type GitChangeStatus = 'added' | 'modified' | 'deleted' | 'renamed'
+
+/** One commit in a project's history — a friendly "what happened" timeline row. */
+export interface GitCommitSummary {
+  /** Full 40-char SHA — used as the ref for follow-up change/diff queries. */
+  hash: string
+  /** Abbreviated SHA for display. */
+  shortHash: string
+  /** First line of the commit message. */
+  subject: string
+  /** Author name. */
+  author: string
+  /** Human relative time, e.g. "2 hours ago". */
+  relativeDate: string
+  /** ISO timestamp (for tooltips). */
+  isoDate: string
+  /** Number of files this commit touched. */
+  filesChanged: number
+  /** Lines added across the commit. */
+  insertions: number
+  /** Lines removed across the commit. */
+  deletions: number
+}
+
+/** A project's commit timeline plus a count of not-yet-committed changes. */
+export interface GitHistory {
+  /** False when the folder is missing or is not a git repository. */
+  isRepo: boolean
+  /** True when the repo has no commits yet. */
+  noCommits?: boolean
+  /** Most-recent-first commits (capped). */
+  commits: GitCommitSummary[]
+  /** Number of files with uncommitted (working-tree) changes. */
+  workingChanges: number
+}
+
+/** One file changed within a commit or the working tree. */
+export interface GitChange {
+  /** Current project-relative path (the new path for renames). */
+  path: string
+  /** Previous path when the file was renamed. */
+  oldPath?: string
+  status: GitChangeStatus
+  /** Lines added (0 for binary). */
+  insertions: number
+  /** Lines removed (0 for binary). */
+  deletions: number
+  /** True when git treats the file as binary (no text diff shown). */
+  binary?: boolean
+}
+
+/** Before/after content for one file, to drive a side-by-side diff view. */
+export interface GitFileDiff {
+  path: string
+  oldPath?: string
+  status: GitChangeStatus
+  /** Content before the change (empty for additions). */
+  before: string
+  /** Content after the change (empty for deletions). */
+  after: string
+  /** True when the file is binary and not shown. */
+  binary?: boolean
+  /** True when either side exceeded the viewer size cap. */
+  tooLarge?: boolean
+  /** Populated when the diff could not be produced. */
+  error?: string
 }
 
 /** A node in a project's file tree (directories carry `children`). */
@@ -420,6 +483,9 @@ export const IpcChannels = {
   projectsRemove: 'projects:remove',
   projectsGitStatus: 'projects:gitStatus',
   projectsGitCommit: 'projects:gitCommit',
+  projectsGitLog: 'projects:gitLog',
+  projectsGitChanges: 'projects:gitChanges',
+  projectsGitFileDiff: 'projects:gitFileDiff',
   projectsFilesTree: 'projects:filesTree',
   projectsFilesRead: 'projects:filesRead',
 
@@ -436,7 +502,6 @@ export const IpcChannels = {
   deployRun: 'deploy:run',
   deployStatus: 'deploy:status',
   deployHasChanges: 'deploy:hasChanges',
-  deployDryRun: 'deploy:dryRun',
   deployList: 'deploy:list',
   deploySwitch: 'deploy:switch',
 
@@ -513,6 +578,15 @@ export interface RayfinStudioApi {
       status: (id: string) => Promise<GitStatus>
       /** Stage everything and commit; resolves with the post-commit status. */
       commit: (id: string, message: string) => Promise<GitCommitResult>
+      /** The project's commit timeline + uncommitted-change count (History view). */
+      log: (id: string) => Promise<GitHistory>
+      /**
+       * Files changed by a commit (`ref` = SHA) or the working tree
+       * (`ref` = GIT_WORKING_REF), with per-file status + line counts.
+       */
+      changes: (id: string, ref: string) => Promise<GitChange[]>
+      /** Before/after content for one changed file (drives the diff view). */
+      fileDiff: (id: string, ref: string, path: string, oldPath?: string) => Promise<GitFileDiff>
     }
     files: {
       /** The project's pruned, sorted file tree (read-only browsing). */
@@ -563,8 +637,6 @@ export interface RayfinStudioApi {
      * deploy); subsequent deploys reuse the recorded active deployment.
      */
     run: (projectId: string, workspace?: string, force?: boolean) => Promise<DeployResult>
-    /** Preview a deploy with `rayfin up --dry-run` (no API calls). */
-    dryRun: (projectId: string, workspace?: string) => Promise<DryRunResult>
     /** Read the persisted deployment status (`rayfin up status --json`). */
     status: (projectId: string) => Promise<DeployStatus>
     /** True when the project has uncommitted changes not yet deployed. */

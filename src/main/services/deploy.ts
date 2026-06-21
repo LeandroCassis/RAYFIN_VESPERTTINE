@@ -19,7 +19,6 @@ import type {
   DeployOutcome,
   DeployResult,
   DeployStatus,
-  DryRunResult,
   FabricDeployment
 } from '../../shared/ipc'
 
@@ -208,45 +207,6 @@ export async function runDeploy(
   return { ok: true, outcome: 'success', url, apiUrl, portalUrl }
 }
 
-/**
- * Preview a deploy with `rayfin up --dry-run` — reports the operations that
- * *would* run without touching Fabric. Streams output and never throws.
- */
-export async function dryRunDeploy(
-  projectId: string,
-  onData?: StreamFn,
-  workspace?: string
-): Promise<DryRunResult> {
-  const project = findProject(projectId)
-  if (!project) return { ok: false, output: '', error: 'Project not found.' }
-
-  const workspaceTarget = (workspace ?? project.workspace)?.trim() || undefined
-  onData?.('system', `Previewing deploy for ${project.name} (dry run — no changes)…\n`)
-
-  let captured = ''
-  const result = await run('npx', ['rayfin', 'up', '-n', ...workspaceArgs(workspaceTarget)], {
-    cwd: project.path,
-    timeout: DEPLOY_TIMEOUT_MS,
-    onData: (stream, chunk) => {
-      captured += chunk
-      onData?.(stream, chunk)
-    }
-  })
-
-  if (result.notFound) {
-    return { ok: false, output: captured, error: 'The rayfin CLI was not found on PATH.' }
-  }
-  if (!result.ok) {
-    const error =
-      (result.stderr.trim() || captured.trim().split(/\r?\n/).slice(-3).join(' ')).slice(0, 500) ||
-      `rayfin up --dry-run exited with code ${result.exitCode ?? 'unknown'}.`
-    onData?.('system', `\nDry run failed: ${error}\n`)
-    return { ok: false, output: captured, error }
-  }
-
-  onData?.('system', '\n✅ Dry run complete — no changes were made.\n')
-  return { ok: true, output: captured }
-}
 
 interface RawDeployment {
   workspaceName?: string

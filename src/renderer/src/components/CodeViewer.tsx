@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import type { FileContent, FileNode, StudioProject } from '@shared/ipc'
 import { monacoLanguage } from '../monaco'
+import HistoryView from './HistoryView'
 
 interface Props {
   project: StudioProject
@@ -75,13 +76,12 @@ function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps): JSX.Ele
 }
 
 /** Read-only project code browser: a file tree + a Monaco (VS Code) viewer. */
-export default function CodeViewer({ project, refreshKey }: Props): JSX.Element {
+function FilesView({ project, refreshKey, theme }: Props & { theme: string }): JSX.Element {
   const [tree, setTree] = useState<FileNode[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [file, setFile] = useState<FileContent | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
-  const theme = useEditorTheme()
 
   const loadTree = useCallback(async (): Promise<void> => {
     setTree(await window.api.projects.files.tree(project.id))
@@ -209,6 +209,51 @@ export default function CodeViewer({ project, refreshKey }: Props): JSX.Element 
           ) : null}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * The Code tab: a "Files" browser and a "History" timeline of changes, switched
+ * with a segmented control. Both share one resolved Monaco theme so the editor
+ * and diff editor stay in sync with the app's light/dark mode.
+ */
+export default function CodeViewer({ project, refreshKey }: Props): JSX.Element {
+  const [tab, setTab] = useState<'files' | 'history'>('files')
+  const theme = useEditorTheme()
+
+  return (
+    <div className="code-shell">
+      <div className="code-toolbar">
+        <div className="code-seg" role="tablist" aria-label="Code view">
+          <button
+            className={`code-seg-btn${tab === 'files' ? ' code-seg-btn--on' : ''}`}
+            role="tab"
+            aria-selected={tab === 'files'}
+            onClick={() => setTab('files')}
+          >
+            Files
+          </button>
+          <button
+            className={`code-seg-btn${tab === 'history' ? ' code-seg-btn--on' : ''}`}
+            role="tab"
+            aria-selected={tab === 'history'}
+            onClick={() => setTab('history')}
+          >
+            History
+          </button>
+        </div>
+        {tab === 'history' && (
+          <span className="code-toolbar-hint">
+            A timeline of every change to your app — pick one to see what changed.
+          </span>
+        )}
+      </div>
+      {tab === 'files' ? (
+        <FilesView project={project} refreshKey={refreshKey} theme={theme} />
+      ) : (
+        <HistoryView project={project} refreshKey={refreshKey} theme={theme} />
+      )}
     </div>
   )
 }

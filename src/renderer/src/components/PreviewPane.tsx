@@ -6,8 +6,6 @@ export interface DeployUiState {
   running: boolean
   log: string[]
   result?: DeployResult
-  /** Distinguishes a real `rayfin up` from a `--dry-run` preview. */
-  mode?: 'deploy' | 'dryrun'
 }
 
 /** A region screenshot pending attachment to the next chat message. */
@@ -59,24 +57,16 @@ interface Props {
   deploy: DeployUiState | undefined
   /** Deploy the project; pass a workspace target (name / portal URL / GUID) when known. */
   onDeploy: (workspace?: string, force?: boolean) => void
-  /** Preview the deploy with `rayfin up --dry-run` (no Fabric changes). */
-  onDryRun: (workspace?: string) => void
   /** Load the project's recorded Fabric deployments (`rayfin up list`). */
   onListDeployments: () => Promise<FabricDeployment[]>
   /** Switch the active Fabric deployment (`rayfin up switch`). */
   onSwitch: (workspace: string, byId: boolean) => Promise<DeployResult>
-  /** Clear a finished dry-run / deploy log from the body. */
-  onDismissDeployLog: () => void
   /** Called when the user captures a region of the preview. */
   onCapture: (shot: PendingShot) => void
 }
 
-function statusLabel(
-  running: boolean,
-  status: string | undefined,
-  mode?: 'deploy' | 'dryrun'
-): string {
-  if (running) return mode === 'dryrun' ? 'Previewing…' : 'Deploying…'
+function statusLabel(running: boolean, status: string | undefined): string {
+  if (running) return 'Deploying…'
   switch (status) {
     case 'success':
       return 'Live'
@@ -93,14 +83,11 @@ export default function PreviewPane({
   project,
   deploy,
   onDeploy,
-  onDryRun,
   onListDeployments,
   onSwitch,
-  onDismissDeployLog,
   onCapture
 }: Props): JSX.Element {
   const running = deploy?.running ?? false
-  const mode = deploy?.mode
   const deployedUrl = project.lastDeploy?.url
   const status = running ? 'deploying' : project.lastDeploy?.status
   const error = project.lastDeploy?.error
@@ -319,10 +306,6 @@ export default function PreviewPane({
     if (running) return
     onDeploy(needsWorkspace ? wsInput.trim() || undefined : undefined)
   }
-  const submitDryRun = (): void => {
-    if (running) return
-    onDryRun(needsWorkspace ? wsInput.trim() || undefined : undefined)
-  }
 
   const toggleDeployments = async (): Promise<void> => {
     const next = !showDeployments
@@ -354,9 +337,7 @@ export default function PreviewPane({
           ? 'busy'
           : 'idle'
 
-  // A finished dry run keeps its output visible in the body until dismissed.
-  const dryRunDone = !running && mode === 'dryrun' && (deploy?.log.length ?? 0) > 0
-  const showWebview = !running && !dryRunDone && Boolean(deployedUrl)
+  const showWebview = !running && Boolean(deployedUrl)
   const stageWidth = DEVICE_WIDTHS[device]
   const stageStyle = stageWidth ? { width: stageWidth, maxWidth: '100%' } : undefined
   const consoleIssues = consoleLogs.reduce(
@@ -396,7 +377,7 @@ export default function PreviewPane({
           </div>
           <span className={`preview-status preview-status--${dotClass}`}>
             <span className="preview-dot" />
-            {statusLabel(running, status, mode)}
+            {statusLabel(running, status)}
           </span>
           {(displayUrl || deployedUrl) && (
             <button
@@ -497,16 +478,8 @@ export default function PreviewPane({
               </div>
             )}
           </span>
-          <button
-            className="btn btn--sm btn--ghost"
-            onClick={submitDryRun}
-            disabled={running}
-            title="Preview the deploy without changing Fabric"
-          >
-            Dry run
-          </button>
           <button className="btn btn--sm btn--primary" onClick={submitDeploy} disabled={running}>
-            {running ? statusLabel(true, status, mode) : deployedUrl ? 'Redeploy' : 'Deploy'}
+            {running ? statusLabel(true, status) : deployedUrl ? 'Redeploy' : 'Deploy'}
           </button>
         </div>
       </div>
@@ -522,9 +495,6 @@ export default function PreviewPane({
           <span className="preview-force-msg" title={error}>
             ⚠ Destructive schema change — applying may drop data.
           </span>
-          <button className="btn btn--xs btn--ghost" onClick={submitDryRun} disabled={running}>
-            Preview changes
-          </button>
           <button
             className="btn btn--xs btn--danger"
             onClick={() => onDeploy(undefined, true)}
@@ -538,20 +508,8 @@ export default function PreviewPane({
       <div className="preview-body">
         {running ? (
           <pre className="deploy-log" ref={logRef}>
-            {deploy?.log.join('') || (mode === 'dryrun' ? 'Starting dry run…' : 'Starting deploy…')}
+            {deploy?.log.join('') || 'Starting deploy…'}
           </pre>
-        ) : dryRunDone ? (
-          <div className="preview-placeholder">
-            <div className="dryrun-result">
-              <div className="dryrun-result-head">
-                <span>Dry run preview — no changes were made</span>
-                <button className="btn btn--xs btn--ghost" onClick={onDismissDeployLog}>
-                  Dismiss
-                </button>
-              </div>
-              <pre className="deploy-log deploy-log--static">{deploy?.log.join('')}</pre>
-            </div>
-          </div>
         ) : showWebview ? (
           <div className={`preview-canvas${showConsole ? ' has-console' : ''}`}>
             <div className={`preview-stage preview-stage--${device}`} style={stageStyle}>

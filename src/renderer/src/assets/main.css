@@ -1340,6 +1340,366 @@ code {
   min-height: 0;
 }
 
+/* Code tab shell: Files / History switcher above the active view. */
+.code-shell {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.code-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.code-toolbar-hint {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Shared segmented control (Files/History, Side-by-side/Unified). */
+.code-seg,
+.hist-seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.code-seg-btn,
+.hist-seg-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hist-seg-btn {
+  font-size: 11px;
+  padding: 3px 9px;
+}
+
+.code-seg-btn--on,
+.hist-seg-btn--on {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+}
+
+/* History view: timeline | changed files | diff. */
+.hist {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.hist-rail,
+.hist-files {
+  width: 290px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.hist-rail-head,
+.hist-files-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hist-rail-head > span:first-child {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
+}
+
+.hist-rail-hint {
+  font-size: 10.5px;
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.hist-files-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-files-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  flex: none;
+}
+
+.hist-rail-body,
+.hist-files-body {
+  flex: 1;
+  overflow: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hist-commit {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 9px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.hist-commit:hover {
+  background: var(--bg-elev-2);
+}
+
+.hist-commit--sel {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elev));
+}
+
+.hist-commit-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  margin-top: 5px;
+  flex: none;
+}
+
+.hist-commit--sel .hist-commit-dot {
+  background: var(--accent);
+}
+
+.hist-commit-dot--working {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.hist-commit-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.hist-commit-msg {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-commit--working .hist-commit-msg {
+  color: var(--accent);
+}
+
+.hist-commit-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-commit-count {
+  flex: none;
+  font-size: 11px;
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-top: 2px;
+}
+
+.hist-file {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+}
+
+.hist-file:hover {
+  background: var(--bg-elev-2);
+}
+
+.hist-file--sel {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elev));
+}
+
+.hist-file-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+
+.hist-file-badge--added {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.hist-file-badge--modified {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.hist-file-badge--deleted {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.hist-file-badge--renamed {
+  color: #b48be0;
+  background: color-mix(in srgb, #b48be0 16%, transparent);
+}
+
+.hist-file-name {
+  flex: none;
+  max-width: 150px;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-file-dir {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-file-binary {
+  flex: none;
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.hist-stat {
+  display: flex;
+  gap: 6px;
+  flex: none;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-stat-add {
+  color: var(--ok);
+}
+
+.hist-stat-del {
+  color: var(--danger);
+}
+
+.hist-diff {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.hist-diff-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.hist-diff-path {
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-diff-spacer {
+  flex: 1;
+}
+
+.hist-diff-body {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.hist-empty {
+  margin: auto;
+  max-width: 380px;
+  text-align: center;
+  padding: 40px 24px;
+}
+
+.hist-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.hist-empty-sub {
+  font-size: 12.5px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
 /* Preview pane (deploy controls + embedded app) */
 .preview {
   display: flex;
@@ -1723,23 +2083,6 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* Dry-run result panel */
-.dryrun-result {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 100%;
-  max-width: 760px;
-}
-.dryrun-result-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-  color: var(--text-dim);
 }
 
 .preview-webview {

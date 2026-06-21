@@ -31,7 +31,6 @@ import { getSettings, getState, setSettings } from './services/store'
 import { cancelMessage, resetSession, sendMessage, setChatOptions } from './services/chat'
 import { loadHistory, saveHistory, clearHistory } from './services/history'
 import {
-  dryRunDeploy,
   getDeployStatus,
   hasPendingChanges,
   listDeployments,
@@ -39,6 +38,7 @@ import {
   switchDeployment
 } from './services/deploy'
 import { listProjectFiles, readProjectFile } from './services/files'
+import { gitChanges, gitFileDiff, gitLog } from './services/git'
 import { openLogs } from './services/crashlog'
 import { saveScreenshot, cleanupScreenshots } from './services/screenshot'
 
@@ -129,6 +129,15 @@ export function registerIpc(): void {
   ipcMain.handle(IpcChannels.projectsGitCommit, (_event, id: string, message: string) =>
     gitCommit(id, message)
   )
+  ipcMain.handle(IpcChannels.projectsGitLog, (_event, id: string) => gitLog(id))
+  ipcMain.handle(IpcChannels.projectsGitChanges, (_event, id: string, ref: string) =>
+    gitChanges(id, ref)
+  )
+  ipcMain.handle(
+    IpcChannels.projectsGitFileDiff,
+    (_event, id: string, ref: string, path: string, oldPath?: string) =>
+      gitFileDiff(id, ref, path, oldPath)
+  )
   ipcMain.handle(IpcChannels.projectsFilesTree, (_event, id: string) => listProjectFiles(id))
   ipcMain.handle(IpcChannels.projectsFilesRead, (_event, id: string, path: string) =>
     readProjectFile(id, path)
@@ -168,9 +177,6 @@ export function registerIpc(): void {
   // Deploy loop (Studio-owned `rayfin up`)
   ipcMain.handle(IpcChannels.deployRun, (event, projectId: string, workspace?: string, force?: boolean) =>
     runDeploy(projectId, streamer(event, 'deploy:run'), workspace, force)
-  )
-  ipcMain.handle(IpcChannels.deployDryRun, (event, projectId: string, workspace?: string) =>
-    dryRunDeploy(projectId, streamer(event, 'deploy:dryrun'), workspace)
   )
   ipcMain.handle(IpcChannels.deployList, (_event, projectId: string) =>
     listDeployments(projectId)

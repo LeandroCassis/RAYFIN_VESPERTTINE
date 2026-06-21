@@ -50,7 +50,12 @@ const api: RayfinStudioApi = {
     git: {
       status: (id: string) => ipcRenderer.invoke(IpcChannels.projectsGitStatus, id),
       commit: (id: string, message: string) =>
-        ipcRenderer.invoke(IpcChannels.projectsGitCommit, id, message)
+        ipcRenderer.invoke(IpcChannels.projectsGitCommit, id, message),
+      log: (id: string) => ipcRenderer.invoke(IpcChannels.projectsGitLog, id),
+      changes: (id: string, ref: string) =>
+        ipcRenderer.invoke(IpcChannels.projectsGitChanges, id, ref),
+      fileDiff: (id: string, ref: string, path: string, oldPath?: string) =>
+        ipcRenderer.invoke(IpcChannels.projectsGitFileDiff, id, ref, path, oldPath)
     },
     files: {
       tree: (id: string) => ipcRenderer.invoke(IpcChannels.projectsFilesTree, id),
@@ -79,8 +84,6 @@ const api: RayfinStudioApi = {
   deploy: {
     run: (projectId: string, workspace?: string, force?: boolean) =>
       ipcRenderer.invoke(IpcChannels.deployRun, projectId, workspace, force),
-    dryRun: (projectId: string, workspace?: string) =>
-      ipcRenderer.invoke(IpcChannels.deployDryRun, projectId, workspace),
     list: (projectId: string) => ipcRenderer.invoke(IpcChannels.deployList, projectId),
     switch: (projectId: string, workspace: string, byId?: boolean) =>
       ipcRenderer.invoke(IpcChannels.deploySwitch, projectId, workspace, byId),
