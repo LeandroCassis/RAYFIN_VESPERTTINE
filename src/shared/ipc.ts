@@ -177,6 +177,12 @@ export interface DeployStatus {
 /** One Fabric deployment recorded for a project (`rayfin up list`). */
 export interface FabricDeployment {
   workspaceName: string
+  /**
+   * Friendly, user-chosen label for this deployment. Rayfin keys deployments by
+   * (slugified) workspace name; Studio stores a nicer alias per workspace so
+   * users can tell "Production" from "Staging" at a glance.
+   */
+  name?: string
   /** True for the currently active deployment (the one `rayfin up` targets). */
   active: boolean
   workspaceId?: string
@@ -217,6 +223,13 @@ export interface StudioProject {
    * this drives the chip label without re-querying Fabric.
    */
   workspaceName?: string
+  /**
+   * Friendly, user-chosen names for this project's deployments, keyed by the
+   * Fabric workspace GUID (falling back to the slugified workspace name). Lets
+   * users label deployments ("Production", "Staging") independently of the
+   * workspace they live in.
+   */
+  deploymentNames?: Record<string, string>
   /** Copilot model id for this project's chat (`--model`); undefined = auto. */
   model?: string
   /** Copilot reasoning effort for this project's chat (`--effort`). */
@@ -504,6 +517,7 @@ export const IpcChannels = {
   deployHasChanges: 'deploy:hasChanges',
   deployList: 'deploy:list',
   deploySwitch: 'deploy:switch',
+  deploySetName: 'deploy:setName',
 
   settingsGet: 'settings:get',
   settingsSet: 'settings:set',
@@ -648,6 +662,12 @@ export interface RayfinStudioApi {
      * recorded workspace name; pass `byId` to switch by workspace GUID instead.
      */
     switch: (projectId: string, workspace: string, byId?: boolean) => Promise<DeployResult>
+    /**
+     * Set (or clear, when empty) the friendly name for one of the project's
+     * deployments. `workspaceKey` is the deployment's workspace GUID (or its
+     * slugified workspace name when no GUID is known).
+     */
+    setName: (projectId: string, workspaceKey: string, name: string) => Promise<ProjectsState>
   }
 
   /** App-wide settings (theme, telemetry opt-in). */

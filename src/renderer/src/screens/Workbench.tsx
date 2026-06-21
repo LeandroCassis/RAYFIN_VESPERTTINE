@@ -15,7 +15,7 @@ import SettingsModal from '../components/SettingsModal'
 import ChatPanel, { type UIChatMessage } from '../components/ChatPanel'
 import PreviewPane, { type DeployUiState, type PendingShot } from '../components/PreviewPane'
 import GitControl from '../components/GitControl'
-import WorkspaceControl from '../components/WorkspaceControl'
+import DeploymentsControl from '../components/DeploymentsControl'
 import logo from '../assets/logo.png'
 
 // Monaco is heavy (~7 MB); only load the code viewer when the Code tab is opened.
@@ -68,6 +68,8 @@ export default function Workbench({
   const [gitRefresh, setGitRefresh] = useState(0)
   /** Project content view: the build loop (chat + preview) or the code browser. */
   const [viewMode, setViewMode] = useState<'build' | 'code'>('build')
+  /** Build-view focus: expand a single pane to fill the area (null = split). */
+  const [focusPane, setFocusPane] = useState<'chat' | 'preview' | null>(null)
   const [chats, setChats] = useState<Record<string, UIChatMessage[]>>({})
   const [deploys, setDeploys] = useState<Record<string, DeployUiState>>({})
   /** Region screenshots staged per project for the next chat message. */
@@ -434,7 +436,27 @@ export default function Workbench({
                 </div>
                 <div className="project-meta">
                   {active.template && <span className="chip">{active.template}</span>}
-                  <WorkspaceControl project={active} onChanged={() => void refreshProjects()} />
+                  <DeploymentsControl
+                    project={active}
+                    running={Boolean(deploys[active.id]?.running)}
+                    onCreate={(name, workspaceId) => {
+                      setViewMode('build')
+                      void (async () => {
+                        try {
+                          await window.api.deploy.setName(active.id, workspaceId, name)
+                        } catch {
+                          /* naming is best-effort; deploy anyway */
+                        }
+                        await runDeploy(active.id, workspaceId)
+                      })()
+                    }}
+                    onRedeploy={() => {
+                      setViewMode('build')
+                      void runDeploy(active.id)
+                    }}
+                    onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
+                    onChanged={() => void refreshProjects()}
+                  />
                   <GitControl projectId={active.id} refreshKey={gitRefresh} />
                   {deploys[active.id]?.running ? (
                     <span className="chip chip--busy">deploying…</span>
@@ -452,7 +474,11 @@ export default function Workbench({
                   <CodeViewer project={active} refreshKey={gitRefresh} />
                 </Suspense>
               ) : (
-                <div className="panes">
+                <div
+                  className={`panes${
+                    focusPane ? ` panes--focus-${focusPane}` : ''
+                  }`}
+                >
                   <section className="pane pane--chat">
                     <ChatPanel
                       key={active.id}
@@ -465,6 +491,10 @@ export default function Workbench({
                       onAttachmentsConsumed={() => clearShots(active.id)}
                       onClearHistory={() => void window.api.chat.saveHistory(active.id, [])}
                       onOptionsChanged={() => void refreshProjects()}
+                      focused={focusPane === 'chat'}
+                      onToggleFocus={() =>
+                        setFocusPane((f) => (f === 'chat' ? null : 'chat'))
+                      }
                     />
                   </section>
                   <section className="pane pane--preview">
@@ -472,9 +502,11 @@ export default function Workbench({
                       project={active}
                       deploy={deploys[active.id]}
                       onDeploy={(workspace, force) => void runDeploy(active.id, workspace, force)}
-                      onListDeployments={() => window.api.deploy.list(active.id)}
-                      onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
                       onCapture={(shot) => addShot(active.id, shot)}
+                      focused={focusPane === 'preview'}
+                      onToggleFocus={() =>
+                        setFocusPane((f) => (f === 'preview' ? null : 'preview'))
+                      }
                     />
                   </section>
                 </div>

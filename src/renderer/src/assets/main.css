@@ -174,6 +174,20 @@ code {
   border-right: none;
 }
 
+/* Build-view focus: expand one pane to fill the area (hide the other). */
+.panes--focus-chat {
+  grid-template-columns: 1fr;
+}
+.panes--focus-chat .pane--preview {
+  display: none;
+}
+.panes--focus-preview {
+  grid-template-columns: 1fr;
+}
+.panes--focus-preview .pane--chat {
+  display: none;
+}
+
 .pane-title {
   padding: 10px 16px;
   font-size: 12px;
@@ -2083,6 +2097,214 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── Deployments control (project header): active chip + Deploy button + popover ── */
+.dep-control {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.dep-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim);
+}
+.dep-chip--set {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+.dep-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.dep-chip-icon {
+  font-size: 9px;
+  opacity: 0.85;
+}
+.dep-chip-label {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dep-chip-caret {
+  font-size: 8px;
+  opacity: 0.6;
+}
+.dep-deploy {
+  white-space: nowrap;
+}
+.dep-pop {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 30;
+  width: 340px;
+  padding: 13px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+}
+.dep-pop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dep-pop-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.dep-empty {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-dim);
+  padding: 4px 2px;
+}
+.dep-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 290px;
+  overflow-y: auto;
+}
+.dep-item {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.dep-item--active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg));
+}
+.dep-item-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dep-item-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.dep-item-name-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dep-item-edit {
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.dep-item-name:hover .dep-item-edit {
+  opacity: 1;
+}
+.dep-rename {
+  height: 26px;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
+}
+.dep-badge {
+  flex: none;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.dep-item-sub {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dep-item-ws {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dep-item-url {
+  font-size: 11px;
+  color: var(--text-dim);
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dep-new {
+  align-self: flex-start;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+}
+.dep-new:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.dep-create {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.dep-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dep-field-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.dep-field-opt {
+  font-weight: 400;
+  opacity: 0.7;
+}
+.dep-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .preview-webview {

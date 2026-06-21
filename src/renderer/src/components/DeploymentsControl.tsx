@@ -1,0 +1,395 @@
+import { useEffect, useState } from 'react'
+import type {
+  DeployResult,
+  FabricDeployment,
+  FabricWorkspace,
+  FabricWorkspacesResult,
+  StudioProject
+} from '@shared/ipc'
+
+interface Props {
+  project: StudioProject
+  /** True while a `rayfin up` is streaming for this project. */
+  running: boolean
+  /** Remember a friendly name for the chosen workspace, then deploy into it. */
+  onCreate: (name: string, workspaceId: string) => void
+  /** Redeploy the active deployment (no workspace change). */
+  onRedeploy: () => void
+  /** Switch the active recorded deployment (`rayfin up switch`). */
+  onSwitch: (workspace: string, byId: boolean) => Promise<DeployResult>
+  /** Refresh the project list after a rename / switch. */
+  onChanged: () => void
+}
+
+/** Where to send users who have no Fabric/Premium capacity yet. */
+const TRIAL_URL = 'https://learn.microsoft.com/fabric/fundamentals/fabric-trial'
+const BUY_URL = 'https://learn.microsoft.com/fabric/enterprise/buy-subscription'
+
+/** "F-SKU · F2" style label for a workspace's capacity. */
+function skuText(w: FabricWorkspace): string {
+  const fam = w.capacityKind === 'fabric' ? 'F-SKU' : w.capacityKind === 'premium' ? 'P-SKU' : ''
+  return fam + (w.sku ? ` · ${w.sku}` : '')
+}
+
+/**
+ * The single deployment control for the project header. It replaces the old
+ * standalone workspace picker: deployments and workspaces are the same idea, so
+ * this lists the project's deployments (switch / rename) and lets the user
+ * create a new named one by picking an eligible (F-SKU / P-SKU) workspace —
+ * which runs a real `rayfin up` so every id/url is recorded. The adjacent
+ * Deploy / Redeploy button is the primary deploy action.
+ */
+export default function DeploymentsControl({
+  project,
+  running,
+  onCreate,
+  onRedeploy,
+  onSwitch,
+  onChanged
+}: Props): JSX.Element {
+  const [open, setOpen] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [deployments, setDeployments] = useState<FabricDeployment[] | null>(null)
+  const [loadingDeps, setLoadingDeps] = useState(false)
+  const [wsResult, setWsResult] = useState<FabricWorkspacesResult | null>(null)
+  const [loadingWs, setLoadingWs] = useState(false)
+  const [name, setName] = useState('')
+  const [selectedWs, setSelectedWs] = useState<string | null>(null)
+  const [switching, setSwitching] = useState<string | null>(null)
+  const [renamingKey, setRenamingKey] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  async function loadDeployments(): Promise<void> {
+    setLoadingDeps(true)
+    try {
+      setDeployments(await window.api.deploy.list(project.id))
+    } finally {
+      setLoadingDeps(false)
+    }
+  }
+
+  async function loadWorkspaces(): Promise<void> {
+    setLoadingWs(true)
+    try {
+      setWsResult(await window.api.fabric.listWorkspaces())
+    } catch (err) {
+      setWsResult({ ok: false, error: String(err) })
+    } finally {
+      setLoadingWs(false)
+    }
+  }
+
+  // Load the recorded deployments (and workspaces, for SKU badges + the create
+  // dropdown) whenever the popover opens.
+  useEffect(() => {
+    if (!open) {
+      setCreating(false)
+      setRenamingKey(null)
+      return
+    }
+    void loadDeployments()
+    if (!wsResult) void loadWorkspaces()
+  }, [open, project.id])
+
+  // Close on any outside click.
+  useEffect(() => {
+    if (!open) return
+    const close = (): void => setOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [open])
+
+  const all = wsResult?.ok && wsResult.workspaces ? wsResult.workspaces : []
+  const eligible = all.filter((w) => w.eligible)
+  const wsById = (id?: string): FabricWorkspace | undefined =>
+    id ? all.find((w) => w.id === id) : undefined
+
+  const activeDep = deployments?.find((d) => d.active) ?? null
+  const fallbackName =
+    (project.workspace ? project.deploymentNames?.[project.workspace] : undefined) ||
+    project.workspaceName ||
+    undefined
+  const activeLabel = activeDep ? activeDep.name || activeDep.workspaceName : fallbackName
+  const hasDeployment = Boolean(activeDep || project.lastDeploy?.url || project.workspace)
+
+  function startCreate(): void {
+    setCreating(true)
+    setName('')
+    setSelectedWs(null)
+    if (!wsResult) void loadWorkspaces()
+  }
+
+  function openCreate(): void {
+    setOpen(true)
+    startCreate()
+  }
+
+  function submitCreate(): void {
+    if (!selectedWs || running) return
+    const ws = eligible.find((w) => w.id === selectedWs)
+    const friendly = name.trim() || ws?.displayName || ''
+    onCreate(friendly, selectedWs)
+    setOpen(false)
+    setCreating(false)
+  }
+
+  async function doSwitch(d: FabricDeployment): Promise<void> {
+    const byId = Boolean(d.workspaceId)
+    const target = d.workspaceId ?? d.workspaceName
+    if (!target || running) return
+    setSwitching(target)
+    try {
+      await onSwitch(target, byId)
+      await loadDeployments()
+    } finally {
+      setSwitching(null)
+    }
+  }
+
+  function startRename(d: FabricDeployment): void {
+    setRenamingKey(d.workspaceId ?? d.workspaceName)
+    setRenameValue(d.name ?? '')
+  }
+
+  async function saveRename(): Promise<void> {
+    const key = renamingKey
+    if (!key) return
+    setBusy(true)
+    try {
+      await window.api.deploy.setName(project.id, key, renameValue)
+      setRenamingKey(null)
+      onChanged()
+      await loadDeployments()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="dep-control" onClick={(e) => e.stopPropagation()}>
+      <button
+        className={`chip dep-chip${hasDeployment ? ' dep-chip--set' : ''}`}
+        title={activeLabel ? `Active deployment: ${activeLabel}` : 'No deployment yet'}
+        onClick={() => setOpen((o) => !o)}
+      >
+        <span className="dep-chip-icon">◆</span>
+        <span className="dep-chip-label">{activeLabel || 'No deployment'}</span>
+        <span className="dep-chip-caret">▾</span>
+      </button>
+      <button
+        className="btn btn--sm btn--primary dep-deploy"
+        disabled={running}
+        title={hasDeployment ? 'Redeploy the active deployment' : 'Create your first deployment'}
+        onClick={() => {
+          if (running) return
+          if (hasDeployment) onRedeploy()
+          else openCreate()
+        }}
+      >
+        {running ? 'Deploying…' : hasDeployment ? 'Redeploy' : 'Deploy'}
+      </button>
+
+      {open && (
+        <div className="dep-pop" role="dialog">
+          <div className="dep-pop-head">
+            <span className="dep-pop-title">{creating ? 'New deployment' : 'Deployments'}</span>
+            {!creating && (
+              <button
+                className="ws-refresh"
+                title="Refresh"
+                disabled={loadingDeps}
+                onClick={() => void loadDeployments()}
+              >
+                ↻
+              </button>
+            )}
+          </div>
+
+          {creating ? (
+            <div className="dep-create">
+              <label className="dep-field">
+                <span className="dep-field-label">
+                  Name <span className="dep-field-opt">optional</span>
+                </span>
+                <input
+                  className="ws-input"
+                  placeholder="e.g. Production"
+                  value={name}
+                  autoFocus
+                  spellCheck={false}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && selectedWs) submitCreate()
+                  }}
+                />
+              </label>
+
+              <div className="dep-field">
+                <span className="dep-field-label">Deploy to workspace</span>
+                {loadingWs ? (
+                  <div className="ws-loading">
+                    <span className="ws-spinner" />
+                    Loading your workspaces…
+                  </div>
+                ) : eligible.length > 0 ? (
+                  <div className="ws-list" role="listbox">
+                    {eligible.map((w) => (
+                      <button
+                        key={w.id}
+                        className={`ws-item${selectedWs === w.id ? ' ws-item--sel' : ''}`}
+                        onClick={() => setSelectedWs(w.id)}
+                      >
+                        <span className="ws-item-main">
+                          <span className="ws-item-name">{w.displayName}</span>
+                          {w.region && <span className="ws-item-sub">{w.region}</span>}
+                        </span>
+                        <span
+                          className={`ws-sku ws-sku--${w.capacityKind}`}
+                          title={w.capacityName ? `${w.capacityName} (${w.sku})` : w.sku}
+                        >
+                          {skuText(w)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                ) : wsResult?.ok ? (
+                  <div className="ws-empty">
+                    <p className="ws-empty-title">No eligible workspaces</p>
+                    <p className="ws-empty-sub">
+                      Rayfin apps need a workspace on a Fabric (<strong>F-SKU</strong>) or Power BI
+                      Premium (<strong>P-SKU</strong>) capacity.
+                      {all.length > 0
+                        ? ` None of your ${all.length} workspace${all.length === 1 ? '' : 's'} qualify.`
+                        : ''}{' '}
+                      Start a free Fabric trial or add a capacity, then refresh.
+                    </p>
+                    <div className="ws-empty-actions">
+                      <button
+                        className="btn btn--xs btn--primary"
+                        onClick={() => void window.api.openExternal(TRIAL_URL)}
+                      >
+                        Start a free trial
+                      </button>
+                      <button
+                        className="btn btn--xs btn--ghost"
+                        onClick={() => void window.api.openExternal(BUY_URL)}
+                      >
+                        Buy a capacity
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="ws-empty">
+                    <p className="ws-empty-sub">
+                      {wsResult?.needsLogin
+                        ? 'Your Fabric session has expired — sign out and back in to list workspaces.'
+                        : `Couldn’t load workspaces${wsResult?.error ? `: ${wsResult.error}` : '.'}`}
+                    </p>
+                    <button className="btn btn--xs btn--ghost" onClick={() => void loadWorkspaces()}>
+                      Retry
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="dep-create-actions">
+                <button className="btn btn--xs btn--ghost" onClick={() => setCreating(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="btn btn--xs btn--primary"
+                  disabled={!selectedWs || running}
+                  onClick={submitCreate}
+                >
+                  {running ? 'Deploying…' : 'Create & deploy'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {loadingDeps && deployments === null ? (
+                <div className="ws-loading">
+                  <span className="ws-spinner" />
+                  Loading deployments…
+                </div>
+              ) : !deployments || deployments.length === 0 ? (
+                <div className="dep-empty">
+                  No deployments yet. Create one to publish your app to a Fabric workspace — Studio
+                  records every id and url for you.
+                </div>
+              ) : (
+                <ul className="dep-list">
+                  {deployments.map((d) => {
+                    const key = d.workspaceId ?? d.workspaceName
+                    const ws = wsById(d.workspaceId)
+                    const isRenaming = renamingKey === key
+                    const url = d.hostingUrl || d.apiUrl
+                    return (
+                      <li key={key} className={`dep-item${d.active ? ' dep-item--active' : ''}`}>
+                        <div className="dep-item-top">
+                          {isRenaming ? (
+                            <input
+                              className="ws-input dep-rename"
+                              autoFocus
+                              spellCheck={false}
+                              value={renameValue}
+                              disabled={busy}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') void saveRename()
+                                else if (e.key === 'Escape') setRenamingKey(null)
+                              }}
+                              onBlur={() => void saveRename()}
+                            />
+                          ) : (
+                            <button
+                              className="dep-item-name"
+                              title="Rename this deployment"
+                              onClick={() => startRename(d)}
+                            >
+                              <span className="dep-item-name-text">{d.name || d.workspaceName}</span>
+                              <span className="dep-item-edit">✎</span>
+                            </button>
+                          )}
+                          {d.active ? (
+                            <span className="dep-badge">active</span>
+                          ) : (
+                            <button
+                              className="btn btn--xs btn--ghost"
+                              disabled={Boolean(switching) || running}
+                              onClick={() => void doSwitch(d)}
+                            >
+                              {switching === key ? 'Switching…' : 'Switch'}
+                            </button>
+                          )}
+                        </div>
+                        <div className="dep-item-sub">
+                          <span className="dep-item-ws" title={d.workspaceName}>
+                            {d.workspaceName}
+                            {ws?.region ? ` · ${ws.region}` : ''}
+                          </span>
+                          {ws && (
+                            <span className={`ws-sku ws-sku--${ws.capacityKind}`}>{skuText(ws)}</span>
+                          )}
+                        </div>
+                        {url && (
+                          <span className="dep-item-url" title={url}>
+                            {url}
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+              <button className="dep-new" onClick={startCreate} disabled={running}>
+                + New deployment
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}

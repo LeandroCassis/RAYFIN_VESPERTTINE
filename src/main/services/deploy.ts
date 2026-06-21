@@ -19,7 +19,8 @@ import type {
   DeployOutcome,
   DeployResult,
   DeployStatus,
-  FabricDeployment
+  FabricDeployment,
+  ProjectsState
 } from '../../shared/ipc'
 
 type StreamFn = (stream: 'stdout' | 'stderr' | 'system', chunk: string) => void
@@ -222,6 +223,7 @@ interface RawDeployment {
 export async function listDeployments(projectId: string): Promise<FabricDeployment[]> {
   const project = findProject(projectId)
   if (!project) return []
+  const names = project.deploymentNames ?? {}
   const res = await run('npx', ['rayfin', 'up', 'list', '--json'], {
     cwd: project.path,
     timeout: 60_000
@@ -236,6 +238,8 @@ export async function listDeployments(projectId: string): Promise<FabricDeployme
       if (Array.isArray(parsed)) {
         return parsed.map((d) => ({
           workspaceName: d.workspaceName ?? '(unknown)',
+          // Studio-side friendly alias, keyed by workspace GUID then slug.
+          name: (d.workspaceId && names[d.workspaceId]) || names[d.workspaceName ?? ''] || undefined,
           active: Boolean(d.active),
           workspaceId: d.workspaceId,
           itemId: d.itemId,
@@ -249,6 +253,21 @@ export async function listDeployments(projectId: string): Promise<FabricDeployme
     }
   }
   return []
+}
+
+/**
+ * Set (or clear, when blank) the friendly name Studio shows for one of a
+ * project's deployments. Names are keyed by the Fabric workspace GUID (or the
+ * slugified workspace name when no GUID is available) and live only in Studio's
+ * store — Rayfin itself keys deployments by workspace.
+ */
+export function setDeploymentName(projectId: string, workspaceKey: string, name: string): ProjectsState {
+  const project = findProject(projectId)
+  const names = { ...(project?.deploymentNames ?? {}) }
+  const trimmed = name.trim()
+  if (trimmed) names[workspaceKey] = trimmed
+  else delete names[workspaceKey]
+  return updateProject(projectId, { deploymentNames: names })
 }
 
 /**

@@ -36,6 +36,10 @@ interface Props {
   onClearHistory?: () => void
   /** Called after the model / effort options change (parent refreshes project). */
   onOptionsChanged?: () => void
+  /** True when chat is expanded to fill the build view (preview hidden). */
+  focused?: boolean
+  /** Toggle chat focus (full-width chat ⇄ split with preview). */
+  onToggleFocus?: () => void
 }
 
 /** Suggested Copilot models (free-text still allowed via the datalist input). */
@@ -127,7 +131,9 @@ export default function ChatPanel({
   onRemoveAttachment,
   onAttachmentsConsumed,
   onClearHistory,
-  onOptionsChanged
+  onOptionsChanged,
+  focused,
+  onToggleFocus
 }: Props): JSX.Element {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -300,6 +306,15 @@ export default function ChatPanel({
         >
           + New chat
         </button>
+        {onToggleFocus && (
+          <button
+            className={`btn btn--xs ${focused ? 'btn--primary' : 'btn--ghost'}`}
+            onClick={onToggleFocus}
+            title={focused ? 'Exit focus — show the preview again' : 'Focus the chat — hide the preview'}
+          >
+            {focused ? '⤡' : '⤢'}
+          </button>
+        )}
       </div>
 
       <div className="chat-scroll" ref={scrollRef}>

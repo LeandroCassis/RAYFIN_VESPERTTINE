@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DeployResult, FabricDeployment, StudioProject } from '@shared/ipc'
+import type { DeployResult, StudioProject } from '@shared/ipc'
 import type { PreviewWebview } from '../webview'
 
 export interface DeployUiState {
@@ -57,12 +57,12 @@ interface Props {
   deploy: DeployUiState | undefined
   /** Deploy the project; pass a workspace target (name / portal URL / GUID) when known. */
   onDeploy: (workspace?: string, force?: boolean) => void
-  /** Load the project's recorded Fabric deployments (`rayfin up list`). */
-  onListDeployments: () => Promise<FabricDeployment[]>
-  /** Switch the active Fabric deployment (`rayfin up switch`). */
-  onSwitch: (workspace: string, byId: boolean) => Promise<DeployResult>
   /** Called when the user captures a region of the preview. */
   onCapture: (shot: PendingShot) => void
+  /** True when the preview pane is expanded to fill the build view (chat hidden). */
+  focused: boolean
+  /** Toggle preview focus (full-width preview ⇄ split with chat). */
+  onToggleFocus: () => void
 }
 
 function statusLabel(running: boolean, status: string | undefined): string {
@@ -83,9 +83,9 @@ export default function PreviewPane({
   project,
   deploy,
   onDeploy,
-  onListDeployments,
-  onSwitch,
-  onCapture
+  onCapture,
+  focused,
+  onToggleFocus
 }: Props): JSX.Element {
   const running = deploy?.running ?? false
   const deployedUrl = project.lastDeploy?.url
@@ -97,13 +97,6 @@ export default function PreviewPane({
   const needsWorkspace = !running && outcome === 'needs-workspace'
   // A destructive schema change needs an explicit --force opt-in (data loss risk).
   const needsForce = !running && outcome === 'needs-force'
-  const [wsInput, setWsInput] = useState(project.workspace ?? '')
-
-  // Deployments switcher (multi-deployment via `rayfin up switch`).
-  const [showDeployments, setShowDeployments] = useState(false)
-  const [deployments, setDeployments] = useState<FabricDeployment[] | null>(null)
-  const [switching, setSwitching] = useState<string | null>(null)
-
   const webviewRef = useRef<PreviewWebview | null>(null)
   const deployedUrlRef = useRef(deployedUrl)
   deployedUrlRef.current = deployedUrl
@@ -141,11 +134,6 @@ export default function PreviewPane({
   useEffect(() => {
     if (deployedUrl) setDisplayUrl(deployedUrl)
   }, [deployedUrl])
-
-  // Keep the workspace input seeded with the project's remembered workspace.
-  useEffect(() => {
-    setWsInput(project.workspace ?? '')
-  }, [project.workspace])
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
@@ -300,34 +288,6 @@ export default function PreviewPane({
     if (b && b.w >= 5 && b.h >= 5) void captureRegion(b)
   }
 
-  // Deploy: when the project still needs a workspace, send the typed target;
-  // otherwise let the main process reuse the project's remembered workspace.
-  const submitDeploy = (): void => {
-    if (running) return
-    onDeploy(needsWorkspace ? wsInput.trim() || undefined : undefined)
-  }
-
-  const toggleDeployments = async (): Promise<void> => {
-    const next = !showDeployments
-    setShowDeployments(next)
-    if (next) {
-      setDeployments(null)
-      setDeployments(await onListDeployments())
-    }
-  }
-  const doSwitch = async (d: FabricDeployment): Promise<void> => {
-    const byId = Boolean(d.workspaceId)
-    const target = d.workspaceId ?? d.workspaceName
-    if (!target) return
-    setSwitching(target)
-    try {
-      await onSwitch(target, byId)
-      setShowDeployments(false)
-    } finally {
-      setSwitching(null)
-    }
-  }
-
   const dotClass =
     status === 'success'
       ? 'ok'
@@ -420,66 +380,12 @@ export default function PreviewPane({
           >
             {selecting ? 'Cancel' : '⛶ Capture'}
           </button>
-          <span className="deployments-wrap">
-            <button
-              className="btn btn--sm btn--ghost"
-              onClick={() => void toggleDeployments()}
-              disabled={running}
-              title="Switch between Fabric deployments"
-            >
-              ⇄ Deployments
-            </button>
-            {showDeployments && (
-              <div className="deployments-pop">
-                <div className="deployments-pop-head">
-                  <span>Deployments</span>
-                  <button
-                    className="deployments-close"
-                    onClick={() => setShowDeployments(false)}
-                    title="Close"
-                  >
-                    ✕
-                  </button>
-                </div>
-                {deployments === null ? (
-                  <div className="deployments-empty">Loading…</div>
-                ) : deployments.length === 0 ? (
-                  <div className="deployments-empty">No deployments recorded yet.</div>
-                ) : (
-                  <ul className="deployments-list">
-                    {deployments.map((d) => {
-                      const key = (d.workspaceId ?? d.workspaceName) + (d.itemId ?? '')
-                      const target = d.workspaceId ?? d.workspaceName
-                      return (
-                        <li key={key} className={`deployments-item${d.active ? ' is-active' : ''}`}>
-                          <div className="deployments-item-main">
-                            <span className="deployments-item-name">{d.workspaceName}</span>
-                            {d.active && <span className="deployments-badge">active</span>}
-                          </div>
-                          {(d.hostingUrl || d.apiUrl) && (
-                            <span className="deployments-item-url" title={d.hostingUrl || d.apiUrl}>
-                              {d.hostingUrl || d.apiUrl}
-                            </span>
-                          )}
-                          {!d.active && (
-                            <button
-                              className="btn btn--xs btn--ghost"
-                              disabled={Boolean(switching)}
-                              onClick={() => void doSwitch(d)}
-                            >
-                              {switching === target ? 'Switching…' : 'Switch'}
-                            </button>
-                          )}
-                        </li>
-                      )
-                    })}
-                  </ul>
-                )}
-              </div>
-            )}
-          </span>
-          <button className="btn btn--sm btn--primary" onClick={submitDeploy} disabled={running}>
-            {running ? statusLabel(true, status) : deployedUrl ? 'Redeploy' : 'Deploy'}
+          <button
+            className={`btn btn--sm ${focused ? 'btn--primary' : 'btn--ghost'}`}
+            onClick={onToggleFocus}
+            title={focused ? 'Exit focus — show the chat again' : 'Focus the preview — hide the chat'}
+          >
+            {focused ? '⤡ Exit focus' : '⤢ Focus'}
           </button>
         </div>
       </div>
@@ -584,35 +490,11 @@ export default function PreviewPane({
         ) : needsWorkspace ? (
           <div className="preview-placeholder">
             <div className="ws-prompt">
-              <h3 className="ws-prompt-title">Choose a Fabric workspace</h3>
+              <h3 className="ws-prompt-title">Choose where to deploy</h3>
               <p className="ws-prompt-sub">
-                <strong>{project.name}</strong> hasn’t been deployed yet. Pick the Fabric workspace
-                to deploy into — enter its name, portal URL, or workspace ID.
-              </p>
-              <div className="ws-prompt-row">
-                <input
-                  className="ws-prompt-input"
-                  value={wsInput}
-                  placeholder="Workspace name, portal URL, or ID"
-                  spellCheck={false}
-                  autoFocus
-                  onChange={(e) => setWsInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && wsInput.trim()) submitDeploy()
-                  }}
-                />
-                <button
-                  className="btn btn--primary"
-                  onClick={submitDeploy}
-                  disabled={!wsInput.trim()}
-                >
-                  Deploy here
-                </button>
-              </div>
-              <p className="ws-prompt-hint">
-                e.g. <code>Rayfin Apps</code>, a portal URL like{' '}
-                <code>https://app.fabric.microsoft.com/groups/&lt;id&gt;/list</code>, or a workspace
-                GUID.
+                <strong>{project.name}</strong> hasn’t been deployed yet. Hit{' '}
+                <strong>Deploy</strong> in the header above to name a deployment and pick the Fabric
+                workspace to publish it into.
               </p>
               {error && <div className="alert alert--error ws-prompt-err">{error}</div>}
             </div>

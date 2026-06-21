@@ -35,6 +35,7 @@ import {
   hasPendingChanges,
   listDeployments,
   runDeploy,
+  setDeploymentName,
   switchDeployment
 } from './services/deploy'
 import { listProjectFiles, readProjectFile } from './services/files'
@@ -185,6 +186,11 @@ export function registerIpc(): void {
     IpcChannels.deploySwitch,
     (_event, projectId: string, workspace: string, byId?: boolean) =>
       switchDeployment(projectId, workspace, byId)
+  )
+  ipcMain.handle(
+    IpcChannels.deploySetName,
+    (_event, projectId: string, workspaceKey: string, name: string) =>
+      setDeploymentName(projectId, workspaceKey, name)
   )
   ipcMain.handle(IpcChannels.deployStatus, (_event, projectId: string) =>
     getDeployStatus(projectId)
