@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AppVersions,
   AuthStatus,
+  ChatMessage,
   ChatTurnResult,
   ProjectsState,
   StudioProject
@@ -9,6 +10,23 @@ import type {
 import NewProjectModal from '../components/NewProjectModal'
 import ChatPanel, { type UIChatMessage } from '../components/ChatPanel'
 import PreviewPane, { type DeployUiState, type PendingShot } from '../components/PreviewPane'
+
+/** Hydrate a persisted message into a live (non-pending) UI message. */
+function toUi(m: ChatMessage): UIChatMessage {
+  return { ...m, pending: false }
+}
+
+/** Strip transient fields (turnId, pending) before persisting to disk. */
+function toStored(messages: UIChatMessage[]): ChatMessage[] {
+  return messages.map(({ id, role, text, tools, error, attachments }) => ({
+    id,
+    role,
+    text,
+    tools,
+    error,
+    attachments
+  }))
+}
 
 interface Props {
   auth: AuthStatus
@@ -28,6 +46,11 @@ export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
   const [shots, setShots] = useState<Record<string, PendingShot[]>>({})
   /** The project whose `rayfin up` is currently streaming (routes deploy:run logs). */
   const deployingIdRef = useRef<string | null>(null)
+  /** Latest chats snapshot, for reading inside async callbacks / save timers. */
+  const chatsRef = useRef(chats)
+  chatsRef.current = chats
+  /** Projects whose persisted history has been loaded this session. */
+  const hydratedRef = useRef<Set<string>>(new Set())
 
   const addShot = useCallback((projectId: string, shot: PendingShot): void => {
     setShots((all) => ({ ...all, [projectId]: [...(all[projectId] ?? []), shot] }))
@@ -86,16 +109,39 @@ export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
     [refreshProjects]
   )
 
-  // After a chat turn, auto-deploy when the agent left undeployed changes.
+  // After a chat turn, persist the transcript and auto-deploy when the agent
+  // left undeployed changes.
   const handleTurnComplete = useCallback(
     async (projectId: string, result: ChatTurnResult): Promise<void> => {
       await refreshProjects()
+      void window.api.chat.saveHistory(projectId, toStored(chatsRef.current[projectId] ?? []))
       if (!result.ok) return
       const changed = await window.api.deploy.hasChanges(projectId)
       if (changed) void runDeploy(projectId)
     },
     [refreshProjects, runDeploy]
   )
+
+  // Hydrate a project's persisted chat history the first time it becomes active.
+  useEffect(() => {
+    const id = projects?.activeProjectId
+    if (!id || hydratedRef.current.has(id)) return
+    hydratedRef.current.add(id)
+    void window.api.chat.history(id).then((stored) => {
+      setChats((all) => (all[id] !== undefined ? all : { ...all, [id]: stored.map(toUi) }))
+    })
+  }, [projects?.activeProjectId])
+
+  // Debounce-persist chat transcripts whenever they change (after streaming settles).
+  useEffect(() => {
+    const t = setTimeout(() => {
+      for (const pid of hydratedRef.current) {
+        const msgs = chatsRef.current[pid]
+        if (msgs) void window.api.chat.saveHistory(pid, toStored(msgs))
+      }
+    }, 600)
+    return () => clearTimeout(t)
+  }, [chats])
 
   useEffect(() => {
     void window.api.getVersions().then(setVersions)
@@ -260,6 +306,7 @@ export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
                     attachments={shots[active.id] ?? []}
                     onRemoveAttachment={(path) => removeShot(active.id, path)}
                     onAttachmentsConsumed={() => clearShots(active.id)}
+                    onClearHistory={() => void window.api.chat.saveHistory(active.id, [])}
                   />
                 </section>
                 <section className="pane pane--preview">

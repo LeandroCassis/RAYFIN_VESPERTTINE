@@ -1,17 +1,13 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import type { ChatEvent, ChatToolCall, ChatTurnResult, StudioProject } from '@shared/ipc'
+import type { ChatEvent, ChatMessage, ChatToolCall, ChatTurnResult, StudioProject } from '@shared/ipc'
 import type { PendingShot } from './PreviewPane'
+import Markdown from './Markdown'
 
-export interface UIChatMessage {
-  id: string
+export interface UIChatMessage extends ChatMessage {
+  /** Correlates streamed events to the active assistant bubble (live only). */
   turnId?: string
-  role: 'user' | 'assistant'
-  text: string
-  tools: ChatToolCall[]
+  /** True while the assistant turn is still streaming. */
   pending: boolean
-  error?: string
-  /** Number of screenshots attached to this (user) message. */
-  attachments?: number
 }
 
 interface Props {
@@ -26,6 +22,8 @@ interface Props {
   onRemoveAttachment?: (path: string) => void
   /** Called once staged screenshots have been sent so the parent can clear them. */
   onAttachmentsConsumed?: () => void
+  /** Called when the user starts a new chat (parent clears persisted history). */
+  onClearHistory?: () => void
 }
 
 function uid(): string {
@@ -68,7 +66,8 @@ export default function ChatPanel({
   onTurnComplete,
   attachments,
   onRemoveAttachment,
-  onAttachmentsConsumed
+  onAttachmentsConsumed,
+  onClearHistory
 }: Props): JSX.Element {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -139,6 +138,7 @@ export default function ChatPanel({
   async function newChat(): Promise<void> {
     await window.api.chat.reset(project.id)
     onChange(() => [])
+    onClearHistory?.()
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>): void {
@@ -192,7 +192,14 @@ export default function ChatPanel({
                 ))}
               </div>
             )}
-            {m.text && <div className="msg-text">{m.text}</div>}
+            {m.text &&
+              (m.role === 'assistant' ? (
+                <div className="msg-text msg-text--md">
+                  <Markdown>{m.text}</Markdown>
+                </div>
+              ) : (
+                <div className="msg-text">{m.text}</div>
+              ))}
             {m.attachments ? (
               <div className="msg-attach">
                 ⛶ {m.attachments} screenshot{m.attachments > 1 ? 's' : ''} attached

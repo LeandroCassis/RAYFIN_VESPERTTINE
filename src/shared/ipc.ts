@@ -220,6 +220,23 @@ export interface ChatTurnResult {
   ranDeploy: boolean
 }
 
+/**
+ * A persisted chat message. This is the durable shape written to disk per
+ * project so a conversation survives app restarts (the Copilot session id is
+ * persisted separately on the project). The renderer's live message type adds
+ * transient fields (turnId, pending) on top of this.
+ */
+export interface ChatMessage {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  tools: ChatToolCall[]
+  /** Error text shown on a failed turn, if any. */
+  error?: string
+  /** Number of screenshots that were attached to this (user) message. */
+  attachments?: number
+}
+
 /* ------------------------------------------------------------------ *
  * IPC channels
  * ------------------------------------------------------------------ */
@@ -250,6 +267,8 @@ export const IpcChannels = {
   chatSend: 'chat:send',
   chatCancel: 'chat:cancel',
   chatReset: 'chat:reset',
+  chatHistory: 'chat:history',
+  chatSaveHistory: 'chat:saveHistory',
 
   screenshotSave: 'screenshot:save',
   screenshotCleanup: 'screenshot:cleanup',
@@ -325,6 +344,10 @@ export interface RayfinStudioApi {
     cancel: (projectId: string) => Promise<void>
     /** Start a fresh conversation (drops the persisted Copilot session id). */
     reset: (projectId: string) => Promise<void>
+    /** Load the persisted conversation history for a project. */
+    history: (projectId: string) => Promise<ChatMessage[]>
+    /** Persist the conversation history for a project (empty array clears it). */
+    saveHistory: (projectId: string, messages: ChatMessage[]) => Promise<void>
   }
 
   screenshot: {

@@ -3,6 +3,7 @@ import {
   IpcChannels,
   type AppVersions,
   type ChatEvent,
+  type ChatMessage,
   type CreateProjectInput,
   type ProcStreamId,
   type ToolId
@@ -21,6 +22,7 @@ import {
 } from './services/projects'
 import { getState } from './services/store'
 import { cancelMessage, resetSession, sendMessage } from './services/chat'
+import { loadHistory, saveHistory, clearHistory } from './services/history'
 import { getDeployStatus, hasPendingChanges, runDeploy } from './services/deploy'
 import { saveScreenshot, cleanupScreenshots } from './services/screenshot'
 
@@ -90,7 +92,11 @@ export function registerIpc(): void {
   )
   ipcMain.handle(IpcChannels.projectsOpen, (_event, path: string) => openProject(path))
   ipcMain.handle(IpcChannels.projectsSetActive, (_event, id: string | null) => setActive(id))
-  ipcMain.handle(IpcChannels.projectsRemove, (_event, id: string) => removeProject(id))
+  ipcMain.handle(IpcChannels.projectsRemove, (_event, id: string) => {
+    cancelMessage(id)
+    clearHistory(id)
+    return removeProject(id)
+  })
 
   // Chat (Copilot CLI)
   ipcMain.handle(
@@ -106,6 +112,13 @@ export function registerIpc(): void {
   )
   ipcMain.handle(IpcChannels.chatCancel, (_event, projectId: string) => cancelMessage(projectId))
   ipcMain.handle(IpcChannels.chatReset, (_event, projectId: string) => resetSession(projectId))
+  ipcMain.handle(IpcChannels.chatHistory, (_event, projectId: string) => loadHistory(projectId))
+  ipcMain.handle(
+    IpcChannels.chatSaveHistory,
+    (_event, projectId: string, messages: ChatMessage[]) => {
+      saveHistory(projectId, Array.isArray(messages) ? messages : [])
+    }
+  )
 
   // Preview screenshots (region capture → temp PNG → chat attachment)
   ipcMain.handle(IpcChannels.screenshotSave, (_event, dataUrl: string) => saveScreenshot(dataUrl))
