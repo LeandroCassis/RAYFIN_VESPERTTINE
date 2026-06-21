@@ -359,9 +359,9 @@ export default function PreviewPane({
             disabled={!showWebview}
             title="Preview at a device width"
           >
-            <option value="desktop">🖥 Desktop</option>
-            <option value="tablet">▭ Tablet · 820</option>
-            <option value="phone">▯ Phone · 390</option>
+            <option value="desktop">Desktop</option>
+            <option value="tablet">Tablet · 820</option>
+            <option value="phone">Phone · 390</option>
           </select>
           <button
             className={`btn btn--sm ${showConsole ? 'btn--primary' : 'btn--ghost'}`}
