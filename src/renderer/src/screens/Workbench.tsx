@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { AppVersions, AuthStatus, ProjectsState, StudioProject } from '@shared/ipc'
 import NewProjectModal from '../components/NewProjectModal'
+import ChatPanel, { type UIChatMessage } from '../components/ChatPanel'
 
 interface Props {
   auth: AuthStatus
@@ -14,6 +15,14 @@ export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
   const [showNewProject, setShowNewProject] = useState(false)
   const [opening, setOpening] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [chats, setChats] = useState<Record<string, UIChatMessage[]>>({})
+
+  const setMessagesFor = useCallback(
+    (projectId: string, updater: (prev: UIChatMessage[]) => UIChatMessage[]): void => {
+      setChats((all) => ({ ...all, [projectId]: updater(all[projectId] ?? []) }))
+    },
+    []
+  )
 
   const refreshProjects = useCallback(async (): Promise<void> => {
     setProjects(await window.api.projects.state())
@@ -169,10 +178,13 @@ export default function Workbench({ auth, onSignOut }: Props): JSX.Element {
               </div>
               <div className="panes">
                 <section className="pane pane--chat">
-                  <div className="pane-title">Chat</div>
-                  <div className="pane-placeholder">
-                    The Copilot-powered chat for <strong>{active.name}</strong> arrives next.
-                  </div>
+                  <ChatPanel
+                    key={active.id}
+                    project={active}
+                    messages={chats[active.id] ?? []}
+                    onChange={(updater) => setMessagesFor(active.id, updater)}
+                    onTurnComplete={() => void refreshProjects()}
+                  />
                 </section>
                 <section className="pane pane--preview">
                   <div className="pane-title">Preview</div>

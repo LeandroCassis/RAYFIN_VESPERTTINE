@@ -2,6 +2,7 @@ import { ipcMain, app, type IpcMainInvokeEvent } from 'electron'
 import {
   IpcChannels,
   type AppVersions,
+  type ChatEvent,
   type CreateProjectInput,
   type ProcStreamId,
   type ToolId
@@ -19,6 +20,7 @@ import {
   setWorkspaceRoot
 } from './services/projects'
 import { getState } from './services/store'
+import { cancelMessage, resetSession, sendMessage } from './services/chat'
 
 /** Build an onData callback that streams process output to the calling renderer. */
 function streamer(event: IpcMainInvokeEvent, channel: ProcStreamId) {
@@ -83,4 +85,19 @@ export function registerIpc(): void {
   ipcMain.handle(IpcChannels.projectsOpen, (_event, path: string) => openProject(path))
   ipcMain.handle(IpcChannels.projectsSetActive, (_event, id: string | null) => setActive(id))
   ipcMain.handle(IpcChannels.projectsRemove, (_event, id: string) => removeProject(id))
+
+  // Chat (Copilot CLI)
+  ipcMain.handle(
+    IpcChannels.chatSend,
+    (event, projectId: string, turnId: string, text: string) => {
+      const emit = (chatEvent: ChatEvent): void => {
+        if (!event.sender.isDestroyed()) {
+          event.sender.send(IpcChannels.chatEvent, { projectId, turnId, event: chatEvent })
+        }
+      }
+      return sendMessage(projectId, text, emit)
+    }
+  )
+  ipcMain.handle(IpcChannels.chatCancel, (_event, projectId: string) => cancelMessage(projectId))
+  ipcMain.handle(IpcChannels.chatReset, (_event, projectId: string) => resetSession(projectId))
 }

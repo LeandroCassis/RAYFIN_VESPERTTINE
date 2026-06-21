@@ -118,6 +118,8 @@ export interface StudioProject {
   addedAt: string
   /** Most recent deployment metadata. */
   lastDeploy?: DeployInfo
+  /** Persisted Copilot CLI session id so chat resumes across restarts. */
+  copilotSessionId?: string
   /** True when the folder no longer exists / is no longer a Rayfin project. */
   missing?: boolean
 }
@@ -140,6 +142,52 @@ export interface ProjectActionResult {
   ok: boolean
   error?: string
   project?: StudioProject
+}
+
+/* ------------------------------------------------------------------ *
+ * Chat (Copilot CLI)
+ * ------------------------------------------------------------------ */
+
+export type ChatToolState = 'running' | 'success' | 'error'
+
+export interface ChatToolCall {
+  /** Copilot toolCallId. */
+  id: string
+  /** Tool name, e.g. 'powershell', 'create', 'edit', 'view'. */
+  name: string
+  /** Human-friendly one-line summary (description / command / path). */
+  title: string
+  state: ChatToolState
+  /** Captured tool output once complete (may be truncated for display). */
+  output?: string
+}
+
+/**
+ * Streamed chat events sent from main -> renderer during a turn. The renderer
+ * appends 'delta' text to the active assistant bubble and tracks tool calls by id.
+ */
+export type ChatEvent =
+  | { type: 'delta'; text: string }
+  | { type: 'tool-start'; tool: ChatToolCall }
+  | { type: 'tool-end'; id: string; state: ChatToolState; output?: string }
+  | { type: 'notice'; text: string }
+  | { type: 'error'; text: string }
+  | { type: 'result'; ok: boolean; filesModified: string[]; ranDeploy: boolean }
+
+/** Envelope so the renderer can route events to the right project's conversation. */
+export interface ChatEventEnvelope {
+  projectId: string
+  /** Correlates events to a single send() turn. */
+  turnId: string
+  event: ChatEvent
+}
+
+export interface ChatTurnResult {
+  ok: boolean
+  error?: string
+  filesModified: string[]
+  /** True when the agent ran a full `rayfin up` during the turn. */
+  ranDeploy: boolean
 }
 
 /* ------------------------------------------------------------------ *
@@ -168,8 +216,13 @@ export const IpcChannels = {
   projectsSetActive: 'projects:setActive',
   projectsRemove: 'projects:remove',
 
-  // main -> renderer event
-  procLog: 'proc:log'
+  chatSend: 'chat:send',
+  chatCancel: 'chat:cancel',
+  chatReset: 'chat:reset',
+
+  // main -> renderer events
+  procLog: 'proc:log',
+  chatEvent: 'chat:event'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -214,6 +267,21 @@ export interface RayfinStudioApi {
     remove: (id: string) => Promise<ProjectsState>
   }
 
+  chat: {
+    /**
+     * Send a message to the Copilot agent scoped to the project. Streams
+     * `chat:event` envelopes (subscribe via onChatEvent) and resolves with the
+     * final turn result. `turnId` correlates the streamed events.
+     */
+    send: (projectId: string, turnId: string, text: string) => Promise<ChatTurnResult>
+    /** Cancel the in-flight turn for a project. */
+    cancel: (projectId: string) => Promise<void>
+    /** Start a fresh conversation (drops the persisted Copilot session id). */
+    reset: (projectId: string) => Promise<void>
+  }
+
   /** Subscribe to streamed process output. Returns an unsubscribe function. */
   onProcLog: (cb: (event: ProcLogEvent) => void) => () => void
+  /** Subscribe to streamed chat events. Returns an unsubscribe function. */
+  onChatEvent: (cb: (envelope: ChatEventEnvelope) => void) => () => void
 }

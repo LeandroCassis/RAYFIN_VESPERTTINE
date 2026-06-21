@@ -36,6 +36,8 @@ export interface RunOptions {
   onData?: (stream: 'stdout' | 'stderr', chunk: string) => void
   /** Hard timeout in milliseconds. */
   timeout?: number
+  /** Receives a cancel handle once the process has spawned (for stop buttons). */
+  onSpawn?: (handle: { cancel: () => void }) => void
 }
 
 /**
@@ -66,6 +68,18 @@ export async function run(file: string, args: string[], opts: RunOptions = {}): 
   if (opts.onData) {
     subprocess.stdout?.on('data', (d: Buffer) => opts.onData?.('stdout', d.toString()))
     subprocess.stderr?.on('data', (d: Buffer) => opts.onData?.('stderr', d.toString()))
+  }
+
+  if (opts.onSpawn) {
+    opts.onSpawn({
+      cancel: () => {
+        try {
+          ;(subprocess as unknown as { kill: (signal?: string) => void }).kill()
+        } catch {
+          /* already exited */
+        }
+      }
+    })
   }
 
   const result = (await subprocess) as {

@@ -82,3 +82,15 @@ export function updateDeploy(id: string, deploy: DeployInfo): ProjectsState {
   )
   return persist({ ...state, projects })
 }
+
+/** Patch arbitrary fields on a tracked project (e.g. copilotSessionId). */
+export function updateProject(id: string, patch: Partial<StudioProject>): ProjectsState {
+  const state = getState()
+  const projects = state.projects.map((p) => (p.id === id ? { ...p, ...patch, id: p.id } : p))
+  return persist({ ...state, projects })
+}
+
+/** Look up a tracked project by id. */
+export function findProject(id: string): StudioProject | undefined {
+  return getState().projects.find((p) => p.id === id)
+}

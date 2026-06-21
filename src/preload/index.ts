@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron'
 import {
   IpcChannels,
+  type ChatEventEnvelope,
   type CreateProjectInput,
   type ProcLogEvent,
   type RayfinStudioApi,
@@ -36,10 +37,23 @@ const api: RayfinStudioApi = {
     remove: (id: string) => ipcRenderer.invoke(IpcChannels.projectsRemove, id)
   },
 
+  chat: {
+    send: (projectId: string, turnId: string, text: string) =>
+      ipcRenderer.invoke(IpcChannels.chatSend, projectId, turnId, text),
+    cancel: (projectId: string) => ipcRenderer.invoke(IpcChannels.chatCancel, projectId),
+    reset: (projectId: string) => ipcRenderer.invoke(IpcChannels.chatReset, projectId)
+  },
+
   onProcLog: (cb: (event: ProcLogEvent) => void) => {
     const listener = (_e: IpcRendererEvent, payload: ProcLogEvent): void => cb(payload)
     ipcRenderer.on(IpcChannels.procLog, listener)
     return () => ipcRenderer.removeListener(IpcChannels.procLog, listener)
+  },
+
+  onChatEvent: (cb: (envelope: ChatEventEnvelope) => void) => {
+    const listener = (_e: IpcRendererEvent, payload: ChatEventEnvelope): void => cb(payload)
+    ipcRenderer.on(IpcChannels.chatEvent, listener)
+    return () => ipcRenderer.removeListener(IpcChannels.chatEvent, listener)
   }
 }
 
