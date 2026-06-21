@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type {
   AppSettings,
   AppVersions,
@@ -16,8 +16,10 @@ import ChatPanel, { type UIChatMessage } from '../components/ChatPanel'
 import PreviewPane, { type DeployUiState, type PendingShot } from '../components/PreviewPane'
 import GitControl from '../components/GitControl'
 import WorkspaceControl from '../components/WorkspaceControl'
-import CodeViewer from '../components/CodeViewer'
 import logo from '../assets/logo.png'
+
+// Monaco is heavy (~7 MB); only load the code viewer when the Code tab is opened.
+const CodeViewer = lazy(() => import('../components/CodeViewer'))
 
 /** Hydrate a persisted message into a live (non-pending) UI message. */
 function toUi(m: ChatMessage): UIChatMessage {
@@ -466,7 +468,9 @@ export default function Workbench({
                 </div>
               </div>
               {viewMode === 'code' ? (
-                <CodeViewer project={active} refreshKey={gitRefresh} />
+                <Suspense fallback={<div className="code-empty">Loading editor…</div>}>
+                  <CodeViewer project={active} refreshKey={gitRefresh} />
+                </Suspense>
               ) : (
                 <div className="panes">
                   <section className="pane pane--chat">

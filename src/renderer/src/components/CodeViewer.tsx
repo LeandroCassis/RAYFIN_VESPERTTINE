@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import hljs from 'highlight.js/lib/common'
+import { useCallback, useEffect, useState } from 'react'
+import Editor from '@monaco-editor/react'
 import type { FileContent, FileNode, StudioProject } from '@shared/ipc'
+import { monacoLanguage } from '../monaco'
 
 interface Props {
   project: StudioProject
@@ -8,62 +9,22 @@ interface Props {
   refreshKey: number
 }
 
-/** Map a file extension to a highlight.js language (when one is registered). */
-const EXT_LANG: Record<string, string> = {
-  ts: 'typescript',
-  tsx: 'typescript',
-  mts: 'typescript',
-  cts: 'typescript',
-  js: 'javascript',
-  jsx: 'javascript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  json: 'json',
-  css: 'css',
-  scss: 'scss',
-  less: 'less',
-  html: 'xml',
-  htm: 'xml',
-  xml: 'xml',
-  svg: 'xml',
-  vue: 'xml',
-  md: 'markdown',
-  markdown: 'markdown',
-  yml: 'yaml',
-  yaml: 'yaml',
-  toml: 'ini',
-  ini: 'ini',
-  env: 'ini',
-  sh: 'bash',
-  bash: 'bash',
-  py: 'python',
-  rb: 'ruby',
-  go: 'go',
-  rs: 'rust',
-  java: 'java',
-  c: 'c',
-  h: 'c',
-  cpp: 'cpp',
-  cc: 'cpp',
-  hpp: 'cpp',
-  cs: 'csharp',
-  php: 'php',
-  sql: 'sql',
-  swift: 'swift',
-  kt: 'kotlin',
-  lua: 'lua',
-  graphql: 'graphql',
-  gql: 'graphql'
-}
-
-function escapeHtml(s: string): string {
-  return s.replace(/[&<>]/g, (c) => (c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;'))
-}
-
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Track the app's resolved theme so Monaco matches light/dark. */
+function useEditorTheme(): string {
+  const [dark, setDark] = useState(() => document.documentElement.dataset.theme !== 'light')
+  useEffect(() => {
+    const el = document.documentElement
+    const obs = new MutationObserver(() => setDark(el.dataset.theme !== 'light'))
+    obs.observe(el, { attributes: true, attributeFilter: ['data-theme'] })
+    return () => obs.disconnect()
+  }, [])
+  return dark ? 'rayfin-dark' : 'rayfin-light'
 }
 
 interface TreeRowProps {
@@ -113,13 +74,14 @@ function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps): JSX.Ele
   )
 }
 
-/** Read-only project code browser: a file tree + a highlighted file viewer. */
+/** Read-only project code browser: a file tree + a Monaco (VS Code) viewer. */
 export default function CodeViewer({ project, refreshKey }: Props): JSX.Element {
   const [tree, setTree] = useState<FileNode[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [file, setFile] = useState<FileContent | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const theme = useEditorTheme()
 
   const loadTree = useCallback(async (): Promise<void> => {
     setTree(await window.api.projects.files.tree(project.id))
@@ -149,26 +111,6 @@ export default function CodeViewer({ project, refreshKey }: Props): JSX.Element 
   const onSelect = useCallback((node: FileNode): void => {
     setSelected(node.path)
   }, [])
-
-  const highlighted = useMemo(() => {
-    if (!file?.content) return null
-    const ext = (selected?.split('.').pop() ?? '').toLowerCase()
-    const lang = EXT_LANG[ext]
-    try {
-      if (lang && hljs.getLanguage(lang)) {
-        return hljs.highlight(file.content, { language: lang }).value
-      }
-      return hljs.highlightAuto(file.content).value
-    } catch {
-      return escapeHtml(file.content)
-    }
-  }, [file, selected])
-
-  const lineCount = file?.content ? file.content.split('\n').length : 0
-  const gutter = useMemo(
-    () => Array.from({ length: lineCount }, (_, i) => i + 1).join('\n'),
-    [lineCount]
-  )
 
   const copy = (): void => {
     if (!file?.content) return
@@ -233,22 +175,36 @@ export default function CodeViewer({ project, refreshKey }: Props): JSX.Element 
           ) : file?.binary ? (
             <div className="code-empty">Binary file — not shown.</div>
           ) : file?.tooLarge ? (
-            <div className="code-empty">File is too large to preview ({formatBytes(file.size)}).</div>
+            <div className="code-empty">
+              File is too large to preview ({formatBytes(file.size)}).
+            </div>
           ) : file?.content === '' ? (
             <div className="code-empty">Empty file.</div>
-          ) : highlighted != null ? (
-            <div className="code-scroll">
-              <div className="code-rows">
-                <pre className="code-gutter" aria-hidden="true">
-                  {gutter}
-                </pre>
-                <pre className="code-content">
-                  <code
-                    className="hljs"
-                    dangerouslySetInnerHTML={{ __html: highlighted }}
-                  />
-                </pre>
-              </div>
+          ) : file?.content != null ? (
+            <div className="code-editor-host">
+              <Editor
+                height="100%"
+                theme={theme}
+                language={monacoLanguage(selected)}
+                value={file.content}
+                loading={<div className="code-empty">Loading editor…</div>}
+                options={{
+                  readOnly: true,
+                  domReadOnly: true,
+                  minimap: { enabled: true },
+                  scrollBeyondLastLine: false,
+                  fontSize: 12.5,
+                  fontFamily: "'Cascadia Code', 'Consolas', ui-monospace, monospace",
+                  lineNumbers: 'on',
+                  renderLineHighlight: 'all',
+                  renderWhitespace: 'selection',
+                  smoothScrolling: true,
+                  automaticLayout: true,
+                  wordWrap: 'off',
+                  contextmenu: false,
+                  scrollbar: { useShadows: false }
+                }}
+              />
             </div>
           ) : null}
         </div>
