@@ -62,6 +62,37 @@ export interface AuthStatus {
   rayfin: RayfinAuthStatus
 }
 
+/** A Fabric workspace the signed-in user can access, with capacity details. */
+export interface FabricWorkspace {
+  id: string
+  displayName: string
+  /** Fabric workspace type, e.g. 'Workspace' | 'Personal'. */
+  type?: string
+  capacityId?: string
+  /** Capacity region, when known. */
+  region?: string
+  /** Capacity SKU, e.g. 'F2', 'FT1', 'P1' (undefined when no capacity). */
+  sku?: string
+  /** Capacity display name, when known. */
+  capacityName?: string
+  /** Capacity family inferred from the SKU prefix (F* = fabric, P* = premium). */
+  capacityKind: 'fabric' | 'premium' | 'other' | 'none'
+  /**
+   * True when a Rayfin app can be created in this workspace — only Fabric
+   * (F-SKU) or Power BI Premium (P-SKU) capacities qualify.
+   */
+  eligible: boolean
+}
+
+/** Outcome of listing Fabric workspaces (never throws across IPC). */
+export interface FabricWorkspacesResult {
+  ok: boolean
+  workspaces?: FabricWorkspace[]
+  /** True when the failure was a missing/expired Fabric session. */
+  needsLogin?: boolean
+  error?: string
+}
+
 /* ------------------------------------------------------------------ *
  * Long-running / streaming processes (logins, installs, deploys)
  * ------------------------------------------------------------------ */
@@ -189,6 +220,12 @@ export interface StudioProject {
    * it without re-prompting.
    */
   workspace?: string
+  /**
+   * Human-friendly label for {@link workspace} (e.g. the workspace display
+   * name) when it was chosen from the picker. `workspace` itself may be a GUID;
+   * this drives the chip label without re-querying Fabric.
+   */
+  workspaceName?: string
   /** Copilot model id for this project's chat (`--model`); undefined = auto. */
   model?: string
   /** Copilot reasoning effort for this project's chat (`--effort`). */
@@ -368,6 +405,8 @@ export const IpcChannels = {
   authLoginRayfin: 'auth:loginRayfin',
   authLogoutRayfin: 'auth:logoutRayfin',
 
+  fabricWorkspaces: 'fabric:workspaces',
+
   projectsState: 'projects:state',
   projectsTemplates: 'projects:templates',
   projectsPickFolder: 'projects:pickFolder',
@@ -436,6 +475,11 @@ export interface RayfinStudioApi {
     logoutRayfin: () => Promise<ProcResult>
   }
 
+  fabric: {
+    /** List the signed-in user's Fabric workspaces (with capacity / F-SKU info). */
+    listWorkspaces: () => Promise<FabricWorkspacesResult>
+  }
+
   projects: {
     /** Current projects state (workspace root, list, active id). */
     state: () => Promise<ProjectsState>
@@ -454,7 +498,11 @@ export interface RayfinStudioApi {
     /** Rename a project (updates the display name and rayfin/rayfin.yml `name`). */
     rename: (id: string, name: string) => Promise<ProjectActionResult>
     /** Set (or clear, when empty) the Fabric workspace a project deploys to. */
-    setWorkspace: (id: string, workspace?: string) => Promise<ProjectActionResult>
+    setWorkspace: (
+      id: string,
+      workspace?: string,
+      workspaceName?: string
+    ) => Promise<ProjectActionResult>
     /**
      * Remove a project. By default it is only forgotten (files left on disk);
      * pass `deleteFiles: true` to also move the project folder to the OS trash.

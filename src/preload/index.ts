@@ -27,6 +27,10 @@ const api: RayfinStudioApi = {
     logoutRayfin: () => ipcRenderer.invoke(IpcChannels.authLogoutRayfin)
   },
 
+  fabric: {
+    listWorkspaces: () => ipcRenderer.invoke(IpcChannels.fabricWorkspaces)
+  },
+
   projects: {
     state: () => ipcRenderer.invoke(IpcChannels.projectsState),
     templates: () => ipcRenderer.invoke(IpcChannels.projectsTemplates),
@@ -39,8 +43,8 @@ const api: RayfinStudioApi = {
     setActive: (id: string | null) => ipcRenderer.invoke(IpcChannels.projectsSetActive, id),
     rename: (id: string, name: string) =>
       ipcRenderer.invoke(IpcChannels.projectsRename, id, name),
-    setWorkspace: (id: string, workspace?: string) =>
-      ipcRenderer.invoke(IpcChannels.projectsSetWorkspace, id, workspace),
+    setWorkspace: (id: string, workspace?: string, workspaceName?: string) =>
+      ipcRenderer.invoke(IpcChannels.projectsSetWorkspace, id, workspace, workspaceName),
     remove: (id: string, deleteFiles?: boolean) =>
       ipcRenderer.invoke(IpcChannels.projectsRemove, id, deleteFiles),
     git: {

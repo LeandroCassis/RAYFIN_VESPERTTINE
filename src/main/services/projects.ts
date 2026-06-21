@@ -302,13 +302,20 @@ export function renameProject(id: string, name: string): ProjectActionResult {
  * Set (or clear, when empty) the Fabric workspace target a project deploys to.
  * Stored on the project and reused by `rayfin up`; switching the active
  * deployment of an already-deployed project should use `deploy.switch` instead.
+ * `workspaceName` is an optional friendly label (e.g. the display name) shown
+ * in the UI when `workspace` is an opaque GUID.
  */
-export function setProjectWorkspace(id: string, workspace?: string): ProjectActionResult {
+export function setProjectWorkspace(
+  id: string,
+  workspace?: string,
+  workspaceName?: string
+): ProjectActionResult {
   const project = store.findProject(id)
   if (!project) return { ok: false, error: 'Project not found.' }
   const trimmed = workspace?.trim() || undefined
-  store.updateProject(id, { workspace: trimmed })
-  const updated = store.findProject(id) ?? { ...project, workspace: trimmed }
+  const label = trimmed ? workspaceName?.trim() || undefined : undefined
+  store.updateProject(id, { workspace: trimmed, workspaceName: label })
+  const updated = store.findProject(id) ?? { ...project, workspace: trimmed, workspaceName: label }
   return { ok: true, project: { ...updated, missing: !isRayfinProject(updated.path) } }
 }
 

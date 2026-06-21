@@ -12,6 +12,7 @@ import {
 } from '../shared/ipc'
 import { checkEnvironment, installTool } from './services/doctor'
 import { getAuthStatus, loginCopilot, loginRayfin, logoutRayfin } from './services/auth'
+import { listFabricWorkspaces } from './services/fabric'
 import {
   createProject,
   getProjectsState,
@@ -92,6 +93,9 @@ export function registerIpc(): void {
     logoutRayfin(streamer(event, 'logout:rayfin'))
   )
 
+  // Fabric account (workspace enumeration for the picker)
+  ipcMain.handle(IpcChannels.fabricWorkspaces, () => listFabricWorkspaces())
+
   // Projects
   ipcMain.handle(IpcChannels.projectsState, () => getProjectsState())
   ipcMain.handle(IpcChannels.projectsTemplates, () => listTemplates())
@@ -111,8 +115,10 @@ export function registerIpc(): void {
   ipcMain.handle(IpcChannels.projectsRename, (_event, id: string, name: string) =>
     renameProject(id, name)
   )
-  ipcMain.handle(IpcChannels.projectsSetWorkspace, (_event, id: string, workspace?: string) =>
-    setProjectWorkspace(id, workspace)
+  ipcMain.handle(
+    IpcChannels.projectsSetWorkspace,
+    (_event, id: string, workspace?: string, workspaceName?: string) =>
+      setProjectWorkspace(id, workspace, workspaceName)
   )
   ipcMain.handle(IpcChannels.projectsRemove, (_event, id: string, deleteFiles?: boolean) => {
     cancelMessage(id)
