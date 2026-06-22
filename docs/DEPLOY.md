@@ -5,16 +5,16 @@
 ## Prerequisites
 
 - PowerShell 7 (`pwsh`)
-- Azure CLI (`az`) with access to subscription `57a3a6e5-037c-4ae2-97a3-2ec2e02c461a`
+- Azure CLI (`az`) signed in to the Azure subscription that should host the telemetry resources (pass `-SubscriptionId` to override; otherwise the current `az` subscription is used)
 - GitHub CLI (`gh`) authenticated to `spatney/rayfin-fabricator` for automatic `APPINSIGHTS_CONNECTION_STRING` secret wiring
 - Node.js/npm for local builds
 - Rust toolchain (stable, MSVC) and the WebView2 runtime for `-BuildLocal` Tauri builds
 
 ## What it provisions
 
-- Resource group `rayfin-desktop`
-- Log Analytics workspace `rayfin-desktop-logs`
-- Workspace-based Application Insights `rayfin-desktop-insights`
+- Resource group `rayfin-fabricator`
+- Log Analytics workspace `rayfin-fabricator-logs`
+- Workspace-based Application Insights `rayfin-fabricator-insights`
 - Resource-group monthly Azure budget alerts at 80% and 100%
 
 ## Cost posture

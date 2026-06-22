@@ -1,11 +1,11 @@
 #!/usr/bin/env pwsh
 [CmdletBinding()]
 param(
-    [string]$SubscriptionId = '57a3a6e5-037c-4ae2-97a3-2ec2e02c461a',
-    [string]$ResourceGroup = 'rayfin-desktop',
+    [string]$SubscriptionId = '',
+    [string]$ResourceGroup = 'rayfin-fabricator',
     [string]$Location = 'eastus2',
-    [string]$LogAnalyticsName = 'rayfin-desktop-logs',
-    [string]$AppInsightsName = 'rayfin-desktop-insights',
+    [string]$LogAnalyticsName = 'rayfin-fabricator-logs',
+    [string]$AppInsightsName = 'rayfin-fabricator-insights',
     [string]$Repo = 'spatney/rayfin-fabricator',
     [decimal]$BudgetAmount = 5,
     [switch]$BuildLocal = $false,
@@ -18,7 +18,7 @@ $ErrorActionPreference = 'Stop'
 $ScriptRoot = if ($PSScriptRoot) { $PSScriptRoot } else { (Get-Location).Path }
 $StatePath = Join-Path $ScriptRoot '.deploy.state.json'
 $TelemetryPath = Join-Path $ScriptRoot 'resources\telemetry.json'
-$BudgetName = 'rayfin-desktop-budget'
+$BudgetName = 'rayfin-fabricator-budget'
 $DailyCapGb = 0.1
 
 function Write-Step {
@@ -106,8 +106,14 @@ function Ensure-AzureLogin {
         Invoke-CommandChecked -FilePath 'az' -Arguments @('login', '-o', 'none') | Out-Null
     }
 
-    Invoke-CommandChecked -FilePath 'az' -Arguments @('account', 'set', '--subscription', $SubscriptionId) | Out-Null
-    Write-Info "Using subscription $SubscriptionId"
+    if ([string]::IsNullOrWhiteSpace($SubscriptionId)) {
+        $script:SubscriptionId = (Invoke-CommandChecked -FilePath 'az' -Arguments @('account', 'show', '--query', 'id', '-o', 'tsv')).Trim()
+        Write-Info "No -SubscriptionId provided; using current subscription $SubscriptionId"
+    }
+    else {
+        Invoke-CommandChecked -FilePath 'az' -Arguments @('account', 'set', '--subscription', $SubscriptionId) | Out-Null
+        Write-Info "Using subscription $SubscriptionId"
+    }
 }
 
 function Ensure-AppInsightsExtension {
