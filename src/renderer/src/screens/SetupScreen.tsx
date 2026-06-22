@@ -19,6 +19,7 @@ interface Props {
 export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Props): JSX.Element {
   const [log, setLog] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
+  const [finalizing, setFinalizing] = useState(false)
   const [showLog, setShowLog] = useState(false)
   const [needsRelaunch, setNeedsRelaunch] = useState(false)
   const logRef = useRef<HTMLPreElement>(null)
@@ -42,8 +43,16 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
     } catch (err) {
       setLog((p) => `${p}\n[error] ${String(err)}\n`)
     } finally {
-      setBusy(null)
-      await onRefresh()
+      // Keep the sign-in overlay up through the auth re-check and the screen swap
+      // so the setup screen never flashes its pre-sign-in state (e.g. Fabric still
+      // showing "Sign in") before the workbench takes over.
+      setFinalizing(true)
+      try {
+        await onRefresh()
+      } finally {
+        setBusy(null)
+        setFinalizing(false)
+      }
     }
   }
 
@@ -237,7 +246,11 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
             </div>
             <div className="signin-text">
               <strong>Signing you in…</strong>
-              <span>Finish signing in to {loginProvider} in the window that opened.</span>
+              <span>
+                {finalizing
+                  ? 'Getting things ready…'
+                  : `Finish signing in to ${loginProvider} in the window that opened.`}
+              </span>
             </div>
             {logTail && <pre className="signin-log">{logTail}</pre>}
           </div>
