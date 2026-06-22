@@ -650,6 +650,19 @@ code {
   border-radius: 8px;
 }
 
+/* Square icon-only button — a single glyph centered in the .btn--sm footprint. */
+.btn--icon {
+  width: 28px;
+  padding: 0;
+  font-size: 15px;
+}
+
+/* Spinning glyph for an in-progress icon button (e.g. clearing cookies). */
+.icon-spin {
+  display: inline-flex;
+  animation: ws-spin 0.8s linear infinite;
+}
+
 .btn--block {
   width: 100%;
 }
@@ -3072,44 +3085,10 @@ code {
 .preview-stage {
   position: relative;
   display: flex;
-  min-height: 0;
-  min-width: 0;
-  transition: width 0.15s ease;
-}
-
-.preview-stage--desktop {
   flex: 1;
   width: 100%;
-}
-
-.preview-stage--tablet,
-.preview-stage--phone {
-  flex: 1;
-  margin: 0 auto;
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
-  box-shadow: var(--shadow-lg);
-}
-
-.device-select {
-  height: 28px;
-  padding: 0 8px;
-  font: inherit;
-  font-size: 12px;
-  color: var(--text);
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.device-select:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
-}
-
-.device-select:disabled {
-  opacity: 0.4;
-  cursor: default;
+  min-height: 0;
+  min-width: 0;
 }
 
 .console-badge {

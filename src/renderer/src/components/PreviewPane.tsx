@@ -21,14 +21,6 @@ export interface PendingShot {
   thumb: string
 }
 
-/** Responsive preview presets — constrain the host width to emulate devices. */
-type DeviceId = 'desktop' | 'tablet' | 'phone'
-const DEVICE_WIDTHS: Record<DeviceId, number | null> = {
-  desktop: null,
-  tablet: 820,
-  phone: 390
-}
-
 interface Props {
   project: StudioProject
   deploy: DeployUiState | undefined
@@ -93,11 +85,7 @@ export default function PreviewPane({
   // the last visible frame so the placeholder shows that still image, not black.
   const [frozen, setFrozen] = useState<string | null>(null)
 
-  const [device, setDevice] = useState<DeviceId>('desktop')
-
   const showWebview = !running && Boolean(deployedUrl)
-  const stageWidth = DEVICE_WIDTHS[device]
-  const stageStyle = stageWidth ? { width: stageWidth, maxWidth: '100%' } : undefined
 
   // Auto-reload the preview after a successful (re)deploy.
   useEffect(() => {
@@ -137,9 +125,7 @@ export default function PreviewPane({
       // An HTML overlay (a dropdown/menu/modal) covering a live preview suppresses
       // the native webview, which would otherwise paint over it. Rather than blank
       // the pane to black, freeze the last visible frame to a PNG and paint it into
-      // the placeholder so the overlay appears to float over a still preview. (The
-      // device-width <select> is a native OS popup, not HTML, so it needs none of
-      // this and keeps rendering over the live webview.)
+      // the placeholder so the overlay appears to float over a still preview.
       if (suppressed && showWebview && deployedUrl) {
         let cancelled = false
         void (async () => {
@@ -317,25 +303,6 @@ export default function PreviewPane({
           {loading && showWebview && <span className="preview-loading">Loading…</span>}
           <button
             className="btn btn--sm btn--ghost"
-            onClick={() => void clearSession()}
-            disabled={!showWebview || clearing}
-            title="Clear the preview's cookies and cached sign-in, then reload — use this to sign in as a different account or Entra tenant"
-          >
-            {clearing ? 'Clearing…' : 'Clear cookies'}
-          </button>
-          <select
-            className="device-select"
-            value={device}
-            onChange={(e) => setDevice(e.target.value as DeviceId)}
-            disabled={!showWebview}
-            title="Preview at a device width"
-          >
-            <option value="desktop">Desktop</option>
-            <option value="tablet">Tablet · 820</option>
-            <option value="phone">Phone · 390</option>
-          </select>
-          <button
-            className="btn btn--sm btn--ghost"
             onClick={() => void startAnnotate()}
             disabled={!showWebview || capturing}
             title="Take a screenshot of the preview, draw on it, and attach it to your message"
@@ -343,11 +310,21 @@ export default function PreviewPane({
             {capturing ? 'Capturing…' : '✎ Annotate'}
           </button>
           <button
-            className={`btn btn--sm ${focused ? 'btn--primary' : 'btn--ghost'}`}
+            className="btn btn--sm btn--ghost btn--icon"
+            onClick={() => void clearSession()}
+            disabled={!showWebview || clearing}
+            aria-label="Clear cookies"
+            title="Clear the preview's cookies and cached sign-in, then reload — use this to sign in as a different account or Entra tenant"
+          >
+            {clearing ? <span className="icon-spin">⟳</span> : '🍪'}
+          </button>
+          <button
+            className={`btn btn--sm btn--icon ${focused ? 'btn--primary' : 'btn--ghost'}`}
             onClick={onToggleFocus}
+            aria-label={focused ? 'Exit focus' : 'Focus'}
             title={focused ? 'Exit focus — show the chat again' : 'Focus the preview — hide the chat'}
           >
-            {focused ? '⤡ Exit focus' : '⤢ Focus'}
+            {focused ? '⤡' : '⤢'}
           </button>
         </div>
       </div>
@@ -386,7 +363,7 @@ export default function PreviewPane({
           </pre>
         ) : showWebview ? (
           <div className="preview-canvas">
-            <div className={`preview-stage preview-stage--${device}`} style={stageStyle}>
+            <div className="preview-stage">
               {/* Placeholder the native WebView2 child is positioned over. When an
                   overlay suppresses the native child, `frozen` paints the last frame
                   here so the overlay floats over a still preview instead of black. */}
