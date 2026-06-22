@@ -1,0 +1,70 @@
+//! Filesystem locations, mirroring Electron's `app.getPath(...)` usage.
+//!
+//! The Electron build stored per-user state under `app.getPath('userData')`,
+//! which on Windows resolves to `%APPDATA%\Roaming\<productName>`. To preserve
+//! continuity with existing installs we resolve the same directory here, checking
+//! the packaged product name first and the dev folder name second.
+
+use std::path::PathBuf;
+
+/// Candidate userData folder names, most-preferred first. "Rayfin Fabricator" is
+/// the packaged `productName`; "rayfin-desktop" is the dev-mode app name.
+const DATA_DIR_CANDIDATES: &[&str] = &["Rayfin Fabricator", "rayfin-desktop"];
+
+/// Roaming app-data base (`%APPDATA%` on Windows, XDG/Library elsewhere).
+fn data_base() -> PathBuf {
+  dirs::data_dir().unwrap_or_else(|| home_dir().join("AppData").join("Roaming"))
+}
+
+/// The per-user data directory (Electron `userData` equivalent). Prefers an
+/// existing candidate so prior Electron state is reused; otherwise the canonical
+/// product-name folder.
+pub fn data_dir() -> PathBuf {
+  let base = data_base();
+  for name in DATA_DIR_CANDIDATES {
+    let p = base.join(name);
+    if p.exists() {
+      return p;
+    }
+  }
+  base.join(DATA_DIR_CANDIDATES[0])
+}
+
+/// Ensure the data directory exists and return it.
+pub fn ensure_data_dir() -> std::io::Result<PathBuf> {
+  let d = data_dir();
+  std::fs::create_dir_all(&d)?;
+  Ok(d)
+}
+
+/// User home directory (Electron `app.getPath('home')`).
+pub fn home_dir() -> PathBuf {
+  dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// OS temp directory (Electron `app.getPath('temp')`).
+pub fn temp_dir() -> PathBuf {
+  std::env::temp_dir()
+}
+
+/// Per-user logs directory (created on demand).
+pub fn logs_dir() -> PathBuf {
+  let d = data_dir().join("logs");
+  let _ = std::fs::create_dir_all(&d);
+  d
+}
+
+/// Per-project chat transcript directory.
+pub fn chats_dir() -> PathBuf {
+  data_dir().join("chats")
+}
+
+/// The JSON file backing app state (projects, settings).
+pub fn store_file() -> PathBuf {
+  data_dir().join("studio.json")
+}
+
+/// Scratch directory for preview region-screenshots (deferred feature).
+pub fn shots_dir() -> PathBuf {
+  temp_dir().join("rayfin-fabricator-shots")
+}
