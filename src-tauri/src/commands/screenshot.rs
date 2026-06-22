@@ -29,9 +29,15 @@ pub async fn screenshot_save(data_url: String) -> Result<String, String> {
 /// Best-effort delete of temp screenshot files (only within Studio's shots dir).
 #[tauri::command]
 pub async fn screenshot_cleanup(paths: Vec<String>) {
+  cleanup(&paths);
+}
+
+/// Delete the given temp screenshot files, restricted to Studio's shots dir.
+/// Shared by the `screenshot_cleanup` command and the chat turn engine.
+pub fn cleanup(paths: &[String]) {
   let shots = crate::services::paths::shots_dir();
   for p in paths {
-    let path = PathBuf::from(&p);
+    let path = PathBuf::from(p);
     if path.starts_with(&shots) {
       let _ = std::fs::remove_file(&path);
     }

@@ -31,6 +31,19 @@ impl AppState {
     token
   }
 
+  /// Register a fresh cancel token for a turn only if none is already running for
+  /// this project/thread. Returns `None` when a turn is already in flight.
+  pub fn try_begin_chat(&self, project_id: &str, thread_id: Option<&str>) -> Option<CancelToken> {
+    let mut map = self.chat_cancels.lock().unwrap();
+    let k = key(project_id, thread_id);
+    if map.contains_key(&k) {
+      return None;
+    }
+    let token = CancelToken::new();
+    map.insert(k, token.clone());
+    Some(token)
+  }
+
   /// Remove a turn's cancel token (called when the turn completes).
   pub fn end_chat(&self, project_id: &str, thread_id: Option<&str>) {
     self
