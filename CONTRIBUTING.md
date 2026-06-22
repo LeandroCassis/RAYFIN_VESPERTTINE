@@ -94,6 +94,23 @@ Pushing a version tag drives `.github/workflows/release.yml`. The release workfl
 
 `deploy.ps1` is a maintainer-only script that provisions Azure Application Insights and sets that secret.
 
+### Code signing (maintainers)
+
+Release installers are signed with **Azure Trusted Signing** (a.k.a. Azure Artifact Signing) when the required GitHub Actions settings are present. The release workflow signs both the app executable and the NSIS installer through Tauri's `signCommand` and [`artifact-signing-cli`](https://github.com/Levminer/trusted-signing-cli). When the signing credentials are absent (forks, PR builds), the installer is still produced — just unsigned — so contributors never need a certificate to build.
+
+To enable signing, set the following on the repository (**Settings → Secrets and variables → Actions**):
+
+| Kind | Name | Value |
+| --- | --- | --- |
+| Secret | `AZURE_SIGNING_CLIENT_ID` | App registration (client) ID |
+| Secret | `AZURE_SIGNING_CLIENT_SECRET` | App registration client secret |
+| Secret | `AZURE_SIGNING_TENANT_ID` | Directory (tenant) ID |
+| Variable | `AZURE_SIGNING_ENDPOINT` | Region endpoint, e.g. `https://eus.codesigning.azure.net` |
+| Variable | `AZURE_SIGNING_ACCOUNT` | Trusted Signing account name |
+| Variable | `AZURE_SIGNING_CERT_PROFILE` | Certificate profile name |
+
+The app registration's service principal needs the **Trusted Signing Certificate Profile Signer** role on the signing account. Signing removes the "Unknown Publisher" prompt immediately; Microsoft SmartScreen still builds per-certificate reputation over time, so brand-new releases may show a SmartScreen prompt until enough downloads accrue.
+
 ## Issues and pull requests
 
 Please file issues and pull requests at https://github.com/spatney/rayfin-fabricator.

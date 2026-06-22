@@ -46,8 +46,55 @@ jobs:
         env:
           CS: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
 
+      - name: Detect code-signing configuration
+        id: signing
+        shell: bash
+        env:
+          SIGNING_CLIENT_ID: ${{ secrets.AZURE_SIGNING_CLIENT_ID }}
+        run: |
+          if [ -n "$SIGNING_CLIENT_ID" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Code signing: ENABLED (Azure Trusted / Artifact Signing)"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Code signing: disabled (no AZURE_SIGNING_CLIENT_ID secret) — building unsigned"
+          fi
+
+      - name: Install Azure Artifact Signing CLI
+        if: steps.signing.outputs.enabled == 'true'
+        run: cargo install artifact-signing-cli --version 0.11.0
+
+      - name: Generate signing configuration
+        if: steps.signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_CERT_PROFILE }}
+        run: |
+          if [ -z "$SIGNING_ENDPOINT" ] || [ -z "$SIGNING_ACCOUNT" ] || [ -z "$SIGNING_PROFILE" ]; then
+            echo "::error::Signing credentials are set but one or more signing variables (AZURE_SIGNING_ENDPOINT, AZURE_SIGNING_ACCOUNT, AZURE_SIGNING_CERT_PROFILE) are missing."
+            exit 1
+          fi
+          printf '{ "bundle": { "windows": { "signCommand": "artifact-signing-cli -e %s -a %s -c %s %%1" } } }\n' \
+            "$SIGNING_ENDPOINT" "$SIGNING_ACCOUNT" "$SIGNING_PROFILE" > src-tauri/tauri.signing.conf.json
+          echo "Generated src-tauri/tauri.signing.conf.json:"
+          cat src-tauri/tauri.signing.conf.json
+
       - name: Build Tauri installer
-        run: npm run tauri:build
+        shell: bash
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_SIGNING_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_SIGNING_CLIENT_SECRET }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_SIGNING_TENANT_ID }}
+        run: |
+          if [ "${{ steps.signing.outputs.enabled }}" = "true" ]; then
+            echo "Building signed installer…"
+            npm run tauri:build -- --config src-tauri/tauri.signing.conf.json
+          else
+            echo "Building unsigned installer…"
+            npm run tauri:build
+          fi
 
       - name: Upload installer artifacts
         if: always()
