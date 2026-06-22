@@ -10,9 +10,9 @@ use regex::Regex;
 use tauri::AppHandle;
 
 use crate::commands::util::{is_rayfin_project, normalize, same_path, with_missing};
-use crate::services::emit;
 use crate::services::exec::{run, OnData, RunOptions, Stream};
-use crate::services::store;
+use crate::services::{emit, history, store};
+use crate::state::AppState;
 use crate::types::{
   CommunityGalleryResult, CreateProjectInput, ProjectActionResult, ProjectsState, StudioProject,
   TemplateInfo,
@@ -336,7 +336,19 @@ pub async fn rename_project(id: String, name: String) -> ProjectActionResult {
 }
 
 /// Remove a project. Forgets it by default; trashes the folder when `delete_files`.
-pub async fn remove_project(_app: &AppHandle, id: String, delete_files: bool) -> ProjectsState {
+pub async fn remove_project(
+  _app: &AppHandle,
+  state: &AppState,
+  id: String,
+  delete_files: bool,
+) -> ProjectsState {
+  // Stop any in-flight chat, drop the transcript, and tear down every side
+  // thread (worktrees + branches) *before* the project folder goes away — the
+  // worktree-removal git commands need the project to still exist on disk.
+  state.cancel_chat(&id, Some(history::MAIN_THREAD_ID));
+  history::clear_history(&id, None);
+  crate::commands::threads::remove_all_threads(&id).await;
+
   if delete_files {
     if let Some(project) = store::find_project(&id) {
       if Path::new(&project.path).exists() {

@@ -1,11 +1,12 @@
 //! Projects commands. State/active/workspace/remove are implemented against the
 //! store; scaffolding, git, and file operations are ported in later phases.
 
-use tauri::AppHandle;
+use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::commands::util::{annotate_state, with_missing};
 use crate::services::store;
+use crate::state::AppState;
 use crate::types::{
   CommunityGalleryResult, CreateProjectInput, FileContent, FileNode, GitChange, GitCommitResult,
   GitFileDiff, GitHistory, GitStatus, ProjectActionResult, ProjectsState, RevertResult,
@@ -104,10 +105,14 @@ pub fn projects_set_workspace(
 #[tauri::command]
 pub async fn projects_remove(
   app: AppHandle,
+  state: State<'_, AppState>,
   id: String,
   delete_files: Option<bool>,
-) -> ProjectsState {
-  crate::commands::projects_impl::remove_project(&app, id, delete_files.unwrap_or(false)).await
+) -> Result<ProjectsState, String> {
+  Ok(
+    crate::commands::projects_impl::remove_project(&app, state.inner(), id, delete_files.unwrap_or(false))
+      .await,
+  )
 }
 
 /* ----------------------------- git (ported in Phase 3) ----------------------------- */

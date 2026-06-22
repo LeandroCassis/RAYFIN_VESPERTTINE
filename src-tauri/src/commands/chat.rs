@@ -249,6 +249,21 @@ pub async fn chat_send(
   attachments: Option<Vec<String>>,
   thread_id: Option<String>,
 ) -> Result<ChatTurnResult, String> {
+  run_turn(app, state.inner(), project_id, turn_id, text, attachments, thread_id).await
+}
+
+/// The turn engine shared by `chat_send` and the side-thread merge flow. Drives
+/// one Copilot invocation and streams its events to `(project_id, thread, turn_id)`.
+/// Always resolves to `Ok` — failures surface inside the [`ChatTurnResult`].
+pub(crate) async fn run_turn(
+  app: AppHandle,
+  state: &AppState,
+  project_id: String,
+  turn_id: String,
+  text: String,
+  attachments: Option<Vec<String>>,
+  thread_id: Option<String>,
+) -> Result<ChatTurnResult, String> {
   let thread = thread_id.clone().unwrap_or_else(|| MAIN_THREAD_ID.to_string());
   let attachments = attachments.unwrap_or_default();
 
