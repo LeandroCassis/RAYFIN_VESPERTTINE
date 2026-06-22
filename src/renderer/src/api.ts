@@ -159,6 +159,7 @@ export const api: RayfinStudioApi = {
     setBounds: (bounds: PreviewBounds) => invoke('preview_set_bounds', { bounds }),
     hide: () => invoke('preview_hide'),
     reload: () => invoke('preview_reload'),
+    clearData: () => invoke('preview_clear_data'),
     back: () => invoke('preview_back'),
     forward: () => invoke('preview_forward'),
     onNavState: (cb: (state: PreviewNavState) => void) =>

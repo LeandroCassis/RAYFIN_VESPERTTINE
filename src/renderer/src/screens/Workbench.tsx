@@ -114,6 +114,7 @@ export default function Workbench({
   const [versions, setVersions] = useState<AppVersions | null>(null)
   const [signingOut, setSigningOut] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [depsMenuOpen, setDepsMenuOpen] = useState(false)
   const [projects, setProjects] = useState<ProjectsState | null>(null)
   const [showNewProject, setShowNewProject] = useState(false)
   const [opening, setOpening] = useState(false)
@@ -990,6 +991,7 @@ export default function Workbench({
                     }}
                     onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
                     onChanged={() => void refreshProjects()}
+                    onOpenChange={setDepsMenuOpen}
                   />
                   {deploys[active.id]?.running ? (
                     <span className="chip chip--busy">deploying…</span>
@@ -1120,6 +1122,7 @@ export default function Workbench({
                         showNewProject ||
                         showNewThread ||
                         signingOut ||
+                        depsMenuOpen ||
                         Boolean(confirmDelete) ||
                         Boolean(confirmDiscard)
                       }

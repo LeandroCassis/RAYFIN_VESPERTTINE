@@ -1044,6 +1044,12 @@ export interface RayfinStudioApi {
     hide: () => Promise<void>
     /** Reload the current page. */
     reload: () => Promise<void>
+    /**
+     * Clear the preview's browsing session — cookies, cached tokens and site
+     * storage — then reload. Use to drop a cached Entra/AAD identity and sign in
+     * as a different tenant or account.
+     */
+    clearData: () => Promise<void>
     /** Navigate back one entry in the preview's history. */
     back: () => Promise<void>
     /** Navigate forward one entry in the preview's history. */

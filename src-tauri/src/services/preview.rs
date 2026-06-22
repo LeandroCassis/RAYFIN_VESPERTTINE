@@ -276,6 +276,31 @@ pub fn preview_reload(app: AppHandle) -> AppResult<()> {
   Ok(())
 }
 
+/// Clear the preview webview's WebView2 profile — cookies, cached tokens and
+/// site storage — then reload, so the deployed app starts a brand-new session.
+/// Useful when a previous Entra/AAD identity was cached and you want to sign in
+/// as a different tenant or account. The auth-broker popup shares this same
+/// profile, so clearing it here drops the cached identity everywhere.
+#[tauri::command]
+pub async fn preview_clear_data(app: AppHandle) -> AppResult<()> {
+  match app.get_webview(PREVIEW_LABEL) {
+    Some(wv) => wv
+      .clear_all_browsing_data()
+      .map_err(|e| AppError::Msg(e.to_string()))?,
+    None => return Ok(()),
+  }
+  // `ClearBrowsingDataAll` runs on WebView2's own queue and WRY does not await
+  // its completion handler, so the call returns before the data is actually
+  // gone. Pause briefly (re-fetching the webview afterwards so nothing
+  // non-`Send` is held across the await) before reloading, or the fresh request
+  // could still carry the old cookies.
+  tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+  if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
+    let _ = wv.reload();
+  }
+  Ok(())
+}
+
 /// Navigate back one entry in the preview's history (no-op if at the start).
 #[tauri::command]
 pub fn preview_back(app: AppHandle, state: State<'_, PreviewState>) -> AppResult<()> {

@@ -93,6 +93,7 @@ export default function PreviewPane({
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
   const [canForward, setCanForward] = useState(false)
+  const [clearing, setClearing] = useState(false)
 
   const [device, setDevice] = useState<DeviceId>('desktop')
 
@@ -193,6 +194,16 @@ export default function PreviewPane({
   const reload = useCallback((): void => {
     void window.api.preview.reload()
   }, [])
+  // Drop the preview's cached WebView2 session (cookies + tokens) and reload, so
+  // a previously cached Entra/AAD identity no longer auto-signs-in.
+  const clearSession = useCallback(async (): Promise<void> => {
+    setClearing(true)
+    try {
+      await window.api.preview.clearData()
+    } finally {
+      setClearing(false)
+    }
+  }, [])
   const goBack = useCallback((): void => {
     void window.api.preview.back()
   }, [])
@@ -259,6 +270,14 @@ export default function PreviewPane({
         </div>
         <div className="preview-toolbar-right">
           {loading && showWebview && <span className="preview-loading">Loading…</span>}
+          <button
+            className="btn btn--sm btn--ghost"
+            onClick={() => void clearSession()}
+            disabled={!showWebview || clearing}
+            title="Clear the preview's cookies and cached sign-in, then reload — use this to sign in as a different account or Entra tenant"
+          >
+            {clearing ? 'Clearing…' : 'Clear cookies'}
+          </button>
           <select
             className="device-select"
             value={device}

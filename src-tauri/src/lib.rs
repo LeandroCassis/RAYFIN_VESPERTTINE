@@ -137,6 +137,7 @@ pub fn run() {
       services::preview::preview_set_bounds,
       services::preview::preview_hide,
       services::preview::preview_reload,
+      services::preview::preview_clear_data,
       services::preview::preview_back,
       services::preview::preview_forward,
     ])
