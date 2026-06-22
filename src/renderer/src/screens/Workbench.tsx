@@ -10,6 +10,7 @@ import {
 } from 'react'
 import {
   MAIN_THREAD_ID,
+  type AdvisorFinding,
   type AppSettings,
   type AppVersions,
   type AuthStatus,
@@ -32,6 +33,7 @@ import DeploymentsControl from '../components/DeploymentsControl'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
 import SkillsView from '../components/SkillsView'
+import AdvisorView from '../components/AdvisorView'
 import logo from '../assets/logo.png'
 
 // Monaco is heavy (~7 MB); only load the code viewer when the Code tab is opened.
@@ -153,7 +155,7 @@ export default function Workbench({
     (OutboundPrompt & { projectId: string; threadId: string }) | null
   >(null)
   /** Project content view: the build loop (chat + preview) or the code browser. */
-  const [viewMode, setViewMode] = useState<'build' | 'code' | 'skills'>('build')
+  const [viewMode, setViewMode] = useState<'build' | 'code' | 'skills' | 'advisor'>('build')
   /** Build-view focus: expand a single pane to fill the area (null = split). */
   const [focusPane, setFocusPane] = useState<'chat' | 'preview' | null>(null)
   /** Chat's share of the build split (0..1); the rest goes to the preview. */
@@ -534,6 +536,37 @@ export default function Workbench({
       projectId: id,
       threadId: MAIN_THREAD_ID,
       display: `Update Rayfin to ${to}`,
+      prompt
+    })
+  }, [])
+
+  // Hand an Advisor finding to the Build chat so Copilot can fix it.
+  const fixWithCopilot = useCallback((finding: AdvisorFinding): void => {
+    const id = activeIdRef.current
+    if (!id) return
+    const category =
+      finding.category === 'auth'
+        ? 'Authentication & access'
+        : finding.category === 'policy'
+          ? 'Data policies'
+          : finding.category
+    const location = finding.file ? `\nLocation: ${finding.file}` : ''
+    const prompt =
+      'The Advisor security review flagged an issue in this app. Please fix it.\n\n' +
+      `Issue: ${finding.title}\n` +
+      `Severity: ${finding.severity}\n` +
+      `Category: ${category}${location}\n\n` +
+      `Details: ${finding.detail}\n\n` +
+      `Suggested fix: ${finding.recommendation}\n\n` +
+      'Apply the fix in the code, keeping the app building and following Rayfin conventions. ' +
+      'Do not run `rayfin up` or deploy — Rayfin Fabricator redeploys automatically.'
+    setViewMode('build')
+    setFocusPane(null)
+    setChatOutbound({
+      id: `advisor-fix-${Date.now()}`,
+      projectId: id,
+      threadId: MAIN_THREAD_ID,
+      display: `Fix: ${finding.title}`,
       prompt
     })
   }, [])
@@ -969,6 +1002,14 @@ export default function Workbench({
                   >
                     Skills
                   </button>
+                  <button
+                    className={`project-tab${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
+                    role="tab"
+                    aria-selected={viewMode === 'advisor'}
+                    onClick={() => setViewMode('advisor')}
+                  >
+                    Advisor
+                  </button>
                 </div>
                 <div className="project-meta">
                   <DeploymentsControl
@@ -1019,6 +1060,8 @@ export default function Workbench({
                   project={active}
                   onChanged={() => setGitRefresh((n) => n + 1)}
                 />
+              ) : viewMode === 'advisor' ? (
+                <AdvisorView project={active} onFix={fixWithCopilot} />
               ) : (
                 <div
                   className={`panes${focusPane ? ` panes--focus-${focusPane}` : ''}${

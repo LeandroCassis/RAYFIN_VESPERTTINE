@@ -658,3 +658,72 @@ pub struct SkillSource {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub error: Option<String>,
 }
+
+/* ----------------------------- advisor ----------------------------- */
+
+/// One issue the Advisor (Copilot-driven security review) surfaced. Parsed from
+/// Copilot's JSON output and forwarded to the renderer, so it is both
+/// `Deserialize` (tolerant of omitted fields) and `Serialize`.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvisorFinding {
+  /// Stable-ish id for the finding (the UI falls back to the array index).
+  #[serde(default)]
+  pub id: String,
+  /// Check bucket: `"auth"` (access/authentication) or `"policy"` (data policies).
+  #[serde(default)]
+  pub category: String,
+  /// `"high"` | `"medium"` | `"low"`.
+  #[serde(default)]
+  pub severity: String,
+  #[serde(default)]
+  pub title: String,
+  #[serde(default)]
+  pub detail: String,
+  /// Project-relative path the issue lives in, when known.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub file: Option<String>,
+  #[serde(default)]
+  pub recommendation: String,
+}
+
+/// The full Advisor report returned by `advisor_run`.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvisorReport {
+  /// True when Copilot completed and its JSON report parsed cleanly.
+  pub ok: bool,
+  /// One-line human summary (or a raw/error message when `ok` is false).
+  pub summary: String,
+  pub findings: Vec<AdvisorFinding>,
+}
+
+/// Shape of the JSON block Copilot is asked to emit. Kept separate from
+/// [`AdvisorReport`] so `ok` is set by us, not the model.
+#[derive(Deserialize, Default)]
+pub struct AdvisorRawReport {
+  #[serde(default)]
+  pub summary: String,
+  #[serde(default)]
+  pub findings: Vec<AdvisorFinding>,
+}
+
+/// Streamed advisor events (main -> renderer), tagged by `type`.
+#[derive(Serialize, Clone)]
+#[serde(tag = "type")]
+pub enum AdvisorEvent {
+  /// Live status line shown while Copilot scans (from tool activity).
+  #[serde(rename = "progress")]
+  Progress { text: String },
+  #[serde(rename = "error")]
+  Error { text: String },
+  #[serde(rename = "done")]
+  Done { ok: bool },
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvisorEventEnvelope {
+  pub project_id: String,
+  pub event: AdvisorEvent,
+}

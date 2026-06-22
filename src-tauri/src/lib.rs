@@ -110,6 +110,9 @@ pub fn run() {
       commands::skills::skills_list,
       commands::skills::skills_set,
       commands::skills::skills_source,
+      // advisor
+      commands::advisor::advisor_run,
+      commands::advisor::advisor_cancel,
       // chat
       commands::chat::chat_send,
       commands::chat::chat_cancel,

@@ -13,6 +13,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import {
   IpcChannels,
   type AppSettings,
+  type AdvisorEventEnvelope,
   type ChatEventEnvelope,
   type ChatMessage,
   type ChatOptions,
@@ -105,6 +106,13 @@ export const api: RayfinStudioApi = {
     source: (id: string, skillId: string) => invoke('skills_source', { id, skillId })
   },
 
+  advisor: {
+    run: (projectId: string) => invoke('advisor_run', { projectId }),
+    cancel: (projectId: string) => invoke('advisor_cancel', { projectId }),
+    onEvent: (cb: (envelope: AdvisorEventEnvelope) => void) =>
+      subscribe<AdvisorEventEnvelope>(IpcChannels.advisorEvent, cb)
+  },
+
   chat: {
     send: (
       projectId: string,
@@ -171,7 +179,10 @@ export const api: RayfinStudioApi = {
     subscribe<ProcLogEvent>(IpcChannels.procLog, cb),
 
   onChatEvent: (cb: (envelope: ChatEventEnvelope) => void) =>
-    subscribe<ChatEventEnvelope>(IpcChannels.chatEvent, cb)
+    subscribe<ChatEventEnvelope>(IpcChannels.chatEvent, cb),
+
+  onAdvisorEvent: (cb: (envelope: AdvisorEventEnvelope) => void) =>
+    subscribe<AdvisorEventEnvelope>(IpcChannels.advisorEvent, cb)
 }
 
 // The renderer talks to the Rust backend exclusively through `window.api`

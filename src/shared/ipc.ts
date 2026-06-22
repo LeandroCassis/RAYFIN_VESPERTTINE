@@ -683,6 +683,47 @@ export interface SkillSource {
   error?: string
 }
 
+/**
+ * One issue surfaced by the Advisor (a Copilot-driven, read-only security review
+ * of the app). Findings are grouped in the UI by {@link category}.
+ */
+export interface AdvisorFinding {
+  /** Short slug; the UI falls back to the array index if empty. */
+  id: string
+  /** Check bucket: 'auth' (access/authentication) or 'policy' (data policies). */
+  category: 'auth' | 'policy' | string
+  severity: 'high' | 'medium' | 'low' | string
+  /** Short headline for the card. */
+  title: string
+  /** What's wrong and why it matters. */
+  detail: string
+  /** Project-relative path the issue lives in, when known. */
+  file?: string
+  /** A concrete suggested fix. */
+  recommendation: string
+}
+
+/** The full Advisor report returned by {@link RayfinStudioApi.advisor.run}. */
+export interface AdvisorReport {
+  /** True when Copilot completed and its JSON report parsed cleanly. */
+  ok: boolean
+  /** One-line overview (or a raw/error message when ok is false). */
+  summary: string
+  findings: AdvisorFinding[]
+}
+
+/** Streamed advisor events (main -> renderer) during a review run. */
+export type AdvisorEvent =
+  | { type: 'progress'; text: string }
+  | { type: 'error'; text: string }
+  | { type: 'done'; ok: boolean }
+
+/** Envelope so the renderer can route advisor events to the right project. */
+export interface AdvisorEventEnvelope {
+  projectId: string
+  event: AdvisorEvent
+}
+
 /** Per-project chat configuration (model + reasoning effort). */
 export interface ChatOptions {
   /** Copilot model id (`--model`); 'auto' or undefined lets Copilot pick. */
@@ -819,6 +860,7 @@ export const IpcChannels = {
   // main -> renderer events
   procLog: 'proc:log',
   chatEvent: 'chat:event',
+  advisorEvent: 'advisor:event',
   previewNav: 'preview:nav'
 } as const
 
@@ -939,6 +981,21 @@ export interface RayfinStudioApi {
     set: (id: string, skillId: string, active: boolean) => Promise<SkillActionResult>
     /** Read the raw SKILL.md behind a skill (on-disk file, or a catalog sample). */
     source: (id: string, skillId: string) => Promise<SkillSource>
+  }
+
+  /** Advisor: a Copilot-driven, read-only security review of the app. */
+  advisor: {
+    /**
+     * Run a security review of the project with the Copilot CLI and resolve the
+     * parsed report. Streams `advisor:event` progress (subscribe via
+     * onAdvisorEvent). Uses an ephemeral Copilot session so the review never
+     * lands in the project's Build chat history.
+     */
+    run: (projectId: string) => Promise<AdvisorReport>
+    /** Cancel the in-flight review for a project. Resolves true if one was running. */
+    cancel: (projectId: string) => Promise<boolean>
+    /** Subscribe to streamed advisor events. Returns an unsubscribe function. */
+    onEvent: (cb: (envelope: AdvisorEventEnvelope) => void) => () => void
   }
 
   chat: {
@@ -1069,4 +1126,6 @@ export interface RayfinStudioApi {
   onProcLog: (cb: (event: ProcLogEvent) => void) => () => void
   /** Subscribe to streamed chat events. Returns an unsubscribe function. */
   onChatEvent: (cb: (envelope: ChatEventEnvelope) => void) => () => void
+  /** Subscribe to streamed advisor events. Returns an unsubscribe function. */
+  onAdvisorEvent: (cb: (envelope: AdvisorEventEnvelope) => void) => () => void
 }

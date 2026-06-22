@@ -7,11 +7,14 @@ use tauri::{AppHandle, Emitter};
 
 use super::exec::{OnData, Stream};
 use crate::types::{ChatEvent, ChatEventEnvelope, ProcLogEvent};
+use crate::types::{AdvisorEvent, AdvisorEventEnvelope};
 
 /// Event name for streamed process output (matches `IpcChannels.procLog`).
 pub const PROC_LOG: &str = "proc:log";
 /// Event name for streamed chat events (matches `IpcChannels.chatEvent`).
 pub const CHAT_EVENT: &str = "chat:event";
+/// Event name for streamed advisor events (matches `IpcChannels.advisorEvent`).
+pub const ADVISOR_EVENT: &str = "advisor:event";
 
 /// Build an [`OnData`] callback that forwards process output to the renderer on
 /// the given logical channel.
@@ -44,6 +47,17 @@ pub fn emit_chat_event(
       project_id: project_id.to_string(),
       thread_id: thread_id.to_string(),
       turn_id: turn_id.to_string(),
+      event,
+    },
+  );
+}
+
+/// Emit one advisor event, wrapped in its routing envelope.
+pub fn emit_advisor_event(app: &AppHandle, project_id: &str, event: AdvisorEvent) {
+  let _ = app.emit(
+    ADVISOR_EVENT,
+    AdvisorEventEnvelope {
+      project_id: project_id.to_string(),
       event,
     },
   );

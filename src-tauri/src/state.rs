@@ -13,6 +13,8 @@ use crate::services::history::MAIN_THREAD_ID;
 pub struct AppState {
   /// Active chat cancel tokens, keyed by `"<projectId>::<threadId>"`.
   chat_cancels: Mutex<HashMap<String, CancelToken>>,
+  /// Active advisor-run cancel tokens, keyed by `projectId` (one run per project).
+  advisor_cancels: Mutex<HashMap<String, CancelToken>>,
 }
 
 fn key(project_id: &str, thread_id: Option<&str>) -> String {
@@ -46,6 +48,34 @@ impl AppState {
   /// found and signalled.
   pub fn cancel_chat(&self, project_id: &str, thread_id: Option<&str>) -> bool {
     if let Some(token) = self.chat_cancels.lock().unwrap().remove(&key(project_id, thread_id)) {
+      token.cancel();
+      true
+    } else {
+      false
+    }
+  }
+
+  /// Register a fresh advisor-run cancel token for a project only if none is
+  /// already running. Returns `None` when a run is already in flight.
+  pub fn try_begin_advisor(&self, project_id: &str) -> Option<CancelToken> {
+    let mut map = self.advisor_cancels.lock().unwrap();
+    if map.contains_key(project_id) {
+      return None;
+    }
+    let token = CancelToken::new();
+    map.insert(project_id.to_string(), token.clone());
+    Some(token)
+  }
+
+  /// Remove an advisor run's cancel token (called when the run completes).
+  pub fn end_advisor(&self, project_id: &str) {
+    self.advisor_cancels.lock().unwrap().remove(project_id);
+  }
+
+  /// Cancel an in-flight advisor run, if one is running. Returns true when a
+  /// token was found and signalled.
+  pub fn cancel_advisor(&self, project_id: &str) -> bool {
+    if let Some(token) = self.advisor_cancels.lock().unwrap().remove(project_id) {
       token.cancel();
       true
     } else {
