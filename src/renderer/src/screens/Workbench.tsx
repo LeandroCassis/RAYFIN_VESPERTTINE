@@ -1027,7 +1027,9 @@ export default function Workbench({
                   style={
                     focusPane
                       ? undefined
-                      : { gridTemplateColumns: `${chatFrac}fr 7px ${1 - chatFrac}fr` }
+                      : {
+                          gridTemplateColumns: `minmax(0, ${chatFrac}fr) 7px minmax(0, ${1 - chatFrac}fr)`
+                        }
                   }
                 >
                   <section className="pane pane--chat">
@@ -1113,6 +1115,14 @@ export default function Workbench({
                       onToggleFocus={() =>
                         setFocusPane((f) => (f === 'preview' ? null : 'preview'))
                       }
+                      suppressed={
+                        showSettings ||
+                        showNewProject ||
+                        showNewThread ||
+                        signingOut ||
+                        Boolean(confirmDelete) ||
+                        Boolean(confirmDiscard)
+                      }
                     />
                   </section>
                   {resizing && (
@@ -1159,7 +1169,7 @@ export default function Workbench({
           </>
         )}
         <span className="statusbar-sep">·</span>
-        <span className="statusbar-item">Electron {versions?.electron ?? '—'}</span>
+        <span className="statusbar-item">WebView2 {versions?.chrome ?? '—'}</span>
       </footer>
 
       {showSettings && settings && (

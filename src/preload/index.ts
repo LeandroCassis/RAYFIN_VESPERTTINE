@@ -134,6 +134,20 @@ const api: RayfinStudioApi = {
     set: (patch: Partial<AppSettings>) => ipcRenderer.invoke(IpcChannels.settingsSet, patch)
   },
 
+  // NOTE: the preview pane was an in-renderer Electron <webview> under Electron,
+  // so there were no preview IPC channels. These stubs exist only to satisfy the
+  // shared RayfinStudioApi contract; this whole preload is removed in Phase 5
+  // (the live implementation is the Tauri shim in src/renderer/src/api.ts).
+  preview: {
+    showUrl: () => Promise.resolve(),
+    setBounds: () => Promise.resolve(),
+    hide: () => Promise.resolve(),
+    reload: () => Promise.resolve(),
+    back: () => Promise.resolve(),
+    forward: () => Promise.resolve(),
+    onNavState: () => () => {}
+  },
+
   onProcLog: (cb: (event: ProcLogEvent) => void) => {
     const listener = (_e: IpcRendererEvent, payload: ProcLogEvent): void => cb(payload)
     ipcRenderer.on(IpcChannels.procLog, listener)

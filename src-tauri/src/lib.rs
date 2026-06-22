@@ -14,6 +14,8 @@ use tauri::Manager;
 
 use state::AppState;
 
+use services::preview::PreviewState;
+
 /// Read the bundled telemetry connection string (App Insights) if present.
 /// Mirrors the Electron build, which injects `resources/telemetry.json` at
 /// package time. Absent in dev → telemetry is a no-op.
@@ -45,6 +47,7 @@ pub fn run() {
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
     .manage(AppState::default())
+    .manage(PreviewState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -55,6 +58,7 @@ pub fn run() {
       }
       let version = app.package_info().version.to_string();
       services::telemetry::init(telemetry_connection_string(app), version);
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -128,6 +132,13 @@ pub fn run() {
       commands::deploy::deploy_list,
       commands::deploy::deploy_switch,
       commands::deploy::deploy_set_name,
+      // preview
+      services::preview::preview_show_url,
+      services::preview::preview_set_bounds,
+      services::preview::preview_hide,
+      services::preview::preview_reload,
+      services::preview::preview_back,
+      services::preview::preview_forward,
     ])
     .run(tauri::generate_context!())
     .expect("error while running tauri application");

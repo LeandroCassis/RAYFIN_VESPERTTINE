@@ -3040,6 +3040,7 @@ code {
   min-height: 0;
   min-width: 0;
   display: flex;
+  background: #fff;
 }
 
 /* Preview-depth: device-width framing + console drawer. */

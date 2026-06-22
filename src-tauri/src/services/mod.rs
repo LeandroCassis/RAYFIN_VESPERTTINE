@@ -6,5 +6,6 @@ pub mod emit;
 pub mod exec;
 pub mod history;
 pub mod paths;
+pub mod preview;
 pub mod store;
 pub mod telemetry;

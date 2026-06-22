@@ -18,6 +18,8 @@ import {
   type ChatOptions,
   type CreateProjectInput,
   type CreateThreadInput,
+  type PreviewBounds,
+  type PreviewNavState,
   type ProcLogEvent,
   type RayfinStudioApi,
   type ToolId
@@ -150,6 +152,17 @@ export const api: RayfinStudioApi = {
   settings: {
     get: () => invoke('settings_get'),
     set: (patch: Partial<AppSettings>) => invoke('settings_set', { patch })
+  },
+
+  preview: {
+    showUrl: (url: string, bounds: PreviewBounds) => invoke('preview_show_url', { url, bounds }),
+    setBounds: (bounds: PreviewBounds) => invoke('preview_set_bounds', { bounds }),
+    hide: () => invoke('preview_hide'),
+    reload: () => invoke('preview_reload'),
+    back: () => invoke('preview_back'),
+    forward: () => invoke('preview_forward'),
+    onNavState: (cb: (state: PreviewNavState) => void) =>
+      subscribe<PreviewNavState>(IpcChannels.previewNav, cb)
   },
 
   onProcLog: (cb: (event: ProcLogEvent) => void) =>

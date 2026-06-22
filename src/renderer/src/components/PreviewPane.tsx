@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DeployResult, StudioProject } from '@shared/ipc'
-import type { PreviewWebview } from '../webview'
+import type { DeployResult, PreviewBounds, StudioProject } from '@shared/ipc'
 
 export interface DeployUiState {
   running: boolean
@@ -8,7 +7,14 @@ export interface DeployUiState {
   result?: DeployResult
 }
 
-/** A region screenshot pending attachment to the next chat message. */
+/**
+ * A region screenshot pending attachment to the next chat message.
+ *
+ * NOTE: region-capture is deferred in the Tauri migration (the WebView2 child
+ * webview has no `capturePage` equivalent yet), so this type is currently unused
+ * at runtime. It is kept — along with {@link Props.onCapture} — to preserve the
+ * seam so the feature can be restored without touching the chat plumbing.
+ */
 export interface PendingShot {
   /** Absolute temp-file path passed to copilot as `--attachment`. */
   path: string
@@ -16,7 +22,7 @@ export interface PendingShot {
   thumb: string
 }
 
-/** Responsive preview presets — constrain the webview width to emulate devices. */
+/** Responsive preview presets — constrain the host width to emulate devices. */
 type DeviceId = 'desktop' | 'tablet' | 'phone'
 const DEVICE_WIDTHS: Record<DeviceId, number | null> = {
   desktop: null,
@@ -24,45 +30,26 @@ const DEVICE_WIDTHS: Record<DeviceId, number | null> = {
   phone: 390
 }
 
-/** A single line captured from the preview's `console-message` stream. */
-interface ConsoleEntry {
-  id: number
-  level: 'log' | 'info' | 'warn' | 'error'
-  text: string
-}
-
-/** Normalize Electron's numeric (legacy) or string console level to our union. */
-function consoleLevel(level: number | string | undefined): ConsoleEntry['level'] {
-  if (typeof level === 'string') {
-    const l = level.toLowerCase()
-    if (l.startsWith('warn')) return 'warn'
-    if (l.startsWith('err')) return 'error'
-    if (l.startsWith('info')) return 'info'
-    return 'log'
-  }
-  switch (level) {
-    case 2:
-      return 'warn'
-    case 3:
-      return 'error'
-    case 1:
-      return 'info'
-    default:
-      return 'log'
-  }
-}
-
 interface Props {
   project: StudioProject
   deploy: DeployUiState | undefined
   /** Deploy the project; pass a workspace target (name / portal URL / GUID) when known. */
   onDeploy: (workspace?: string, force?: boolean) => void
-  /** Called when the user captures a region of the preview. */
+  /**
+   * Called when the user captures a region of the preview. Deferred in the Tauri
+   * build (see {@link PendingShot}); retained to keep the chat-attachment seam.
+   */
   onCapture: (shot: PendingShot) => void
   /** True when the preview pane is expanded to fill the build view (chat hidden). */
   focused: boolean
   /** Toggle preview focus (full-width preview ⇄ split with chat). */
   onToggleFocus: () => void
+  /**
+   * True when something is painted over the preview host (a modal, the sign-out
+   * overlay, …). The native webview floats above all HTML, so it must be hidden
+   * while suppressed or it would cover the overlay.
+   */
+  suppressed: boolean
 }
 
 function statusLabel(running: boolean, status: string | undefined): string {
@@ -83,9 +70,9 @@ export default function PreviewPane({
   project,
   deploy,
   onDeploy,
-  onCapture,
   focused,
-  onToggleFocus
+  onToggleFocus,
+  suppressed
 }: Props): JSX.Element {
   const running = deploy?.running ?? false
   const deployedUrl = project.lastDeploy?.url
@@ -97,9 +84,8 @@ export default function PreviewPane({
   const needsWorkspace = !running && outcome === 'needs-workspace'
   // A destructive schema change needs an explicit --force opt-in (data loss risk).
   const needsForce = !running && outcome === 'needs-force'
-  const webviewRef = useRef<PreviewWebview | null>(null)
-  const deployedUrlRef = useRef(deployedUrl)
-  deployedUrlRef.current = deployedUrl
+
+  const hostRef = useRef<HTMLDivElement>(null)
   const logRef = useRef<HTMLPreElement>(null)
   const prevRunningRef = useRef(running)
   const [reloadNonce, setReloadNonce] = useState(0)
@@ -107,20 +93,12 @@ export default function PreviewPane({
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
   const [canForward, setCanForward] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
 
-  // Region-screenshot selection state.
-  const [selecting, setSelecting] = useState(false)
-  const [capturing, setCapturing] = useState(false)
-  const dragRef = useRef<{ x: number; y: number } | null>(null)
-  const [box, setBox] = useState<{ x: number; y: number; w: number; h: number } | null>(null)
-
-  // Preview-depth: responsive device width + captured console output.
   const [device, setDevice] = useState<DeviceId>('desktop')
-  const [consoleLogs, setConsoleLogs] = useState<ConsoleEntry[]>([])
-  const [showConsole, setShowConsole] = useState(false)
-  const consoleSeq = useRef(0)
-  const consoleListRef = useRef<HTMLDivElement>(null)
+
+  const showWebview = !running && Boolean(deployedUrl)
+  const stageWidth = DEVICE_WIDTHS[device]
+  const stageStyle = stageWidth ? { width: stageWidth, maxWidth: '100%' } : undefined
 
   // Auto-reload the preview after a successful (re)deploy.
   useEffect(() => {
@@ -139,153 +117,91 @@ export default function PreviewPane({
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
   }, [deploy?.log])
 
-  // Keep the console panel pinned to the newest line while it's open.
+  // Subscribe to navigation state pushed from the native webview (Rust side).
   useEffect(() => {
-    if (showConsole && consoleListRef.current) {
-      consoleListRef.current.scrollTop = consoleListRef.current.scrollHeight
-    }
-  }, [consoleLogs, showConsole])
-
-  // Build the <webview> imperatively inside its host container so `allowpopups`
-  // and `partition` are present BEFORE the element is connected to the DOM.
-  // Electron reads those attributes when the guest attaches (on DOM-connect),
-  // which happens earlier than any React ref / setAttribute could run — a late
-  // setAttribute leaves the guest without popup permission, so Chromium blocks the
-  // deployed app's window.open sign-in popup before our main-process handler runs.
-  const attachWebviewHost = useCallback((host: HTMLDivElement | null): void => {
-    if (!host) {
-      webviewRef.current = null
-      return
-    }
-    const initialUrl = deployedUrlRef.current
-    if (!initialUrl) return
-    const wv = document.createElement('webview') as unknown as PreviewWebview
-    wv.setAttribute('allowpopups', 'true')
-    wv.setAttribute('partition', 'persist:rayfin-preview')
-    wv.setAttribute('src', initialUrl)
-    wv.className = 'preview-webview'
-    webviewRef.current = wv
-    setLoadError(null)
-    setLoading(true)
-    setConsoleLogs([])
-    const syncNav = (): void => {
-      try {
-        setCanBack(wv.canGoBack())
-        setCanForward(wv.canGoForward())
-      } catch {
-        /* not ready yet */
-      }
-    }
-    wv.addEventListener('did-start-loading', () => setLoading(true))
-    wv.addEventListener('did-stop-loading', () => {
-      setLoading(false)
-      syncNav()
+    return window.api.preview.onNavState((s) => {
+      if (s.url) setDisplayUrl(s.url)
+      setLoading(s.loading)
+      setCanBack(s.canGoBack)
+      setCanForward(s.canGoForward)
     })
-    const onNavigate = (e: Event): void => {
-      const url = (e as unknown as { url?: string }).url
-      if (url) setDisplayUrl(url)
-      syncNav()
-    }
-    wv.addEventListener('did-navigate', onNavigate)
-    wv.addEventListener('did-navigate-in-page', onNavigate)
-    wv.addEventListener('did-fail-load', (e: Event) => {
-      const { errorCode, errorDescription } = e as unknown as {
-        errorCode?: number
-        errorDescription?: string
-      }
-      // -3 = ERR_ABORTED (superseded navigation) — not a real failure.
-      if (typeof errorCode === 'number' && errorCode !== -3) {
-        setLoadError(errorDescription || 'Failed to load the preview.')
-        setLoading(false)
-      }
-    })
-    // Capture the guest's console into a panel so deploy issues are visible
-    // without opening devtools (Electron 33 emits numeric `level`).
-    wv.addEventListener('console-message', (e: Event) => {
-      const ev = e as unknown as { level?: number | string; message?: string }
-      const entry: ConsoleEntry = {
-        id: ++consoleSeq.current,
-        level: consoleLevel(ev.level),
-        text: ev.message ?? ''
-      }
-      setConsoleLogs((prev) => {
-        const next = prev.concat(entry)
-        return next.length > 200 ? next.slice(next.length - 200) : next
-      })
-    })
-    host.appendChild(wv)
   }, [])
 
-  const reload = (): void => webviewRef.current?.reload()
-  const goBack = (): void => webviewRef.current?.goBack()
-  const goForward = (): void => webviewRef.current?.goForward()
+  // Position the native webview over its host placeholder and keep it tracking
+  // the host's bounds. The webview is a real OS surface that paints above all
+  // HTML, so when it is not meant to be visible (deploying, no deployment, a
+  // covering modal, the pane collapsed to 0×0) we hide it instead.
+  useEffect(() => {
+    const visible = showWebview && !suppressed && Boolean(deployedUrl)
+    const host = hostRef.current
+    if (!visible || !host || !deployedUrl) {
+      void window.api.preview.hide()
+      return
+    }
+
+    let raf = 0
+    // `shownKey` is the bounds key the webview is currently shown at; '' means
+    // the webview is hidden. The webview is a separate OS surface, so after it
+    // has been hidden (e.g. the pane collapsed to 0×0 when chat is focused) it
+    // must be re-`show()`n — not merely repositioned — once its host reappears.
+    let shownKey = ''
+    const measure = (): PreviewBounds | null => {
+      const r = host.getBoundingClientRect()
+      if (r.width < 1 || r.height < 1) return null
+      return { x: r.left, y: r.top, width: r.width, height: r.height }
+    }
+
+    const tick = (): void => {
+      const b = measure()
+      if (!b) {
+        if (shownKey !== '') {
+          shownKey = ''
+          void window.api.preview.hide()
+        }
+      } else {
+        const key = `${b.x}|${b.y}|${b.width}|${b.height}`
+        if (shownKey === '') {
+          // Was hidden → show + position (showUrl re-shows the surface).
+          shownKey = key
+          void window.api.preview.showUrl(deployedUrl, b)
+        } else if (key !== shownKey) {
+          shownKey = key
+          void window.api.preview.setBounds(b)
+        }
+      }
+      raf = requestAnimationFrame(tick)
+    }
+
+    const initial = measure()
+    if (initial) {
+      shownKey = `${initial.x}|${initial.y}|${initial.width}|${initial.height}`
+      void window.api.preview.showUrl(deployedUrl, initial)
+    }
+    raf = requestAnimationFrame(tick)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      void window.api.preview.hide()
+    }
+  }, [deployedUrl, showWebview, suppressed])
+
+  // Refresh the page after a successful (re)deploy (URL is often unchanged).
+  useEffect(() => {
+    if (reloadNonce > 0) void window.api.preview.reload()
+  }, [reloadNonce])
+
+  const reload = useCallback((): void => {
+    void window.api.preview.reload()
+  }, [])
+  const goBack = useCallback((): void => {
+    void window.api.preview.back()
+  }, [])
+  const goForward = useCallback((): void => {
+    void window.api.preview.forward()
+  }, [])
   const openExternal = (): void => {
     const u = displayUrl || deployedUrl
     if (u) void window.api.openExternal(u)
-  }
-
-  // Capture the dragged region from the webview and hand it up as an attachment.
-  const captureRegion = useCallback(
-    async (b: { x: number; y: number; w: number; h: number }): Promise<void> => {
-      const wv = webviewRef.current
-      if (!wv) return
-      setCapturing(true)
-      try {
-        const img = await wv.capturePage({
-          x: Math.round(b.x),
-          y: Math.round(b.y),
-          width: Math.round(b.w),
-          height: Math.round(b.h)
-        })
-        const thumb = img.toDataURL()
-        const path = await window.api.screenshot.save(thumb)
-        onCapture({ path, thumb })
-      } catch (e) {
-        setLoadError(`Screenshot failed: ${String(e)}`)
-      } finally {
-        setCapturing(false)
-      }
-    },
-    [onCapture]
-  )
-
-  // Esc cancels an in-progress region selection.
-  useEffect(() => {
-    if (!selecting) return
-    const onKey = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape') {
-        setSelecting(false)
-        setBox(null)
-        dragRef.current = null
-      }
-    }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [selecting])
-
-  const onShotDown = (e: React.MouseEvent<HTMLDivElement>): void => {
-    const r = e.currentTarget.getBoundingClientRect()
-    dragRef.current = { x: e.clientX - r.left, y: e.clientY - r.top }
-    setBox({ x: dragRef.current.x, y: dragRef.current.y, w: 0, h: 0 })
-  }
-  const onShotMove = (e: React.MouseEvent<HTMLDivElement>): void => {
-    if (!dragRef.current) return
-    const r = e.currentTarget.getBoundingClientRect()
-    const cx = e.clientX - r.left
-    const cy = e.clientY - r.top
-    setBox({
-      x: Math.min(dragRef.current.x, cx),
-      y: Math.min(dragRef.current.y, cy),
-      w: Math.abs(cx - dragRef.current.x),
-      h: Math.abs(cy - dragRef.current.y)
-    })
-  }
-  const onShotUp = (): void => {
-    const b = box
-    dragRef.current = null
-    setSelecting(false)
-    setBox(null)
-    if (b && b.w >= 5 && b.h >= 5) void captureRegion(b)
   }
 
   const dotClass =
@@ -296,14 +212,6 @@ export default function PreviewPane({
         : running || status === 'deploying'
           ? 'busy'
           : 'idle'
-
-  const showWebview = !running && Boolean(deployedUrl)
-  const stageWidth = DEVICE_WIDTHS[device]
-  const stageStyle = stageWidth ? { width: stageWidth, maxWidth: '100%' } : undefined
-  const consoleIssues = consoleLogs.reduce(
-    (n, l) => (l.level === 'warn' || l.level === 'error' ? n + 1 : n),
-    0
-  )
 
   return (
     <div className="preview">
@@ -350,7 +258,6 @@ export default function PreviewPane({
           )}
         </div>
         <div className="preview-toolbar-right">
-          {capturing && <span className="preview-loading">Capturing…</span>}
           {loading && showWebview && <span className="preview-loading">Loading…</span>}
           <select
             className="device-select"
@@ -363,23 +270,6 @@ export default function PreviewPane({
             <option value="tablet">Tablet · 820</option>
             <option value="phone">Phone · 390</option>
           </select>
-          <button
-            className={`btn btn--sm ${showConsole ? 'btn--primary' : 'btn--ghost'}`}
-            onClick={() => setShowConsole((s) => !s)}
-            disabled={!showWebview && consoleLogs.length === 0}
-            title="Show the preview's console output"
-          >
-            Console
-            {consoleIssues > 0 && <span className="console-badge">{consoleIssues}</span>}
-          </button>
-          <button
-            className={`btn btn--sm ${selecting ? 'btn--primary' : 'btn--ghost'}`}
-            onClick={() => setSelecting((s) => !s)}
-            disabled={!showWebview || capturing}
-            title="Drag a region of the preview to attach it to chat"
-          >
-            {selecting ? 'Cancel' : '⛶ Capture'}
-          </button>
           <button
             className={`btn btn--sm ${focused ? 'btn--primary' : 'btn--ghost'}`}
             onClick={onToggleFocus}
@@ -417,75 +307,11 @@ export default function PreviewPane({
             {deploy?.log.join('') || 'Starting deploy…'}
           </pre>
         ) : showWebview ? (
-          <div className={`preview-canvas${showConsole ? ' has-console' : ''}`}>
+          <div className="preview-canvas">
             <div className={`preview-stage preview-stage--${device}`} style={stageStyle}>
-              <div
-                key={`${deployedUrl}#${reloadNonce}`}
-                className="preview-webview-host"
-                ref={attachWebviewHost}
-              />
-              {loadError && (
-                <div className="preview-overlay">
-                  <div className="alert alert--error">{loadError}</div>
-                  <button className="btn btn--sm btn--ghost" onClick={reload}>
-                    Retry
-                  </button>
-                </div>
-              )}
-              {selecting && (
-                <div
-                  className="shot-overlay"
-                  onMouseDown={onShotDown}
-                  onMouseMove={onShotMove}
-                  onMouseUp={onShotUp}
-                >
-                  {box && (
-                    <div
-                      className="shot-box"
-                      style={{ left: box.x, top: box.y, width: box.w, height: box.h }}
-                    />
-                  )}
-                  <div className="shot-hint">Drag to capture a region · Esc to cancel</div>
-                </div>
-              )}
+              {/* Placeholder the native WebView2 child is positioned over. */}
+              <div className="preview-webview-host" ref={hostRef} />
             </div>
-            {showConsole && (
-              <div className="preview-console">
-                <div className="preview-console-head">
-                  <span>Console{consoleLogs.length ? ` · ${consoleLogs.length}` : ''}</span>
-                  <span className="preview-console-actions">
-                    <button
-                      className="btn btn--xs btn--ghost"
-                      onClick={() => setConsoleLogs([])}
-                      disabled={consoleLogs.length === 0}
-                    >
-                      Clear
-                    </button>
-                    <button
-                      className="deployments-close"
-                      onClick={() => setShowConsole(false)}
-                      title="Close console"
-                    >
-                      ✕
-                    </button>
-                  </span>
-                </div>
-                <div className="preview-console-list" ref={consoleListRef}>
-                  {consoleLogs.length === 0 ? (
-                    <div className="preview-console-empty">
-                      No console output yet. Messages logged by the deployed app appear here.
-                    </div>
-                  ) : (
-                    consoleLogs.map((l) => (
-                      <div key={l.id} className={`console-row console-row--${l.level}`}>
-                        <span className="console-row-level">{l.level}</span>
-                        <span className="console-row-text">{l.text}</span>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         ) : needsWorkspace ? (
           <div className="preview-placeholder">

@@ -718,6 +718,32 @@ export interface ChatMessage {
 }
 
 /* ------------------------------------------------------------------ *
+ * Preview pane (embedded native webview)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Logical-pixel rectangle for the native preview webview, expressed in the
+ * renderer's client coordinates (i.e. the host element's `getBoundingClientRect`,
+ * which map 1:1 to the child webview's logical coordinates).
+ */
+export interface PreviewBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+/** Navigation state of the preview webview, pushed on the `preview:nav` event. */
+export interface PreviewNavState {
+  /** Current committed main-frame URL. */
+  url: string
+  /** True while a document load is in flight. */
+  loading: boolean
+  canGoBack: boolean
+  canGoForward: boolean
+}
+
+/* ------------------------------------------------------------------ *
  * IPC channels
  * ------------------------------------------------------------------ */
 
@@ -794,7 +820,8 @@ export const IpcChannels = {
 
   // main -> renderer events
   procLog: 'proc:log',
-  chatEvent: 'chat:event'
+  chatEvent: 'chat:event',
+  previewNav: 'preview:nav'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -998,6 +1025,33 @@ export interface RayfinStudioApi {
   settings: {
     get: () => Promise<AppSettings>
     set: (patch: Partial<AppSettings>) => Promise<AppSettings>
+  }
+
+  /**
+   * Embedded preview pane, backed by a single native WebView2 child webview that
+   * floats above the React layout. The renderer owns *where* it sits (it reports
+   * the host element's bounds) and *when* it is visible (it must hide the webview
+   * whenever something is painted over the host: other tabs, modals, the deploy
+   * log). Navigation state is delivered out-of-band via {@link onNavState}.
+   */
+  preview: {
+    /**
+     * Show the preview at `url`, positioned over `bounds`. Creates the webview on
+     * first call; afterwards navigates (when `url` changed) and repositions.
+     */
+    showUrl: (url: string, bounds: PreviewBounds) => Promise<void>
+    /** Reposition/resize the preview to track its host element. */
+    setBounds: (bounds: PreviewBounds) => Promise<void>
+    /** Hide the preview (call whenever the host is covered or unmounted). */
+    hide: () => Promise<void>
+    /** Reload the current page. */
+    reload: () => Promise<void>
+    /** Navigate back one entry in the preview's history. */
+    back: () => Promise<void>
+    /** Navigate forward one entry in the preview's history. */
+    forward: () => Promise<void>
+    /** Subscribe to preview navigation state. Returns an unsubscribe function. */
+    onNavState: (cb: (state: PreviewNavState) => void) => () => void
   }
 
   /** Subscribe to streamed process output. Returns an unsubscribe function. */
