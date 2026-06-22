@@ -1,0 +1,4 @@
+{
+  "connectionString": "InstrumentationKey=00000000-0000-0000-0000-000000000000;IngestionEndpoint=https://eastus2-0.in.applicationinsights.azure.com/",
+  "downloadBaseUrl": "https://<storageaccount>.blob.core.windows.net/downloads/"
+}

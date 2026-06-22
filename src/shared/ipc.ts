@@ -30,7 +30,7 @@ export interface ToolStatus {
   installHint: string
   /** Docs / download URL for tools the app cannot auto-install. */
   installUrl?: string
-  /** True when the app can install this tool itself (global npm package). */
+  /** True when the app can install this tool itself (npm package or winget/brew). */
   autoInstallable: boolean
   /** Whether this tool must be present before the app can be used. */
   required: boolean
@@ -116,6 +116,9 @@ export type ProcStreamId =
   | 'logout:rayfin'
   | 'install:rayfin'
   | 'install:copilot'
+  | 'install:node'
+  | 'install:git'
+  | 'install:setup'
   | 'create:project'
   | 'deploy:run'
 
@@ -128,6 +131,21 @@ export interface ProcLogEvent {
 export interface ProcResult {
   ok: boolean
   exitCode: number | null
+}
+
+/** Result of a tool install, including whether the app must relaunch to see it. */
+export interface InstallResult extends ProcResult {
+  /**
+   * True when a system tool (Node/Git) was installed via a package manager. Its
+   * new PATH entry is not visible to the already-running process, so the app must
+   * relaunch before the tool — and anything that depends on it — can be used.
+   */
+  requiresRelaunch?: boolean
+  /**
+   * True when auto-install was unavailable and the official installer was opened
+   * in the browser instead; the user finishes manually, then relaunches.
+   */
+  manual?: boolean
 }
 
 /* ------------------------------------------------------------------ *
@@ -342,8 +360,6 @@ export type ThemePreference = 'dark' | 'light' | 'system'
 export interface AppSettings {
   /** UI theme; 'system' follows the OS dark/light setting. */
   theme: ThemePreference
-  /** Opt-in (stored-only) flag for future anonymous usage telemetry. */
-  telemetry: boolean
   /** Experimental, opt-in features (off by default). */
   experiments?: ExperimentFlags
 }
@@ -710,9 +726,11 @@ export const IpcChannels = {
   getVersions: 'app:getVersions',
   openExternal: 'app:openExternal',
   openLogs: 'app:openLogs',
+  relaunch: 'app:relaunch',
 
   doctorCheck: 'doctor:check',
   doctorInstall: 'doctor:install',
+  doctorInstallAll: 'doctor:installAll',
 
   authStatus: 'auth:status',
   authLoginCopilot: 'auth:loginCopilot',
@@ -792,11 +810,19 @@ export interface RayfinStudioApi {
   openExternal: (url: string) => Promise<void>
   /** Open the logs folder (userData/logs) in the OS file manager; returns its path. */
   openLogs: () => Promise<string>
+  /** Restart the app (used to pick up newly installed Node/Git on PATH). */
+  relaunch: () => Promise<void>
 
   doctor: {
     check: () => Promise<DoctorReport>
-    /** Install an auto-installable tool (currently rayfin / copilot via npm -g). */
-    install: (id: ToolId) => Promise<ProcResult>
+    /** Install one auto-installable tool (npm: rayfin/copilot, system: node/git). */
+    install: (id: ToolId) => Promise<InstallResult>
+    /**
+     * Install every missing required tool in dependency order. Installs system
+     * tools (Node/Git) first; if any are installed it returns requiresRelaunch so
+     * the caller can restart before the npm-based CLIs are installed.
+     */
+    installAll: () => Promise<InstallResult>
   }
 
   auth: {

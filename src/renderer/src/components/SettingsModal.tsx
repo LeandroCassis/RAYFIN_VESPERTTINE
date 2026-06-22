@@ -79,19 +79,14 @@ export default function SettingsModal({
             <span className="field-hint">New projects are created under this folder.</span>
           </label>
 
-          <label className="settings-check">
-            <input
-              type="checkbox"
-              checked={settings.telemetry}
-              onChange={(e) => onChange({ telemetry: e.target.checked })}
-            />
-            <span>
-              <span className="settings-check-label">Share anonymous usage data</span>
-              <span className="field-hint">
-                Opt in to anonymous telemetry. Stored locally only — nothing is sent yet.
-              </span>
+          <div className="settings-note">
+            <span className="settings-check-label">Anonymous usage stats</span>
+            <span className="field-hint">
+              Rayfin Fabricator sends anonymous, hashed usage stats (a one-way hash of
+              your sign-in domain — never your email, code, or app contents) so we can
+              see how the product is used. No personal data ever leaves your machine.
             </span>
-          </label>
+          </div>
 
           <div className="field">
             <span className="field-label">

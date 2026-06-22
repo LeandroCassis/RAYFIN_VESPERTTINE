@@ -1,0 +1,159 @@
+// ===== Total distinct users who TRIED =====
+customEvents
+| where name == "signin"
+| summarize TriedUsers = dcount(user_Id)
+
+// ===== Total distinct TENANTS who tried =====
+customEvents
+| where name == "signin"
+| extend tenantHash = tostring(customDimensions.tenantHash)
+| where isnotempty(tenantHash)
+| summarize TriedTenants = dcount(tenantHash)
+
+// ===== Total distinct users who DEPLOYED =====
+customEvents
+| where name == "deploy"
+| where tostring(customDimensions.success) == "true"
+| summarize DeployedUsers = dcount(user_Id)
+
+// ===== Total distinct tenants who deployed =====
+customEvents
+| where name == "deploy"
+| where tostring(customDimensions.success) == "true"
+| extend tenantHash = tostring(customDimensions.tenantHash)
+| where isnotempty(tenantHash)
+| summarize DeployedTenants = dcount(tenantHash)
+
+// ===== Tried -> Deployed conversion (users) =====
+let TriedUsers = toscalar(
+    customEvents
+    | where name == "signin"
+    | summarize dcount(user_Id)
+);
+let DeployedUsers = toscalar(
+    customEvents
+    | where name == "deploy"
+    | where tostring(customDimensions.success) == "true"
+    | summarize dcount(user_Id)
+);
+print
+    TriedUsers = TriedUsers,
+    DeployedUsers = DeployedUsers,
+    ConversionPct = iff(TriedUsers == 0, real(null), round(100.0 * todouble(DeployedUsers) / todouble(TriedUsers), 2))
+
+// ===== DAU (daily active users, last 30 days) =====
+customEvents
+| where name == "signin"
+| where timestamp > ago(30d)
+| summarize DAU = dcount(user_Id) by bin(timestamp, 1d)
+| order by timestamp asc
+
+// ===== WAU (rolling 7-day distinct users per day, last 90 days) =====
+// Each active user-day is expanded into the following 7 report days. After filtering
+// report days to the output range, each Day contains users active in (Day - 6d) through Day.
+let OutputStart = startofday(ago(90d));
+let OutputEnd = startofday(now());
+let Window = 7d;
+let RollingWAU =
+    customEvents
+    | where name == "signin"
+    | where timestamp >= OutputStart - (Window - 1d) and timestamp < OutputEnd + 1d
+    | project user_Id, ActivityDay = startofday(timestamp)
+    | distinct user_Id, ActivityDay
+    | extend ReportDays = range(ActivityDay, ActivityDay + (Window - 1d), 1d)
+    | mv-expand Day = ReportDays to typeof(datetime)
+    | where Day between (OutputStart .. OutputEnd)
+    | summarize WAU = dcount(user_Id) by Day;
+range Day from OutputStart to OutputEnd step 1d
+| join kind=leftouter (RollingWAU) on Day
+| project Day, WAU = coalesce(WAU, tolong(0))
+| order by Day asc
+
+// ===== MAU (rolling 30-day distinct users per day, last 90 days) =====
+// Same expansion pattern as WAU, but each active user-day contributes to the next 30 report days.
+let OutputStart = startofday(ago(90d));
+let OutputEnd = startofday(now());
+let Window = 30d;
+let RollingMAU =
+    customEvents
+    | where name == "signin"
+    | where timestamp >= OutputStart - (Window - 1d) and timestamp < OutputEnd + 1d
+    | project user_Id, ActivityDay = startofday(timestamp)
+    | distinct user_Id, ActivityDay
+    | extend ReportDays = range(ActivityDay, ActivityDay + (Window - 1d), 1d)
+    | mv-expand Day = ReportDays to typeof(datetime)
+    | where Day between (OutputStart .. OutputEnd)
+    | summarize MAU = dcount(user_Id) by Day;
+range Day from OutputStart to OutputEnd step 1d
+| join kind=leftouter (RollingMAU) on Day
+| project Day, MAU = coalesce(MAU, tolong(0))
+| order by Day asc
+
+// ===== MAU/DAU stickiness ratio (latest period) =====
+let LatestDay = startofday(now());
+let DAU = toscalar(
+    customEvents
+    | where name == "signin"
+    | where timestamp >= LatestDay and timestamp < LatestDay + 1d
+    | summarize dcount(user_Id)
+);
+let MAU = toscalar(
+    customEvents
+    | where name == "signin"
+    | where timestamp >= LatestDay - 29d and timestamp < LatestDay + 1d
+    | summarize dcount(user_Id)
+);
+print
+    Day = LatestDay,
+    DAU = DAU,
+    MAU = MAU,
+    StickinessPct = iff(MAU == 0, real(null), round(100.0 * todouble(DAU) / todouble(MAU), 2))
+
+// ===== New vs returning users per day (last 30 days) =====
+let FirstSeen =
+    customEvents
+    | where name == "signin"
+    | summarize FirstSeenDay = startofday(min(timestamp)) by user_Id;
+let DailyActivity =
+    customEvents
+    | where name == "signin"
+    | where timestamp >= startofday(ago(30d))
+    | summarize by Day = startofday(timestamp), user_Id;
+DailyActivity
+| join kind=leftouter (FirstSeen) on user_Id
+| summarize
+    NewUsers = dcountif(user_Id, FirstSeenDay == Day),
+    ReturningUsers = dcountif(user_Id, FirstSeenDay < Day)
+    by Day
+| order by Day asc
+
+// ===== Deploys over time (successful deploys, last 30 days) =====
+customEvents
+| where name == "deploy"
+| where tostring(customDimensions.success) == "true"
+| where timestamp > ago(30d)
+| summarize SuccessfulDeploys = count() by bin(timestamp, 1d)
+| order by timestamp asc
+
+// ===== Deploy success rate =====
+customEvents
+| where name == "deploy"
+| extend Success = tostring(customDimensions.success)
+| summarize
+    SuccessfulDeploys = countif(Success == "true"),
+    FailedDeploys = countif(Success == "false"),
+    TotalDeployAttempts = count()
+| extend SuccessRatePct = iff(TotalDeployAttempts == 0, real(null), round(100.0 * todouble(SuccessfulDeploys) / todouble(TotalDeployAttempts), 2))
+
+// ===== Funnel summary =====
+customEvents
+| where name in ("signin", "deploy")
+| extend
+    tenantHash = tostring(customDimensions.tenantHash),
+    success = tostring(customDimensions.success)
+| summarize
+    TriedUsers = dcountif(user_Id, name == "signin"),
+    DeployedUsers = dcountif(user_Id, name == "deploy" and success == "true"),
+    TriedTenants = dcountif(tenantHash, name == "signin" and isnotempty(tenantHash)),
+    DeployedTenants = dcountif(tenantHash, name == "deploy" and success == "true" and isnotempty(tenantHash))
+

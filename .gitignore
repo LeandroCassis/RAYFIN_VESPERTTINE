@@ -14,3 +14,8 @@ out-tsc/
 
 # Local workspace where user Rayfin projects are created (kept out of this repo)
 workspace/
+
+# Telemetry/Azure endpoints injected at deploy time (per-deployment, never committed)
+resources/telemetry.json
+.deploy.state.json
+.deploy.lifecycle-policy.json

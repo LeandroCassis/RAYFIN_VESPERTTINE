@@ -1,5 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import type { AuthStatus, DoctorReport, ProcLogEvent, ToolId, ToolStatus } from '@shared/ipc'
+import type {
+  AuthStatus,
+  DoctorReport,
+  InstallResult,
+  ProcLogEvent,
+  ToolId,
+  ToolStatus
+} from '@shared/ipc'
 import logo from '../assets/logo.png'
 
 interface Props {
@@ -13,6 +20,7 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
   const [log, setLog] = useState('')
   const [busy, setBusy] = useState<string | null>(null)
   const [showLog, setShowLog] = useState(false)
+  const [needsRelaunch, setNeedsRelaunch] = useState(false)
   const logRef = useRef<HTMLPreElement>(null)
 
   useEffect(() => {
@@ -39,10 +47,34 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
     }
   }
 
+  /** Run an install action and react to whether a relaunch is required. */
+  async function runInstall(
+    key: string,
+    label: string,
+    fn: () => Promise<InstallResult>
+  ): Promise<void> {
+    setBusy(key)
+    setShowLog(true)
+    setLog((p) => `${p}\n\u203a ${label}\n`)
+    try {
+      const res = await fn()
+      if (res?.requiresRelaunch) setNeedsRelaunch(true)
+      if (res?.manual) {
+        setLog((p) => `${p}\nFinish the install in the page that opened, then click “Restart”.\n`)
+      }
+    } catch (err) {
+      setLog((p) => `${p}\n[error] ${String(err)}\n`)
+    } finally {
+      setBusy(null)
+      await onRefresh()
+    }
+  }
+
   const tools = doctor?.tools ?? []
   const tool = (id: ToolId): ToolStatus | undefined => tools.find((t) => t.id === id)
   const copilotReady = tool('copilot')?.found ?? false
   const rayfinReady = tool('rayfin')?.found ?? false
+  const missingAuto = tools.filter((t) => t.required && !t.found && t.autoInstallable)
 
   const allReady =
     (doctor?.ready ?? false) &&
@@ -64,7 +96,35 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
         </header>
 
         <section className="setup-card">
-          <h2 className="setup-card-title">1 · Tools</h2>
+          <div className="setup-card-head">
+            <h2 className="setup-card-title">1 · Tools</h2>
+            {missingAuto.length > 0 && (
+              <button
+                className="btn btn--primary btn--sm"
+                disabled={busy !== null}
+                onClick={() =>
+                  runInstall('install:all', 'Install everything', () =>
+                    window.api.doctor.installAll()
+                  )
+                }
+              >
+                {busy === 'install:all' ? 'Installing…' : 'Install everything'}
+              </button>
+            )}
+          </div>
+
+          {needsRelaunch && (
+            <div className="setup-relaunch">
+              <div className="setup-relaunch-text">
+                <strong>Almost there.</strong> Restart to finish setting up the tools that
+                were just installed.
+              </div>
+              <button className="btn btn--primary btn--sm" onClick={() => window.api.relaunch()}>
+                Restart now
+              </button>
+            </div>
+          )}
+
           <ul className="tool-list">
             {tools.map((t) => (
               <li key={t.id} className="tool-row">
@@ -79,7 +139,7 @@ export default function SetupScreen({ doctor, auth, refreshing, onRefresh }: Pro
                       className="btn btn--sm"
                       disabled={busy !== null}
                       onClick={() =>
-                        runAction(`install:${t.id}`, `Install ${t.name}`, () =>
+                        runInstall(`install:${t.id}`, `Install ${t.name}`, () =>
                           window.api.doctor.install(t.id)
                         )
                       }

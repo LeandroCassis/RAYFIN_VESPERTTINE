@@ -25,7 +25,7 @@ function defaults(): ProjectsState {
 }
 
 function defaultSettings(): AppSettings {
-  return { theme: 'system', telemetry: false, experiments: { sideThreads: false } }
+  return { theme: 'system', experiments: { sideThreads: false } }
 }
 
 let cache: ProjectsState | null = null

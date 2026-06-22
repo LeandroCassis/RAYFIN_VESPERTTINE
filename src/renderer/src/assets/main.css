@@ -759,6 +759,34 @@ code {
   font-weight: 600;
 }
 
+.setup-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.setup-card-head .setup-card-title {
+  margin: 0;
+}
+
+.setup-relaunch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.setup-relaunch-text {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
 /* Tool list */
 .tool-list {
   list-style: none;
@@ -3461,6 +3489,11 @@ code {
   font-size: 13px;
   color: var(--text);
   margin-bottom: 2px;
+}
+.settings-note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 .settings-beta {
   display: inline-block;

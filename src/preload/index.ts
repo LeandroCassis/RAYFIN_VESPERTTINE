@@ -14,10 +14,12 @@ const api: RayfinStudioApi = {
   getVersions: () => ipcRenderer.invoke(IpcChannels.getVersions),
   openExternal: (url: string) => ipcRenderer.invoke(IpcChannels.openExternal, url),
   openLogs: () => ipcRenderer.invoke(IpcChannels.openLogs),
+  relaunch: () => ipcRenderer.invoke(IpcChannels.relaunch),
 
   doctor: {
     check: () => ipcRenderer.invoke(IpcChannels.doctorCheck),
-    install: (id: ToolId) => ipcRenderer.invoke(IpcChannels.doctorInstall, id)
+    install: (id: ToolId) => ipcRenderer.invoke(IpcChannels.doctorInstall, id),
+    installAll: () => ipcRenderer.invoke(IpcChannels.doctorInstallAll)
   },
 
   auth: {

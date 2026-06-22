@@ -1,0 +1,112 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build installers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Write telemetry configuration
+        run: node -e "const fs=require('fs');fs.mkdirSync('resources',{recursive:true});fs.writeFileSync('resources/telemetry.json',JSON.stringify({connectionString:process.env.CS||'',downloadBaseUrl:process.env.DL||''},null,2))"
+        env:
+          CS: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
+          DL: ${{ vars.DOWNLOAD_BASE_URL }}
+
+      - name: Build application
+        run: npm run build
+
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        run: npx electron-builder --win --publish never
+
+      - name: Package macOS installers
+        if: runner.os == 'macOS'
+        run: npx electron-builder --mac --publish never
+
+      - name: Upload installers to Azure Blob Storage
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            az storage blob upload-batch -d downloads -s dist --pattern "*.exe" --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite
+          elif [ "$RUNNER_OS" = "macOS" ]; then
+            az storage blob upload-batch -d downloads -s dist --pattern "*.dmg" --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite
+            az storage blob upload-batch -d downloads -s dist --pattern "*.zip" --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite
+          fi
+          az storage blob upload-batch -d downloads -s dist --pattern "*.blockmap" --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite || true
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+
+      - name: Upload dist artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.os }}
+          path: dist/
+          if-no-files-found: error
+
+  manifest:
+    name: Publish latest manifest
+    needs: [build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create latest.json manifest
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const refName = process.env.GITHUB_REF_NAME || '';
+          let version;
+          if (refName.startsWith('v')) {
+            version = refName.slice(1);
+          } else {
+            version = require('./package.json').version;
+          }
+
+          const baseUrl = process.env.DOWNLOAD_BASE_URL || '';
+          const normalizedBaseUrl = baseUrl && !baseUrl.endsWith('/') ? `${baseUrl}/` : baseUrl;
+          const manifest = {
+            version,
+            windows: `${normalizedBaseUrl}rayfin-desktop-${version}-setup.exe`,
+            mac: `${normalizedBaseUrl}rayfin-desktop-${version}.dmg`,
+            updatedAt: new Date().toISOString()
+          };
+
+          fs.writeFileSync('latest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+          NODE
+        env:
+          DOWNLOAD_BASE_URL: ${{ vars.DOWNLOAD_BASE_URL }}
+
+      - name: Upload latest manifest to Azure Blob Storage
+        continue-on-error: true
+        run: az storage blob upload --container-name downloads --name latest.json --file latest.json --connection-string "$AZURE_STORAGE_CONNECTION_STRING" --overwrite true
+        env:
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}

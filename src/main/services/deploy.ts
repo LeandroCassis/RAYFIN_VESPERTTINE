@@ -14,6 +14,8 @@
  */
 
 import { run } from './exec'
+import { getCachedIdentity } from './auth'
+import { trackDeploy } from './telemetry'
 import { findProject, updateDeploy, updateProject } from './store'
 import type {
   DeployOutcome,
@@ -180,6 +182,7 @@ export async function runDeploy(
       (result.stderr.trim() || captured.trim().split(/\r?\n/).slice(-3).join(' ')).slice(0, 500) ||
       `rayfin up exited with code ${result.exitCode ?? 'unknown'}.`
     updateDeploy(projectId, { status: 'error', outcome, error, at: new Date().toISOString() })
+    trackDeploy(getCachedIdentity(), false)
     onData?.(
       'system',
       outcome === 'needs-workspace'
@@ -213,6 +216,7 @@ export async function runDeploy(
   // restoring an older version, current HEAD will differ from this).
   const commit = await headSha(project.path)
   if (commit) updateDeploy(projectId, { commit })
+  trackDeploy(getCachedIdentity(), true)
   onData?.('system', `\n✅ Deployed. ${url ? `Live at ${url}` : ''}\n`)
 
   return { ok: true, outcome: 'success', url, apiUrl, portalUrl }

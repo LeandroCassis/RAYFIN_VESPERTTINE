@@ -12,7 +12,7 @@ import {
   type ProcStreamId,
   type ToolId
 } from '../shared/ipc'
-import { checkEnvironment, installTool } from './services/doctor'
+import { checkEnvironment, installTool, installAllMissing } from './services/doctor'
 import { getAuthStatus, loginCopilot, loginRayfin, logoutRayfin } from './services/auth'
 import { listFabricWorkspaces, deleteFabricApps } from './services/fabric'
 import {
@@ -90,8 +90,21 @@ export function registerIpc(): void {
   // Environment doctor
   ipcMain.handle(IpcChannels.doctorCheck, () => checkEnvironment())
   ipcMain.handle(IpcChannels.doctorInstall, (event, id: ToolId) => {
-    const channel: ProcStreamId = id === 'copilot' ? 'install:copilot' : 'install:rayfin'
-    return installTool(id, streamer(event, channel))
+    const channels: Record<ToolId, ProcStreamId> = {
+      node: 'install:node',
+      npm: 'install:setup',
+      git: 'install:git',
+      rayfin: 'install:rayfin',
+      copilot: 'install:copilot'
+    }
+    return installTool(id, streamer(event, channels[id]))
+  })
+  ipcMain.handle(IpcChannels.doctorInstallAll, (event) =>
+    installAllMissing(streamer(event, 'install:setup'))
+  )
+  ipcMain.handle(IpcChannels.relaunch, () => {
+    app.relaunch()
+    app.exit(0)
   })
 
   // Authentication

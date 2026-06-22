@@ -2,6 +2,7 @@ import { readFile } from 'fs/promises'
 import { homedir } from 'os'
 import { join } from 'path'
 import { run } from './exec'
+import { trackSignin, type TelemetryIdentity } from './telemetry'
 import type {
   AuthStatus,
   CopilotAuthStatus,
@@ -10,6 +11,20 @@ import type {
 } from '../../shared/ipc'
 
 type StreamCb = (stream: 'stdout' | 'stderr', chunk: string) => void
+
+/**
+ * Last-known signed-in Fabric/Rayfin identity, cached so telemetry (e.g. the
+ * deploy event) can attach a stable hashed user without re-spawning the CLI.
+ * Updated every time we resolve Rayfin auth.
+ */
+let cachedIdentity: TelemetryIdentity | null = null
+/** Guard so the "active at startup" signin event fires at most once per process. */
+let startupSigninSent = false
+
+/** The most recently resolved signed-in identity (or null when signed out). */
+export function getCachedIdentity(): TelemetryIdentity | null {
+  return cachedIdentity
+}
 
 interface CopilotUser {
   host?: string
@@ -102,16 +117,28 @@ export async function getRayfinAuth(): Promise<RayfinAuthStatus> {
   // user as signed in — which made "Sign out" appear to do nothing (the app
   // never routed back to the setup screen). Guard against the negative form.
   const signedIn = res.ok && !/not\s+signed\s+in/i.test(text) && /signed\s+in/i.test(text)
-  if (!signedIn) return { signedIn: false }
-  return {
+  if (!signedIn) {
+    cachedIdentity = null
+    return { signedIn: false }
+  }
+  const status: RayfinAuthStatus = {
     signedIn: true,
     user: text.match(/User:\s*(.+)/i)?.[1]?.trim(),
     tenant: text.match(/Tenant:\s*(.+)/i)?.[1]?.trim()
   }
+  cachedIdentity = { email: status.user, tenant: status.tenant }
+  return status
 }
 
 export async function getAuthStatus(): Promise<AuthStatus> {
   const [copilot, rayfin] = await Promise.all([getCopilotAuth(), getRayfinAuth()])
+  // Fire one "active at startup" signin per process for users who are already
+  // signed in (powers MAU/DAU/WAU without forcing a fresh login). The explicit
+  // login event below covers brand-new sign-ins.
+  if (rayfin.signedIn && !startupSigninSent) {
+    startupSigninSent = true
+    trackSignin(cachedIdentity, 'startup')
+  }
   return { copilot, rayfin }
 }
 
@@ -126,10 +153,16 @@ export async function loginRayfin(tenant?: string, onData?: StreamCb): Promise<P
   const args = ['login', '--select']
   if (tenant && tenant.trim()) args.push('--tenant', tenant.trim())
   const res = await run('rayfin', args, { onData, timeout: 5 * 60_000 })
+  // On a successful sign-in, refresh the cached identity and record the event.
+  if (res.ok) {
+    await getRayfinAuth()
+    trackSignin(cachedIdentity, 'login')
+  }
   return { ok: res.ok, exitCode: res.exitCode }
 }
 
 export async function logoutRayfin(onData?: StreamCb): Promise<ProcResult> {
   const res = await run('rayfin', ['logout'], { onData, timeout: 60_000 })
+  if (res.ok) cachedIdentity = null
   return { ok: res.ok, exitCode: res.exitCode }
 }
