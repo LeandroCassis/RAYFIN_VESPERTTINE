@@ -3040,7 +3040,10 @@ code {
   min-height: 0;
   min-width: 0;
   display: flex;
-  background: #fff;
+  /* Matches the preview body so that when the native webview is hidden (a modal
+     is open, the pane is collapsed, …) the placeholder dims with the rest of the
+     app instead of flashing a bright rectangle. The live webview paints over it. */
+  background: var(--bg);
 }
 
 /* Preview-depth: device-width framing + console drawer. */
