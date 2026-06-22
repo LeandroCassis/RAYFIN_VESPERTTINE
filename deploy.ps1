@@ -114,9 +114,24 @@ function Ensure-AzureLogin {
         throw 'Azure CLI (az) is required on PATH. Install it from https://learn.microsoft.com/cli/azure/install-azure-cli and re-run this script.'
     }
 
+    # `az account show` reads cached profile data and succeeds even when the
+    # refresh token has expired, so probe for a live access token to be sure the
+    # session can actually call Azure before we start provisioning.
+    $needLogin = $false
     $account = Invoke-CommandChecked -FilePath 'az' -Arguments @('account', 'show', '-o', 'json') -AllowFailure -Quiet
     if (-not $account) {
-        Write-Info 'Azure CLI is not logged in; launching az login.'
+        $needLogin = $true
+    }
+    else {
+        $token = Invoke-CommandChecked -FilePath 'az' -Arguments @('account', 'get-access-token', '-o', 'none') -AllowFailure -Quiet
+        if ($null -eq $token) {
+            Write-Info 'Cached Azure session has expired; re-authentication required.'
+            $needLogin = $true
+        }
+    }
+
+    if ($needLogin) {
+        Write-Info 'Launching az login (a browser window will open; complete the sign-in there).'
         Invoke-CommandChecked -FilePath 'az' -Arguments @('login', '-o', 'none') | Out-Null
     }
 
@@ -304,61 +319,55 @@ function Ensure-Budget {
     param([Parameter(Mandatory)][string]$Email)
 
     Write-Step "Ensuring monthly $BudgetAmount USD budget alert"
-    try {
-        $existing = Invoke-Az -Arguments @('consumption', 'budget', 'show', '--budget-name', $BudgetName, '--resource-group', $ResourceGroup, '-o', 'json') -AllowFailure -Quiet
-        if ($existing) { return }
 
-        $startDate = Get-Date -Format 'yyyy-MM-01'
-        $endDate = (Get-Date).AddYears(10).ToString('yyyy-MM-01')
-        Invoke-Az -Arguments @(
-            'consumption', 'budget', 'create-with-rg',
-            '--budget-name', $BudgetName,
-            '--resource-group', $ResourceGroup,
-            '--amount', [string]$BudgetAmount,
-            '--time-grain', 'Monthly',
-            '--start-date', $startDate,
-            '--end-date', $endDate,
-            '--category', 'Cost',
-            '--notifications', "Actual_GreaterThan_80_Percent:{enabled:true,operator:GreaterThan,threshold:80,contactEmails:['$Email']}", "Actual_GreaterThan_100_Percent:{enabled:true,operator:GreaterThan,threshold:100,contactEmails:['$Email']}",
-            '-o', 'none'
-        ) | Out-Null
+    $existing = Invoke-Az -Arguments @('consumption', 'budget', 'show', '--budget-name', $BudgetName, '--resource-group', $ResourceGroup, '-o', 'json') -AllowFailure -Quiet
+    if ($existing) {
+        Write-Info 'Budget already exists.'
         return
     }
-    catch {
-        Write-Warning "Azure CLI consumption budget command failed; trying ARM REST fallback. $($_.Exception.Message)"
-    }
 
-    try {
-        $scope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
-        $budgetBody = @{
-            properties = @{
-                category = 'Cost'
-                amount = [double]$BudgetAmount
-                timeGrain = 'Monthly'
-                timePeriod = @{
-                    startDate = (Get-Date -Format 'yyyy-MM-01T00:00:00Z')
-                    endDate = (Get-Date).AddYears(10).ToString('yyyy-MM-01T00:00:00Z')
+    # Create via the ARM REST API (the `az consumption budget` shorthand syntax for
+    # --notifications is brittle across CLI versions). Body is written to a temp file
+    # so the JSON is passed intact regardless of shell quoting.
+    $scope = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroup"
+    $budgetBody = @{
+        properties = @{
+            category   = 'Cost'
+            amount     = [double]$BudgetAmount
+            timeGrain  = 'Monthly'
+            timePeriod = @{
+                startDate = (Get-Date -Format 'yyyy-MM-01T00:00:00Z')
+                endDate   = (Get-Date).AddYears(10).ToString('yyyy-MM-01T00:00:00Z')
+            }
+            notifications = @{
+                Actual_GreaterThan_80_Percent = @{
+                    enabled       = $true
+                    operator      = 'GreaterThan'
+                    threshold     = 80
+                    contactEmails = @($Email)
                 }
-                notifications = @{
-                    Actual_GreaterThan_80_Percent = @{
-                        enabled = $true
-                        operator = 'GreaterThan'
-                        threshold = 80
-                        contactEmails = @($Email)
-                    }
-                    Actual_GreaterThan_100_Percent = @{
-                        enabled = $true
-                        operator = 'GreaterThan'
-                        threshold = 100
-                        contactEmails = @($Email)
-                    }
+                Actual_GreaterThan_100_Percent = @{
+                    enabled       = $true
+                    operator      = 'GreaterThan'
+                    threshold     = 100
+                    contactEmails = @($Email)
                 }
             }
-        } | ConvertTo-Json -Depth 20 -Compress
-        Invoke-Az -Arguments @('rest', '--method', 'put', '--url', "https://management.azure.com$scope/providers/Microsoft.Consumption/budgets/$BudgetName?api-version=2023-05-01", '--body', $budgetBody, '-o', 'none') | Out-Null
+        }
+    } | ConvertTo-Json -Depth 20
+
+    $bodyFile = Join-Path ([System.IO.Path]::GetTempPath()) "rayfin-budget-$([guid]::NewGuid().ToString('N')).json"
+    try {
+        Set-Content -LiteralPath $bodyFile -Value $budgetBody -Encoding utf8
+        $url = "https://management.azure.com$scope/providers/Microsoft.Consumption/budgets/${BudgetName}?api-version=2023-05-01"
+        Invoke-Az -Arguments @('rest', '--method', 'put', '--url', $url, '--body', "@$bodyFile", '-o', 'none') | Out-Null
+        Write-Info "Budget '$BudgetName' created with alerts at 80% and 100% to $Email."
     }
     catch {
         Write-Warning "Could not create Azure Consumption budget; please create it manually in Azure Portal. $($_.Exception.Message)"
+    }
+    finally {
+        Remove-Item -LiteralPath $bodyFile -Force -ErrorAction SilentlyContinue
     }
 }
 
