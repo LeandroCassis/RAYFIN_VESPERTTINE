@@ -174,15 +174,17 @@ fn resolve_program(file: &str) -> Resolved {
 }
 
 /// Resolve the global rayfin-cli's auth entry module (`dist/auth/index.js`),
-/// reusing the same CLI the app already drives. Mirrors the TS `npm root -g`
-/// lookup but derives the global package root from the `rayfin` shim on PATH so
-/// we never have to spawn the non-bypassable `npm` cmd-shim. Returns the first
-/// existing candidate, or `None` when the CLI can't be located.
+/// reusing the same CLI the app already drives. Derives the global package root
+/// from the `rayfin` bin on PATH so we never have to spawn the non-bypassable
+/// `npm` cmd-shim. Handles the Windows layout (`<binDir>/node_modules/...`), the
+/// Unix layout (`<prefix>/lib/node_modules/...`), and symlinked bins (macOS/Linux
+/// nvm/Homebrew). Returns the first existing candidate, or `None` when the CLI
+/// can't be located.
 pub fn global_rayfin_auth_module() -> Option<PathBuf> {
   let shim = which::which("rayfin").ok()?;
   let mut candidates: Vec<PathBuf> = Vec::new();
-  // Standard npm global layout: <binDir>/node_modules/@microsoft/rayfin-cli/...
   if let Some(bin_dir) = shim.parent() {
+    // Windows npm global layout: <binDir>/node_modules/@microsoft/rayfin-cli/...
     candidates.push(
       bin_dir
         .join("node_modules")
@@ -192,6 +194,20 @@ pub fn global_rayfin_auth_module() -> Option<PathBuf> {
         .join("auth")
         .join("index.js"),
     );
+    // Unix npm global layout: the bin lives in <prefix>/bin while the package is
+    // installed under <prefix>/lib/node_modules (covers nvm, Homebrew, system).
+    if let Some(prefix) = bin_dir.parent() {
+      candidates.push(
+        prefix
+          .join("lib")
+          .join("node_modules")
+          .join("@microsoft")
+          .join("rayfin-cli")
+          .join("dist")
+          .join("auth")
+          .join("index.js"),
+      );
+    }
   }
   // Or derive from the cmd-shim's node target (<pkgRoot>/scripts/main.js).
   if is_batch(&shim) {
@@ -199,6 +215,14 @@ pub fn global_rayfin_auth_module() -> Option<PathBuf> {
       if let Some(pkg_root) = script.parent().and_then(|p| p.parent()) {
         candidates.push(pkg_root.join("dist").join("auth").join("index.js"));
       }
+    }
+  }
+  // On macOS/Linux the bin is a symlink into the package (e.g.
+  // <pkgRoot>/scripts/main); resolve it to the real script and walk up to the
+  // package root, then locate the auth entry module.
+  if let Ok(real) = std::fs::canonicalize(&shim) {
+    if let Some(pkg_root) = real.parent().and_then(|p| p.parent()) {
+      candidates.push(pkg_root.join("dist").join("auth").join("index.js"));
     }
   }
   candidates.into_iter().find(|p| p.exists())
