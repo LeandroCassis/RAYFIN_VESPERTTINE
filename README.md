@@ -6,12 +6,12 @@
   <p><strong>The all-in-one workbench for building Rayfin apps — chat to build, preview inline, and ship to Microsoft Fabric, all in one window. No CLI wrangling, no new account: just your GitHub Copilot sign-in.</strong></p>
 
   <p>
-    <a href="https://github.com/spatney/rayfin-fabricator/releases/latest"><img alt="Download Rayfin Fabricator" src="https://img.shields.io/badge/Download-Rayfin%20Fabricator-0078D4?style=for-the-badge&logo=windows&logoColor=white" /></a>
+    <a href="https://github.com/spatney/rayfin-fabricator/releases/latest"><img alt="Download Rayfin Fabricator" src="https://img.shields.io/badge/Download-Rayfin%20Fabricator-0078D4?style=for-the-badge" /></a>
   </p>
 
   <p>
     <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
-    <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D4.svg" />
+    <img alt="Platform: Windows and macOS" src="https://img.shields.io/badge/platform-Windows%20%C2%B7%20macOS-0078D4.svg" />
     <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri-24C8DB.svg" />
   </p>
 </div>
@@ -48,15 +48,23 @@ Rayfin Fabricator is the desktop shell that makes building those apps effortless
 
 ## Download
 
-Rayfin Fabricator is a Windows 10/11 desktop app shipped as a signed NSIS installer.
+Rayfin Fabricator runs on **Windows 10/11** and **macOS (Apple Silicon)**.
 
 > **[⬇️ Download the latest release](https://github.com/spatney/rayfin-fabricator/releases/latest)**
 
+**Windows**
+
 1. Grab the `Rayfin Fabricator_<version>_x64-setup.exe` asset from the [latest release](https://github.com/spatney/rayfin-fabricator/releases/latest), or browse every build on the [Releases](https://github.com/spatney/rayfin-fabricator/releases) page.
 2. Run it. The installer is Authenticode code-signed (via Azure Artifact Signing) and shows a verified publisher, *Sachin Patney*. SmartScreen reputation builds per certificate over time, so an early download may still warn you — if it does, choose **More info → Run anyway**.
-3. Launch the app. The onboarding doctor checks the rest (WebView2 runtime, the GitHub Copilot CLI) and walks you through signing in to GitHub Copilot and Microsoft Fabric.
 
-To build apps you'll create a Rayfin project with `npm create @microsoft/rayfin@latest`. Fabricator uses that project's pinned Rayfin CLI, so there's nothing to install globally. The app keeps itself up to date with in-app auto-updates.
+**macOS (Apple Silicon)**
+
+1. Grab the `Rayfin Fabricator_<version>_aarch64.dmg` asset from the [latest release](https://github.com/spatney/rayfin-fabricator/releases/latest), open it, and drag the app into **Applications**.
+2. The macOS build isn't notarized by Apple yet, so the first launch is gated by Gatekeeper. Control-click (right-click) the app and choose **Open**, then confirm in the dialog. This is a one-time step — afterwards it launches normally.
+
+Then launch the app. The onboarding doctor checks the rest and walks you through signing in to GitHub Copilot and Microsoft Fabric.
+
+To build apps you'll create a Rayfin project with `npm create @microsoft/rayfin@latest`. Fabricator uses that project's pinned Rayfin CLI, so there's nothing to install globally. The app keeps itself up to date with in-app auto-updates on both platforms.
 
 Want to build from source instead? Jump to [Build from source](#build-from-source).
 
@@ -129,9 +137,9 @@ You'll need:
 
 | Requirement | Notes |
 | --- | --- |
-| Windows 10/11 | WebView2 runtime required (the in-app doctor checks it). |
+| Windows 10/11 or macOS | Windows uses the WebView2 runtime (the in-app doctor checks it); macOS uses the system WebKit. macOS builds target Apple Silicon (arm64). |
 | Node.js 20+ and npm | For the renderer and build scripts. |
-| Rust stable with MSVC | For building the desktop app. |
+| Rust stable | Windows: the MSVC toolchain. macOS: the default toolchain plus the Xcode command-line tools. |
 | Tauri prerequisites | For local desktop development and packaging. |
 | Git | Used for local project history. |
 | Rayfin CLI | Ships with each Rayfin project (`npm create @microsoft/rayfin@latest`); Fabricator runs the project-pinned version via `npx rayfin`. Sign in to Microsoft Fabric in-app. |
@@ -139,22 +147,22 @@ You'll need:
 
 Clone, install, and run:
 
-```powershell
+```bash
 git clone https://github.com/spatney/rayfin-fabricator.git
 cd rayfin-fabricator
 npm install
 npm run dev
 ```
 
-Build the desktop app and NSIS installer:
+Build the desktop app and platform installer (NSIS `.exe` on Windows, `.dmg` + updater bundle on macOS):
 
-```powershell
+```bash
 npm run build
 ```
 
 Sanity-check the external CLIs and sign-ins before deploying or previewing:
 
-```powershell
+```bash
 npx rayfin --help
 copilot --help
 ```
@@ -178,7 +186,7 @@ rayfin-fabricator/
 ├─ src-tauri/                 Rust Tauri backend, IPC commands, services, resources, packaging
 │  ├─ src/commands/           IPC handlers: advisor, auth, chat, deploy, doctor, files, git, projects, settings, threads, …
 │  ├─ src/services/           exec, preview, store, telemetry, history, crashlog, emit, paths
-│  └─ vendor/wry/             Vendored wry crate with the WebView2 device-compliance SSO patch
+│  └─ vendor/wry/             Vendored wry: WebView2 device-compliance SSO patch + macOS preview-positioning fix
 ├─ src/renderer/              React 18 + TypeScript UI built with Vite
 │  ├─ screens/                SetupScreen onboarding and Workbench shell
 │  └─ components/             ChatPanel, PreviewPane, CodeViewer, DeploymentsControl, AdvisorView, GitControl, SettingsModal, …
@@ -186,7 +194,7 @@ rayfin-fabricator/
 ├─ docs/                      Maintainer deployment notes and the vendored wry patch write-up
 ├─ analytics/                 Application Insights KQL queries and notes
 ├─ resources/                 Runtime resources, including telemetry configuration placeholders
-├─ .github/workflows/         Release workflow for NSIS installer builds
+├─ .github/workflows/         Release workflow: Windows (NSIS) and macOS (dmg) builds
 ├─ package.json               npm scripts and renderer dependencies
 └─ logo.png                   Project logo
 ```
