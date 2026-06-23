@@ -16,9 +16,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS is parked until the Tauri port is validated on mac; add
-        # `macos-latest` back here (and an Apple-target Rust toolchain) to ship it.
-        os: [windows-latest]
+        include:
+          - os: windows-latest
+            bundles: nsis
+            artifacts: |
+              src-tauri/target/release/bundle/nsis/*-setup.exe
+              src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+          # macOS ships an Apple-silicon (arm64) build. The updater artifact is
+          # the *.app.tar.gz; the *.dmg is for manual download.
+          - os: macos-latest
+            bundles: app,dmg
+            artifacts: |
+              src-tauri/target/release/bundle/dmg/*.dmg
+              src-tauri/target/release/bundle/macos/*.app.tar.gz
+              src-tauri/target/release/bundle/macos/*.app.tar.gz.sig
 
     steps:
       - name: Check out repository
@@ -59,7 +70,9 @@ jobs:
         env:
           CS: ${{ secrets.APPINSIGHTS_CONNECTION_STRING }}
 
-      - name: Detect code-signing configuration
+      # --- Windows code signing (Azure Trusted / Artifact Signing) -------------
+      - name: Detect code-signing configuration (Windows)
+        if: runner.os == 'Windows'
         id: signing
         shell: bash
         env:
@@ -74,11 +87,11 @@ jobs:
           fi
 
       - name: Install Azure Artifact Signing CLI
-        if: steps.signing.outputs.enabled == 'true'
+        if: runner.os == 'Windows' && steps.signing.outputs.enabled == 'true'
         run: cargo install artifact-signing-cli --version 0.11.0
 
-      - name: Generate signing configuration
-        if: steps.signing.outputs.enabled == 'true'
+      - name: Generate signing configuration (Windows)
+        if: runner.os == 'Windows' && steps.signing.outputs.enabled == 'true'
         shell: bash
         env:
           SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
@@ -94,7 +107,25 @@ jobs:
           echo "Generated src-tauri/tauri.signing.conf.json:"
           cat src-tauri/tauri.signing.conf.json
 
-      - name: Build Tauri installer
+      # --- macOS code signing (Apple Developer ID + notarization) --------------
+      - name: Detect code-signing configuration (macOS)
+        if: runner.os == 'macOS'
+        id: macsigning
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [ -n "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Code signing: ENABLED (Apple Developer ID + notarization)"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Code signing: disabled (no APPLE_SIGNING_IDENTITY secret) — building ad-hoc/unsigned"
+          fi
+
+      # --- Build ---------------------------------------------------------------
+      - name: Build Tauri installer (Windows)
+        if: runner.os == 'Windows'
         shell: bash
         env:
           AZURE_CLIENT_ID: ${{ secrets.AZURE_SIGNING_CLIENT_ID }}
@@ -110,20 +141,44 @@ jobs:
         run: |
           if [ "${{ steps.signing.outputs.enabled }}" = "true" ]; then
             echo "Building signed installer…"
-            npm run tauri:build -- --config src-tauri/tauri.signing.conf.json
+            npm run tauri:build -- --bundles ${{ matrix.bundles }} --config src-tauri/tauri.signing.conf.json
           else
             echo "Building unsigned installer…"
-            npm run tauri:build
+            npm run tauri:build -- --bundles ${{ matrix.bundles }}
           fi
+
+      - name: Build Tauri bundle (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          BUNDLED_CLI_CACHE_DIR: ${{ runner.temp }}/copilot-cli-cache
+          # Updater signing — emits *.app.tar.gz.sig used by latest.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Apple code signing + notarization. When these secrets are absent the
+          # build is ad-hoc/unsigned; adding them later auto-enables signing with
+          # no workflow change. Tauri imports APPLE_CERTIFICATE (base64 .p12) into
+          # a temporary keychain and notarizes via APPLE_ID/APPLE_PASSWORD/APPLE_TEAM_ID.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ "${{ steps.macsigning.outputs.enabled }}" = "true" ]; then
+            echo "Building signed + notarized app…"
+          else
+            echo "Building ad-hoc/unsigned app…"
+          fi
+          npm run tauri:build -- --bundles ${{ matrix.bundles }}
 
       - name: Upload installer artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: dist-${{ matrix.os }}
-          path: |
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/nsis/*-setup.exe.sig
+          path: ${{ matrix.artifacts }}
           if-no-files-found: error
 
   release:
@@ -152,6 +207,9 @@ jobs:
           files: |
             dist/*-setup.exe
             dist/*-setup.exe.sig
+            dist/*.dmg
+            dist/*.app.tar.gz
+            dist/*.app.tar.gz.sig
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -163,33 +221,61 @@ jobs:
         run: |
           set -euo pipefail
           version="${TAG#v}"
-          exe=$(ls dist/*-setup.exe | head -n1)
-          sig_file="${exe}.sig"
-          if [ ! -f "$sig_file" ]; then
-            echo "::error::Updater signature $sig_file not found — was the build signed with TAURI_SIGNING_PRIVATE_KEY?"
-            exit 1
-          fi
-          signature=$(cat "$sig_file")
-          # GitHub turns spaces in asset names into dots; resolve the real browser
-          # download URL from the published release rather than guessing the name.
-          url=$(gh release view "$TAG" --repo "$REPO" --json assets \
-            --jq '.assets[] | select(.name | endswith("-setup.exe")) | .url' | head -n1)
-          if [ -z "$url" ]; then
-            echo "::error::Could not resolve the installer asset URL on release $TAG"
-            exit 1
-          fi
           pub_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           notes=$(gh release view "$TAG" --repo "$REPO" --json body --jq '.body' || true)
           if [ -z "$notes" ] || [ "$notes" = "null" ]; then
             notes="See https://github.com/${REPO}/releases/tag/${TAG}"
           fi
+
+          # Resolve a published asset's browser-download URL by suffix. GitHub
+          # turns spaces in asset names into dots, so we match on the suffix
+          # rather than guessing the exact name.
+          asset_url() {
+            gh release view "$TAG" --repo "$REPO" --json assets \
+              --jq ".assets[] | select(.name | endswith(\"$1\")) | .url" | head -n1
+          }
+
+          platforms='{}'
+
+          # Windows (x86_64) — updater artifact is the NSIS *-setup.exe.
+          exe=$(ls dist/*-setup.exe 2>/dev/null | head -n1 || true)
+          if [ -n "$exe" ] && [ -f "${exe}.sig" ]; then
+            url=$(asset_url "-setup.exe")
+            if [ -z "$url" ]; then
+              echo "::error::Could not resolve the Windows installer asset URL on release $TAG"
+              exit 1
+            fi
+            platforms=$(printf '%s' "$platforms" | jq \
+              --arg s "$(cat "${exe}.sig")" --arg u "$url" \
+              '. + {"windows-x86_64": {signature: $s, url: $u}}')
+            echo "Added windows-x86_64 -> $url"
+          fi
+
+          # macOS (arm64) — updater artifact is the *.app.tar.gz.
+          tgz=$(ls dist/*.app.tar.gz 2>/dev/null | head -n1 || true)
+          if [ -n "$tgz" ] && [ -f "${tgz}.sig" ]; then
+            url=$(asset_url ".app.tar.gz")
+            if [ -z "$url" ]; then
+              echo "::error::Could not resolve the macOS app.tar.gz asset URL on release $TAG"
+              exit 1
+            fi
+            platforms=$(printf '%s' "$platforms" | jq \
+              --arg s "$(cat "${tgz}.sig")" --arg u "$url" \
+              '. + {"darwin-aarch64": {signature: $s, url: $u}}')
+            echo "Added darwin-aarch64 -> $url"
+          fi
+
+          if [ "$platforms" = "{}" ]; then
+            echo "::error::No updater artifacts (.sig) found for any platform — was the build signed with TAURI_SIGNING_PRIVATE_KEY?"
+            exit 1
+          fi
+
           jq -n \
             --arg version "$version" \
             --arg notes "$notes" \
             --arg pub_date "$pub_date" \
-            --arg signature "$signature" \
-            --arg url "$url" \
-            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: {"windows-x86_64": {signature: $signature, url: $url}}}' \
+            --argjson platforms "$platforms" \
+            '{version: $version, notes: $notes, pub_date: $pub_date, platforms: $platforms}' \
             > latest.json
           echo "Generated latest.json:"
           cat latest.json

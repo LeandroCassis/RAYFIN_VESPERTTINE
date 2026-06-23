@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Rayfin Fabricator",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "identifier": "com.rayfin.fabricator",
   "build": {
     "frontendDist": "../dist",
@@ -31,7 +31,7 @@
   "bundle": {
     "active": true,
     "createUpdaterArtifacts": true,
-    "targets": ["nsis"],
+    "targets": "all",
     "publisher": "Rayfin Fabricator",
     "category": "DeveloperTool",
     "copyright": "Copyright © 2026 Sachin Patney",
@@ -49,6 +49,9 @@
       "nsis": {
         "installMode": "currentUser"
       }
+    },
+    "macOS": {
+      "minimumSystemVersion": "11.0"
     }
   },
   "plugins": {
