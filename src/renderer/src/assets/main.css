@@ -3195,6 +3195,8 @@ code {
 }
 
 .preview-toolbar {
+  container-type: inline-size;
+  container-name: previewbar;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -3279,6 +3281,37 @@ code {
 
 .preview-url:hover {
   text-decoration: underline;
+}
+
+.preview-status-label,
+.seg-btn-label {
+  white-space: nowrap;
+}
+
+/* Responsive toolbar (keyed to the preview pane's own width): as it narrows,
+   drop secondary text before the action buttons so nothing wraps out of reach. */
+@container previewbar (max-width: 560px) {
+  .preview-loading {
+    display: none;
+  }
+}
+
+@container previewbar (max-width: 470px) {
+  .preview-url {
+    display: none;
+  }
+}
+
+@container previewbar (max-width: 400px) {
+  .seg-btn-label {
+    display: none;
+  }
+}
+
+@container previewbar (max-width: 320px) {
+  .preview-status-label {
+    display: none;
+  }
 }
 
 .preview-body {
@@ -5842,6 +5875,45 @@ span.thread-pill {
     filter 0.12s ease;
 }
 
+.composer-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.composer-attach {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  cursor: pointer;
+  color: var(--text-dim);
+  background: var(--bg-elev-3);
+  transition:
+    color 0.12s ease,
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.composer-attach:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+
+.composer-attach:disabled {
+  opacity: 0.5;
+  cursor: progress;
+}
+
+.composer-attach svg {
+  width: 17px;
+  height: 17px;
+}
+
 .composer-send:hover:not(:disabled) {
   filter: brightness(1.08);
 }
@@ -6158,6 +6230,71 @@ span.thread-pill {
   background: #fff;
   cursor: crosshair;
   touch-action: none;
+}
+
+.annotate-canvas--text {
+  cursor: text;
+}
+
+.annotate-stage {
+  position: relative;
+}
+
+/* Tool picker (Draw / Text) — a small joined segmented control. */
+.annotate-toolseg {
+  display: inline-flex;
+}
+
+.annotate-tool {
+  min-width: 48px;
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.annotate-toolseg .annotate-tool:first-child {
+  border-radius: 6px 0 0 6px;
+}
+
+.annotate-toolseg .annotate-tool:last-child {
+  border-radius: 0 6px 6px 0;
+  border-left: 0;
+}
+
+.annotate-tool.is-active {
+  color: #fff;
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+/* Inline text-entry box, drawn to match the resulting canvas text. */
+.annotate-textedit {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  outline: none;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 600;
+  line-height: 1.2;
+  caret-color: var(--accent);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  field-sizing: content;
+  min-width: 10px;
+  z-index: 2;
+}
+
+.annotate-textedit::placeholder {
+  color: color-mix(in srgb, currentColor 55%, transparent);
 }
 
 /* ----------------------------------------------------------------------- *

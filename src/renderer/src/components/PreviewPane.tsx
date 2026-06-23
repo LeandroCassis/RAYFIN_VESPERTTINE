@@ -58,6 +58,27 @@ function statusLabel(running: boolean, status: string | undefined): string {
   }
 }
 
+type PreviewMode = 'direct' | 'fabric'
+
+/** Persist the direct/Fabric preview toggle per project so the selection
+ *  survives tab switches that unmount the preview pane (and project switches). */
+function previewModeKey(projectId: string): string {
+  return `rayfin.previewMode.${projectId}`
+}
+
+function readPreviewMode(projectId: string): PreviewMode {
+  return localStorage.getItem(previewModeKey(projectId)) === 'fabric' ? 'fabric' : 'direct'
+}
+
+/** Host-only label for the toolbar URL (the full URL stays in the tooltip). */
+function prettyUrl(url: string): string {
+  try {
+    return new URL(url).host || url
+  } catch {
+    return url
+  }
+}
+
 export default function PreviewPane({
   project,
   deploy,
@@ -103,12 +124,13 @@ export default function PreviewPane({
   const showWebview = !running && Boolean(deployedUrl)
   // Which URL the embedded webview actually loads. Falls back to the direct URL
   // whenever the Fabric link is unavailable or the toggle is off.
-  const [previewMode, setPreviewMode] = useState<'direct' | 'fabric'>('direct')
+  const [previewMode, setPreviewMode] = useState<PreviewMode>(() => readPreviewMode(project.id))
   const previewUrl = previewMode === 'fabric' && fabricUrl ? fabricUrl : deployedUrl
 
-  // Switching projects shouldn't carry a prior project's Fabric view over.
+  // Load this project's saved preview mode on switch (and don't carry a prior
+  // project's Fabric view over). Persistence happens in the toggle handler.
   useEffect(() => {
-    setPreviewMode('direct')
+    setPreviewMode(readPreviewMode(project.id))
   }, [project.id])
 
   // Auto-reload the preview after a successful (re)deploy.
@@ -339,7 +361,7 @@ export default function PreviewPane({
           </div>
           <span className={`preview-status preview-status--${dotClass}`}>
             <span className="preview-dot" />
-            {statusLabel(running, status)}
+            <span className="preview-status-label">{statusLabel(running, status)}</span>
           </span>
           {(displayUrl || deployedUrl) && (
             <button
@@ -347,7 +369,7 @@ export default function PreviewPane({
               title={displayUrl || deployedUrl}
               onClick={openExternal}
             >
-              {displayUrl || deployedUrl}
+              {prettyUrl(displayUrl || deployedUrl || '')}
             </button>
           )}
         </div>
@@ -356,7 +378,13 @@ export default function PreviewPane({
           <div className="seg seg--toolbar">
             <button
               className={`seg-btn ${previewMode === 'fabric' ? 'seg-btn--on' : ''}`}
-              onClick={() => setPreviewMode((m) => (m === 'fabric' ? 'direct' : 'fabric'))}
+              onClick={() =>
+                setPreviewMode((m) => {
+                  const next = m === 'fabric' ? 'direct' : 'fabric'
+                  localStorage.setItem(previewModeKey(project.id), next)
+                  return next
+                })
+              }
               disabled={!showWebview || !fabricUrl}
               title={
                 !fabricUrl
@@ -367,7 +395,7 @@ export default function PreviewPane({
               }
             >
               <FabricIcon />
-              Fabric
+              <span className="seg-btn-label">Fabric</span>
             </button>
             <button
               className="seg-btn"
@@ -376,7 +404,7 @@ export default function PreviewPane({
               title="Take a screenshot of the preview, draw on it, and attach it to your message"
             >
               <AnnotateIcon />
-              {capturing ? 'Capturing…' : 'Annotate'}
+              <span className="seg-btn-label">{capturing ? 'Capturing…' : 'Annotate'}</span>
             </button>
             <button
               className="seg-btn seg-btn--icon"

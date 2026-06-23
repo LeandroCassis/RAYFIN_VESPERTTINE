@@ -1,4 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type DragEvent
+} from 'react'
 import {
   MAIN_THREAD_ID,
   type ChatEvent,
@@ -54,6 +63,8 @@ interface Props {
   onBusyChange?: (busy: boolean) => void
   /** Region screenshots staged for the next message. */
   attachments?: PendingShot[]
+  /** Stage an image the user added, pasted, or dropped into the composer. */
+  onAddAttachment?: (shot: PendingShot) => void
   /** Remove a staged screenshot (also deletes its temp file). */
   onRemoveAttachment?: (path: string) => void
   /** Called once staged screenshots have been sent so the parent can clear them. */
@@ -395,6 +406,54 @@ function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
 }
 
+/** Largest dimension we keep when re-encoding pasted/added images (keeps temp
+ *  files and the model's vision payload reasonable). */
+const MAX_IMAGE_DIM = 2000
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result))
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read image'))
+    reader.readAsDataURL(file)
+  })
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Could not decode image'))
+    img.src = src
+  })
+}
+
+/** Re-encode an image data URL to a (possibly downscaled) PNG plus a small thumb. */
+async function toPngAndThumb(src: string): Promise<{ png: string; thumb: string }> {
+  const img = await loadImage(src)
+  const fit = Math.min(1, MAX_IMAGE_DIM / Math.max(img.naturalWidth, img.naturalHeight, 1))
+  const w = Math.max(1, Math.round(img.naturalWidth * fit))
+  const h = Math.max(1, Math.round(img.naturalHeight * fit))
+  const canvas = document.createElement('canvas')
+  canvas.width = w
+  canvas.height = h
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas unavailable')
+  ctx.drawImage(img, 0, 0, w, h)
+  const png = canvas.toDataURL('image/png')
+
+  const tScale = Math.min(1, 176 / w)
+  const tw = Math.max(1, Math.round(w * tScale))
+  const th = Math.max(1, Math.round(h * tScale))
+  const tCanvas = document.createElement('canvas')
+  tCanvas.width = tw
+  tCanvas.height = th
+  const tCtx = tCanvas.getContext('2d')
+  if (!tCtx) return { png, thumb: png }
+  tCtx.drawImage(canvas, 0, 0, tw, th)
+  return { png, thumb: tCanvas.toDataURL('image/png') }
+}
+
 function reduce(msg: UIChatMessage, ev: ChatEvent): UIChatMessage {
   switch (ev.type) {
     case 'delta':
@@ -434,6 +493,7 @@ export default function ChatPanel({
   onTurnComplete,
   onBusyChange,
   attachments,
+  onAddAttachment,
   onRemoveAttachment,
   onAttachmentsConsumed,
   onClearHistory,
@@ -452,6 +512,8 @@ export default function ChatPanel({
   onChangeRef.current = onChange
   const scrollRef = useRef<HTMLDivElement>(null)
   const taRef = useRef<HTMLTextAreaElement>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [attaching, setAttaching] = useState(false)
 
   const suggestions = useMemo(
     () => suggestionsFor(project),
@@ -528,6 +590,54 @@ export default function ChatPanel({
     ta.style.height = 'auto'
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`
   }, [input])
+
+  // Stage one or more images (from the file picker, paste, or drag-drop) as chat
+  // attachments — re-encoded to PNG and saved to a temp file, reusing the same
+  // pending-attachment flow as annotated screenshots.
+  async function stageImages(files: Iterable<File | null | undefined>): Promise<void> {
+    if (!onAddAttachment) return
+    const images = Array.from(files).filter(
+      (f): f is File => !!f && f.type.startsWith('image/')
+    )
+    if (images.length === 0) return
+    setAttaching(true)
+    try {
+      for (const file of images) {
+        const src = await readAsDataUrl(file)
+        const { png, thumb } = await toPngAndThumb(src)
+        const path = await window.api.screenshot.save(png)
+        onAddAttachment({ path, thumb })
+      }
+    } catch (err) {
+      console.error('Failed to attach image', err)
+    } finally {
+      setAttaching(false)
+    }
+  }
+
+  function onPickFiles(e: ChangeEvent<HTMLInputElement>): void {
+    void stageImages(e.target.files ?? [])
+    e.target.value = '' // allow re-selecting the same file
+  }
+
+  function onComposerPaste(e: ClipboardEvent<HTMLTextAreaElement>): void {
+    const files = Array.from(e.clipboardData.items)
+      .filter((it) => it.kind === 'file' && it.type.startsWith('image/'))
+      .map((it) => it.getAsFile())
+      .filter((f): f is File => !!f)
+    if (files.length > 0) {
+      e.preventDefault()
+      void stageImages(files)
+    }
+  }
+
+  function onComposerDrop(e: DragEvent<HTMLDivElement>): void {
+    const files = e.dataTransfer?.files
+    if (files && Array.from(files).some((f) => f.type.startsWith('image/'))) {
+      e.preventDefault()
+      void stageImages(files)
+    }
+  }
 
   async function send(): Promise<void> {
     const text = input.trim()
@@ -865,7 +975,14 @@ export default function ChatPanel({
             ))}
           </div>
         )}
-        <div className="composer-box">
+        <div
+          className="composer-box"
+          onDrop={onComposerDrop}
+          onDragOver={(e) => {
+            if (Array.from(e.dataTransfer.items).some((it) => it.kind === 'file'))
+              e.preventDefault()
+          }}
+        >
           <textarea
             ref={taRef}
             className="composer-input"
@@ -874,6 +991,7 @@ export default function ChatPanel({
             rows={1}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={onKeyDown}
+            onPaste={onComposerPaste}
           />
           <div className="composer-actions">
             <span className="composer-hint">
@@ -884,26 +1002,45 @@ export default function ChatPanel({
               <kbd>Enter</kbd>
               <span>for newline</span>
             </span>
-            {sending ? (
+            <div className="composer-right">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                multiple
+                hidden
+                onChange={onPickFiles}
+              />
               <button
-                className="composer-send composer-send--stop"
-                onClick={stop}
-                title="Stop generating"
-                aria-label="Stop generating"
+                className="composer-attach"
+                onClick={() => fileRef.current?.click()}
+                disabled={attaching}
+                title="Attach an image (or paste / drop one here)"
+                aria-label="Attach an image"
               >
-                <StopIcon />
+                <ImageIcon />
               </button>
-            ) : (
-              <button
-                className="composer-send"
-                onClick={send}
-                disabled={!input.trim() && (attachments?.length ?? 0) === 0}
-                title="Send (Enter)"
-                aria-label="Send"
-              >
-                <SendIcon />
-              </button>
-            )}
+              {sending ? (
+                <button
+                  className="composer-send composer-send--stop"
+                  onClick={stop}
+                  title="Stop generating"
+                  aria-label="Stop generating"
+                >
+                  <StopIcon />
+                </button>
+              ) : (
+                <button
+                  className="composer-send"
+                  onClick={send}
+                  disabled={!input.trim() && (attachments?.length ?? 0) === 0}
+                  title="Send (Enter)"
+                  aria-label="Send"
+                >
+                  <SendIcon />
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

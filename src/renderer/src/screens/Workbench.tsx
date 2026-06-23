@@ -1115,6 +1115,7 @@ export default function Workbench({
                             }
                             onBusyChange={(busy) => handleBusyChange(active.id, tid, busy)}
                             attachments={shots[key] ?? []}
+                            onAddAttachment={(shot) => addShot(key, shot)}
                             onRemoveAttachment={(path) => removeShot(key, path)}
                             onAttachmentsConsumed={() => clearShots(key)}
                             onClearHistory={() =>
