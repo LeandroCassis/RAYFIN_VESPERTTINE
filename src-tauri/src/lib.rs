@@ -15,6 +15,7 @@ use tauri::Manager;
 use state::AppState;
 
 use services::preview::PreviewState;
+use services::updater::UpdaterState;
 
 /// Read the bundled telemetry connection string (App Insights) if present.
 /// Mirrors the Electron build, which injects `resources/telemetry.json` at
@@ -46,8 +47,10 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_opener::init())
+    .plugin(tauri_plugin_updater::Builder::new().build())
     .manage(AppState::default())
     .manage(PreviewState::default())
+    .manage(UpdaterState::default())
     .setup(|app| {
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -68,6 +71,10 @@ pub fn run() {
       commands::misc::open_external,
       commands::misc::open_logs,
       commands::misc::relaunch,
+      // updates
+      commands::updates::update_check,
+      commands::updates::update_download,
+      commands::updates::update_install,
       // settings
       commands::settings::settings_get,
       commands::settings::settings_set,

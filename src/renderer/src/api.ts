@@ -23,7 +23,8 @@ import {
   type PreviewNavState,
   type ProcLogEvent,
   type RayfinStudioApi,
-  type ToolId
+  type ToolId,
+  type UpdateProgress
 } from '@shared/ipc'
 
 /** Subscribe to a Tauri event, returning a synchronous unsubscribe function. */
@@ -47,6 +48,14 @@ export const api: RayfinStudioApi = {
   openExternal: (url: string) => invoke('open_external', { url }),
   openLogs: () => invoke('open_logs'),
   relaunch: () => invoke('relaunch'),
+
+  updates: {
+    check: () => invoke('update_check'),
+    download: () => invoke('update_download'),
+    install: () => invoke('update_install'),
+    onProgress: (cb: (progress: UpdateProgress) => void) =>
+      subscribe<UpdateProgress>(IpcChannels.updateProgress, cb)
+  },
 
   doctor: {
     check: () => invoke('doctor_check'),

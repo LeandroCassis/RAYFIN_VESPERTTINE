@@ -4,6 +4,7 @@ import { api } from './api'
 import App from './App'
 import ErrorBoundary from './components/ErrorBoundary'
 import { OverlayProvider } from './overlay'
+import { UpdateProvider } from './update'
 import './assets/main.css'
 
 // Expose the Tauri-backed API as `window.api`, matching the contract the rest of
@@ -14,7 +15,9 @@ ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
       <OverlayProvider>
-        <App />
+        <UpdateProvider>
+          <App />
+        </UpdateProvider>
       </OverlayProvider>
     </ErrorBoundary>
   </React.StrictMode>

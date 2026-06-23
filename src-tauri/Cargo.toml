@@ -1,6 +1,6 @@
 [package]
 name = "rayfin-fabricator"
-version = "0.5.1"
+version = "0.6.0"
 description = "Rayfin Fabricator — a desktop app for building Rayfin apps via chat, wrapping the GitHub Copilot CLI and the Rayfin CLI."
 authors = ["Rayfin Fabricator"]
 license = "MIT"
@@ -22,6 +22,7 @@ tauri = { version = "2", features = ["unstable"] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-updater = "2"
 
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

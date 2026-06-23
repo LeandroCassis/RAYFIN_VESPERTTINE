@@ -9,3 +9,4 @@ pub mod paths;
 pub mod preview;
 pub mod store;
 pub mod telemetry;
+pub mod updater;

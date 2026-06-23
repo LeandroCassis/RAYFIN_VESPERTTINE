@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { AppSettings, AuthStatus, DoctorReport } from '@shared/ipc'
 import SetupScreen from './screens/SetupScreen'
 import Workbench from './screens/Workbench'
+import UpdateBanner from './components/UpdateBanner'
 import { watchTheme } from './theme'
 import logo from './assets/logo.png'
 
@@ -45,25 +46,36 @@ function App(): JSX.Element {
 
   if (phase === 'loading') {
     return (
-      <div className="splash">
-        <img className="brand-mark" src={logo} alt="Rayfin Fabricator" />
-        <span>Starting Rayfin Fabricator…</span>
-      </div>
+      <>
+        <UpdateBanner />
+        <div className="splash">
+          <img className="brand-mark" src={logo} alt="Rayfin Fabricator" />
+          <span>Starting Rayfin Fabricator…</span>
+        </div>
+      </>
     )
   }
 
   if (phase === 'ready' && auth) {
     return (
-      <Workbench
-        auth={auth}
-        onSignOut={refresh}
-        settings={settings}
-        onSettingsChange={updateSettings}
-      />
+      <>
+        <UpdateBanner />
+        <Workbench
+          auth={auth}
+          onSignOut={refresh}
+          settings={settings}
+          onSettingsChange={updateSettings}
+        />
+      </>
     )
   }
 
-  return <SetupScreen doctor={doctor} auth={auth} refreshing={refreshing} onRefresh={refresh} />
+  return (
+    <>
+      <UpdateBanner />
+      <SetupScreen doctor={doctor} auth={auth} refreshing={refreshing} onRefresh={refresh} />
+    </>
+  )
 }
 
 export default App

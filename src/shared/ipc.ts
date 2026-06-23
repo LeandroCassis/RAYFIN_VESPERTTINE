@@ -13,6 +13,26 @@ export interface AppVersions {
   webview2: string
 }
 
+/** An available application update (mirrors the Rust `UpdateInfo`). */
+export interface AppUpdateInfo {
+  /** The available (newer) version. */
+  version: string
+  /** The currently running app version. */
+  currentVersion: string
+  /** Release notes / body, when published. */
+  notes?: string
+  /** Publish date, when present. */
+  date?: string
+}
+
+/** Background-download progress for an update (mirrors the Rust `UpdateProgress`). */
+export interface UpdateProgress {
+  /** Bytes downloaded so far. */
+  downloaded: number
+  /** Total bytes to download, when the server reports a content length. */
+  total?: number
+}
+
 /* ------------------------------------------------------------------ *
  * Environment doctor
  * ------------------------------------------------------------------ */
@@ -804,6 +824,10 @@ export const IpcChannels = {
   openLogs: 'app:openLogs',
   relaunch: 'app:relaunch',
 
+  updateCheck: 'app:updateCheck',
+  updateDownload: 'app:updateDownload',
+  updateInstall: 'app:updateInstall',
+
   doctorCheck: 'doctor:check',
   doctorInstall: 'doctor:install',
   doctorInstallAll: 'doctor:installAll',
@@ -872,7 +896,8 @@ export const IpcChannels = {
   procLog: 'proc:log',
   chatEvent: 'chat:event',
   advisorEvent: 'advisor:event',
-  previewNav: 'preview:nav'
+  previewNav: 'preview:nav',
+  updateProgress: 'update:progress'
 } as const
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
@@ -890,6 +915,18 @@ export interface RayfinStudioApi {
   openLogs: () => Promise<string>
   /** Restart the app (used to pick up newly installed Node/Git on PATH). */
   relaunch: () => Promise<void>
+
+  /** In-app auto-update (Tauri updater, backed by GitHub Releases). */
+  updates: {
+    /** Check for a newer release without downloading it. */
+    check: () => Promise<AppUpdateInfo | null>
+    /** Download the pending update in the background (streams progress). */
+    download: () => Promise<AppUpdateInfo | null>
+    /** Install the downloaded update and restart the app. */
+    install: () => Promise<void>
+    /** Subscribe to background download progress; returns an unsubscribe fn. */
+    onProgress: (cb: (progress: UpdateProgress) => void) => () => void
+  }
 
   doctor: {
     check: () => Promise<DoctorReport>

@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Rayfin Fabricator",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "identifier": "com.rayfin.fabricator",
   "build": {
     "frontendDist": "../dist",
@@ -29,6 +29,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": ["nsis"],
     "publisher": "Rayfin Fabricator",
     "category": "DeveloperTool",
@@ -47,6 +48,14 @@
       "nsis": {
         "installMode": "currentUser"
       }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4NEEyQzBFMTA1MUFCMzAKUldRd3ExRVFEaXhLR09weDZNcGk3VVkwbTI0OS9tU0RqTHd2cU82Zjk4dml5LzZOSTVjeTM5S2cK",
+      "endpoints": [
+        "https://github.com/spatney/rayfin-fabricator/releases/latest/download/latest.json"
+      ]
     }
   }
 }

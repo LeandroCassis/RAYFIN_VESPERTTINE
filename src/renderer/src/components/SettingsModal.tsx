@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { AppSettings, AppVersions, ThemePreference } from '@shared/ipc'
 import { applyTheme } from '../theme'
 import { useSuppressPreview } from '../overlay'
+import { useUpdates } from '../update'
 
 interface Props {
   settings: AppSettings
@@ -24,6 +25,8 @@ export default function SettingsModal({
   onClose
 }: Props): JSX.Element {
   useSuppressPreview()
+  const { status: updateStatus, info: updateInfo, checkNow } = useUpdates()
+  const [checkedUpdates, setCheckedUpdates] = useState(false)
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
 
   useEffect(() => {
@@ -40,6 +43,23 @@ export default function SettingsModal({
     const next = await window.api.projects.pickWorkspaceRoot()
     setWorkspaceRoot(next.workspaceRoot)
   }
+
+  const updateBusy =
+    updateStatus === 'checking' ||
+    updateStatus === 'downloading' ||
+    updateStatus === 'installing'
+  let updateMsg: string
+  if (updateStatus === 'checking') updateMsg = 'Checking for updates…'
+  else if (updateStatus === 'downloading') updateMsg = 'Downloading the latest update…'
+  else if (updateStatus === 'ready')
+    updateMsg = `Update ${updateInfo?.version ?? ''} is ready — restart from the banner.`.replace(
+      '  ',
+      ' '
+    )
+  else if (updateStatus === 'installing') updateMsg = 'Installing update…'
+  else if (updateStatus === 'error') updateMsg = 'Couldn’t check for updates. Try again later.'
+  else if (checkedUpdates) updateMsg = 'You’re up to date.'
+  else updateMsg = versions ? `You’re on version ${versions.app}.` : ''
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -84,9 +104,10 @@ export default function SettingsModal({
           <div className="settings-note">
             <span className="settings-check-label">Anonymous usage stats</span>
             <span className="field-hint">
-              Rayfin Fabricator sends anonymous, hashed usage stats (a one-way hash of
-              your sign-in domain — never your email, code, or app contents) so we can
-              see how the product is used. No personal data ever leaves your machine.
+              Rayfin Fabricator sends minimal usage stats — your sign-in domain (e.g.
+              company.com) and a one-way hash of your email — so we can see how the
+              product is used. Your email address, code, and app contents never leave
+              your machine.
             </span>
           </div>
 
@@ -111,6 +132,23 @@ export default function SettingsModal({
                 </span>
               </span>
             </label>
+          </div>
+
+          <div className="field">
+            <span className="field-label">Updates</span>
+            <div className="settings-row">
+              <span className="field-hint">{updateMsg}</span>
+              <button
+                className="btn btn--sm btn--ghost"
+                disabled={updateBusy}
+                onClick={() => {
+                  setCheckedUpdates(true)
+                  void checkNow()
+                }}
+              >
+                {updateBusy ? 'Checking…' : 'Check for updates'}
+              </button>
+            </div>
           </div>
 
           <div className="field">

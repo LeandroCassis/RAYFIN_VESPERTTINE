@@ -15,6 +15,8 @@ pub const PROC_LOG: &str = "proc:log";
 pub const CHAT_EVENT: &str = "chat:event";
 /// Event name for streamed advisor events (matches `IpcChannels.advisorEvent`).
 pub const ADVISOR_EVENT: &str = "advisor:event";
+/// Event name for update download progress (matches `IpcChannels.updateProgress`).
+pub const UPDATE_PROGRESS: &str = "update:progress";
 
 /// Build an [`OnData`] callback that forwards process output to the renderer on
 /// the given logical channel.

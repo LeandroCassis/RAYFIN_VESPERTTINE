@@ -17,6 +17,35 @@ pub struct AppVersions {
   pub webview2: String,
 }
 
+/* ----------------------------- updates ----------------------------- */
+
+/// An available application update, surfaced to the renderer as `AppUpdateInfo`.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateInfo {
+  /// The available (newer) version.
+  pub version: String,
+  /// The currently running app version.
+  pub current_version: String,
+  /// Release notes / body, when published.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub notes: Option<String>,
+  /// Publish date, when present.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub date: Option<String>,
+}
+
+/// Background-download progress for an update, streamed on `update:progress`.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateProgress {
+  /// Bytes downloaded so far.
+  pub downloaded: u64,
+  /// Total bytes to download, when the server reports a content length.
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub total: Option<u64>,
+}
+
 /* ----------------------------- doctor ----------------------------- */
 
 #[derive(Serialize, Clone)]
