@@ -169,12 +169,18 @@ jobs:
           if [ "${{ steps.macsigning.outputs.enabled }}" = "true" ]; then
             echo "Building signed + notarized app…"
           else
-            echo "Building ad-hoc/unsigned app…"
+            echo "Building ad-hoc signed app…"
             # The APPLE_* env vars above are set to empty strings when their
             # secrets are absent. Tauri treats a *present* (even empty)
             # APPLE_CERTIFICATE as "sign me" and fails on `security import`, so
-            # remove them entirely for an unsigned build.
-            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+            # remove the certificate/notarization vars entirely…
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+            # …but ad-hoc sign (identity "-") so the app is a valid, launchable
+            # arm64 binary. Without any signature a downloaded app shows
+            # "is damaged and can't be opened"; ad-hoc signing downgrades that
+            # to the normal Gatekeeper "unidentified developer" prompt that a
+            # Control-click → Open (or `xattr -dr com.apple.quarantine`) clears.
+            export APPLE_SIGNING_IDENTITY="-"
           fi
           npm run tauri:build -- --bundles ${{ matrix.bundles }}
 

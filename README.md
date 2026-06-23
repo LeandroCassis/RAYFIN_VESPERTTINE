@@ -60,7 +60,13 @@ Rayfin Fabricator runs on **Windows 10/11** and **macOS (Apple Silicon)**.
 **macOS (Apple Silicon)**
 
 1. Grab the `Rayfin Fabricator_<version>_aarch64.dmg` asset from the [latest release](https://github.com/spatney/rayfin-fabricator/releases/latest), open it, and drag the app into **Applications**.
-2. The macOS build isn't notarized by Apple yet, so the first launch is gated by Gatekeeper. Control-click (right-click) the app and choose **Open**, then confirm in the dialog. This is a one-time step — afterwards it launches normally.
+2. The macOS build is ad-hoc signed but not yet notarized by Apple, so the first launch is gated by Gatekeeper. Control-click (right-click) the app in **Applications** and choose **Open**, then confirm in the dialog — a one-time step, after which it launches normally.
+
+   > **"Rayfin Fabricator" is damaged and can't be opened?** That's the download quarantine flag, not real corruption. Clear it once from Terminal, then open the app:
+   >
+   > ```bash
+   > xattr -dr com.apple.quarantine "/Applications/Rayfin Fabricator.app"
+   > ```
 
 Then launch the app. The onboarding doctor checks the rest and walks you through signing in to GitHub Copilot and Microsoft Fabric.
 
