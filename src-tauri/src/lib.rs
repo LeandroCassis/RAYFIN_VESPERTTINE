@@ -130,6 +130,7 @@ pub fn run() {
       commands::chat::chat_send,
       commands::chat::chat_cancel,
       commands::chat::chat_reset,
+      commands::chat::chat_resolve_plan,
       commands::chat::chat_history,
       commands::chat::chat_save_history,
       commands::chat::chat_set_options,
@@ -151,6 +152,7 @@ pub fn run() {
       commands::deploy::deploy_set_name,
       // preview
       services::preview::preview_show_url,
+      services::preview::preview_navigate,
       services::preview::preview_set_bounds,
       services::preview::preview_hide,
       services::preview::preview_reload,

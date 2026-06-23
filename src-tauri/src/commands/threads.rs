@@ -475,6 +475,7 @@ async fn do_merge(app: &AppHandle, state: &AppState, project_id: &str, thread_id
       prompt,
       None,
       None,
+      None,
     )
     .await;
 

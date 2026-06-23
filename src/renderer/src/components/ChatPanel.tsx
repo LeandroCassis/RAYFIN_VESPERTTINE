@@ -12,6 +12,7 @@ import {
   MAIN_THREAD_ID,
   type ChatEvent,
   type ChatMessage,
+  type ChatMode,
   type ChatToolCall,
   type ChatTurnResult,
   type CopilotModel,
@@ -38,6 +39,16 @@ export interface UIChatMessage extends ChatMessage {
   pending: boolean
   /** Transient status note (e.g. a transient-failure retry); not persisted. */
   notice?: string
+  /** A Plan-mode proposal awaiting the user's decision (live only). */
+  plan?: {
+    requestId: string
+    summary: string
+    planContent: string
+    actions: string[]
+    recommendedAction: string
+    /** True once answered (here or elsewhere) — buttons disable. */
+    resolved?: boolean
+  }
 }
 
 /**
@@ -320,6 +331,67 @@ function MergeIcon(): JSX.Element {
   )
 }
 
+/** Small glyph per chat mode, shown in the composer mode selector + its menu. */
+function ModeIcon({ mode, className }: { mode: ChatMode; className?: string }): JSX.Element {
+  const cls = className ?? 'btn-ico'
+  if (mode === 'plan') {
+    return (
+      <svg
+        className={cls}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M10 6h8" />
+        <path d="M10 12h8" />
+        <path d="M10 18h8" />
+        <path d="M4 5.4l1.2 1.3L7.6 4.3" />
+        <path d="M4.2 12h2.4" />
+        <path d="M4.2 18h2.4" />
+      </svg>
+    )
+  }
+  if (mode === 'autopilot') {
+    return (
+      <svg
+        className={cls}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        <path d="M4.5 6.5 11 12l-6.5 5.5z" />
+        <path d="M12.5 6.5 19 12l-6.5 5.5z" />
+      </svg>
+    )
+  }
+  return (
+    <svg
+      className={cls}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="4.5" y="8" width="15" height="11" rx="3" />
+      <path d="M12 4.6V8" />
+      <circle cx="12" cy="4" r="1.1" />
+      <circle cx="9.6" cy="13" r="1.15" />
+      <circle cx="14.4" cy="13" r="1.15" />
+    </svg>
+  )
+}
+
 /** Renders a turn's tool-activity list (shared by normal turns + merge events). */
 function ToolActivity({
   tools,
@@ -355,13 +427,16 @@ function ToolActivity({
 function AgentStatus({
   tools,
   hasText,
-  notice
+  notice,
+  projectPath
 }: {
   tools: ChatToolCall[]
   hasText: boolean
   notice?: string
+  projectPath: string
 }): JSX.Element {
   const [elapsed, setElapsed] = useState(0)
+  const [open, setOpen] = useState(false)
   const startRef = useRef(Date.now())
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -383,27 +458,138 @@ function AgentStatus({
   const steps = tools.length
 
   return (
-    <div className={`agent-status${notice ? ' agent-status--notice' : ''}`}>
-      <span className="agent-status-orb" aria-hidden="true">
-        <span className="agent-status-orb-core" />
-      </span>
-      <span className={`agent-status-label${notice ? '' : ' shimmer-text'}`}>
-        {notice ? `↻ ${label}` : `${label}…`}
-      </span>
-      {steps > 0 && (
-        <span className="agent-status-steps" aria-label={`${steps} steps so far`}>
-          {steps} step{steps > 1 ? 's' : ''}
+    <div className="agent-status-wrap">
+      <div className={`agent-status${notice ? ' agent-status--notice' : ''}`}>
+        <span className="agent-status-orb" aria-hidden="true">
+          <span className="agent-status-orb-core" />
         </span>
+        <span className={`agent-status-label${notice ? '' : ' shimmer-text'}`}>
+          {notice ? `↻ ${label}` : `${label}…`}
+        </span>
+        {steps > 0 && (
+          <button
+            type="button"
+            className={`agent-status-steps${open ? ' agent-status-steps--open' : ''}`}
+            aria-label={`${steps} steps so far`}
+            aria-expanded={open}
+            title={open ? 'Hide steps' : 'Show steps'}
+            onClick={() => setOpen((v) => !v)}
+          >
+            {steps} step{steps > 1 ? 's' : ''}
+            <span className="agent-status-steps-caret" aria-hidden="true">
+              {open ? '▾' : '▸'}
+            </span>
+          </button>
+        )}
+        <span className="agent-status-time" aria-label="Elapsed time">
+          {mm}:{ss}
+        </span>
+      </div>
+      {open && steps > 0 && (
+        <div className="agent-status-steps-list">
+          <ToolActivity tools={tools} projectPath={projectPath} />
+        </div>
       )}
-      <span className="agent-status-time" aria-label="Elapsed time">
-        {mm}:{ss}
-      </span>
     </div>
   )
 }
 
 function uid(): string {
   return Math.random().toString(36).slice(2) + Date.now().toString(36)
+}
+
+/**
+ * Plan-mode approval card: shows the proposed plan summary (with an expandable
+ * full plan) and the continuation choices. Buttons disable once the plan is
+ * resolved. "Keep planning" reveals an optional feedback box that sends the
+ * agent back to revise.
+ */
+function PlanCard({
+  plan,
+  onResolve
+}: {
+  plan: NonNullable<UIChatMessage['plan']>
+  onResolve: (action: string, feedback?: string) => void
+}): JSX.Element {
+  const [expanded, setExpanded] = useState(false)
+  const [revising, setRevising] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const resolved = Boolean(plan.resolved)
+  const actions = plan.actions.filter((a) => a in PLAN_ACTION_LABELS)
+  return (
+    <div className={`plan-card${resolved ? ' plan-card--resolved' : ''}`}>
+      <div className="plan-card-head">
+        <span className="plan-card-icon" aria-hidden="true">
+          <SparkleIcon />
+        </span>
+        <span className="plan-card-title">Plan ready for review</span>
+        {resolved && <span className="plan-card-status">Resolved</span>}
+      </div>
+      {plan.summary && (
+        <div className="plan-card-summary msg-text--md">
+          <Markdown>{plan.summary}</Markdown>
+        </div>
+      )}
+      {plan.planContent && (
+        <div className="plan-card-detail">
+          <button
+            type="button"
+            className="plan-card-toggle"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+          >
+            {expanded ? '▾ Hide full plan' : '▸ View full plan'}
+          </button>
+          {expanded && (
+            <div className="plan-card-body msg-text--md">
+              <Markdown>{plan.planContent}</Markdown>
+            </div>
+          )}
+        </div>
+      )}
+      {!resolved && (
+        <>
+          <div className="plan-card-actions">
+            {actions.map((a) => (
+              <button
+                key={a}
+                type="button"
+                className={`btn btn--sm${a === plan.recommendedAction ? ' btn--primary' : ' btn--ghost'}`}
+                onClick={() => onResolve(a)}
+              >
+                {PLAN_ACTION_LABELS[a]}
+              </button>
+            ))}
+            <button
+              type="button"
+              className="btn btn--sm btn--ghost"
+              onClick={() => setRevising((v) => !v)}
+            >
+              Keep planning
+            </button>
+          </div>
+          {revising && (
+            <div className="plan-card-revise">
+              <textarea
+                className="plan-card-feedback"
+                placeholder="Optional — what should change about the plan?"
+                value={feedback}
+                rows={2}
+                onChange={(e) => setFeedback(e.target.value)}
+              />
+              <button
+                type="button"
+                className="btn btn--sm btn--primary"
+                onClick={() => onResolve('keep_planning', feedback.trim() || undefined)}
+              >
+                Send feedback
+              </button>
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  )
 }
 
 /** Largest dimension we keep when re-encoding pasted/added images (keeps temp
@@ -474,6 +660,22 @@ function reduce(msg: UIChatMessage, ev: ChatEvent): UIChatMessage {
       return { ...msg, error: ev.text, pending: false, notice: undefined }
     case 'result':
       return { ...msg, pending: false, notice: undefined }
+    case 'plan-proposed':
+      return {
+        ...msg,
+        plan: {
+          requestId: ev.requestId,
+          summary: ev.summary,
+          planContent: ev.planContent,
+          actions: ev.actions,
+          recommendedAction: ev.recommendedAction,
+          resolved: false
+        },
+        notice: undefined
+      }
+    case 'plan-resolved':
+      if (!msg.plan || msg.plan.requestId !== ev.requestId) return msg
+      return { ...msg, plan: { ...msg.plan, resolved: true } }
     default:
       return msg
   }
@@ -483,6 +685,46 @@ const TOOL_ICON: Record<ChatToolCall['state'], string> = {
   running: '⏳',
   success: '✓',
   error: '✗'
+}
+
+/** Composer mode options (Agent / Plan / Autopilot) with hover hints + menu copy. */
+const MODES: { id: ChatMode; label: string; hint: string; desc: string }[] = [
+  {
+    id: 'agent',
+    label: 'Agent',
+    hint: 'Agent — do the work, auto-approving tools (default).',
+    desc: 'Does the work for you, auto-approving tools. The everyday default.'
+  },
+  {
+    id: 'plan',
+    label: 'Plan',
+    hint: 'Plan — research first, then propose a plan for your approval before acting.',
+    desc: 'Researches first, then proposes a plan for your approval before acting.'
+  },
+  {
+    id: 'autopilot',
+    label: 'Autopilot',
+    hint: 'Autopilot — run autonomously end-to-end, auto-approving tools.',
+    desc: 'Runs autonomously end-to-end, auto-approving tools.'
+  }
+]
+
+/** Friendly labels for the SDK's plan continuation actions. */
+const PLAN_ACTION_LABELS: Record<string, string> = {
+  interactive: 'Approve & run',
+  autopilot: 'Approve & autopilot',
+  autopilot_fleet: 'Approve & autopilot fleet',
+  exit_only: 'Approve (exit plan)'
+}
+
+/**
+ * Which composer mode a continuation maps to, so the bar reflects the user's
+ * choice after they approve a plan. `exit_only` / `keep_planning` leave it unchanged.
+ */
+const ACTION_TO_MODE: Record<string, ChatMode> = {
+  interactive: 'agent',
+  autopilot: 'autopilot',
+  autopilot_fleet: 'autopilot'
 }
 
 export default function ChatPanel({
@@ -504,9 +746,11 @@ export default function ChatPanel({
 }: Props): JSX.Element {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  const [mode, setMode] = useState<ChatMode>('agent')
   const [model, setModel] = useState(project.model ?? '')
   const [effort, setEffort] = useState<ReasoningEffort | ''>(project.effort ?? '')
   const [showModel, setShowModel] = useState(false)
+  const [showMode, setShowMode] = useState(false)
   const { models, loading: modelsLoading } = useCopilotModels(showModel)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
@@ -523,6 +767,9 @@ export default function ChatPanel({
   // The currently-selected model's metadata (when a concrete, still-listed model
   // is chosen) — used to label the picker button and scope the effort options.
   const selectedModel = useMemo(() => models.find((m) => m.id === model), [models, model])
+
+  // The active mode's copy, used to label the composer's mode pill.
+  const currentMode = MODES.find((m) => m.id === mode) ?? MODES[0]
 
   // Reasoning efforts offered for the current selection: the chosen model's own
   // set, or — on Auto — the union across all models (an effort still rides along
@@ -547,6 +794,14 @@ export default function ChatPanel({
     window.addEventListener('click', close)
     return () => window.removeEventListener('click', close)
   }, [showModel])
+
+  // Same for the composer mode menu.
+  useEffect(() => {
+    if (!showMode) return
+    const close = (): void => setShowMode(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [showMode])
 
   function saveOptions(nextModel: string, nextEffort: ReasoningEffort | ''): void {
     void window.api.chat.setOptions(project.id, {
@@ -683,7 +938,8 @@ export default function ChatPanel({
         turnId,
         prompt,
         shots.map((s) => s.path),
-        threadId
+        threadId,
+        mode
       )
       onChange((prev) => prev.map((m) => (m.turnId === turnId ? { ...m, pending: false } : m)))
       onTurnComplete?.(result)
@@ -707,9 +963,30 @@ export default function ChatPanel({
     await window.api.chat.cancel(project.id, threadId)
   }
 
+  /** Answer a Plan-mode approval card; optimistically disables its buttons. */
+  async function resolvePlan(
+    msgId: string,
+    requestId: string,
+    action: string,
+    feedback?: string
+  ): Promise<void> {
+    onChange((prev) =>
+      prev.map((m) => (m.id === msgId && m.plan ? { ...m, plan: { ...m.plan, resolved: true } } : m))
+    )
+    // Reflect the approved continuation in the composer so the bar no longer reads "Plan".
+    const nextMode = ACTION_TO_MODE[action]
+    if (nextMode) setMode(nextMode)
+    try {
+      await window.api.chat.resolvePlan(requestId, action, feedback)
+    } catch (err) {
+      console.error('Failed to resolve plan', err)
+    }
+  }
+
   async function newChat(): Promise<void> {
     await window.api.chat.reset(project.id, threadId)
     onChange(() => [])
+    setMode('agent')
     onClearHistory?.()
   }
 
@@ -921,6 +1198,14 @@ export default function ChatPanel({
                   ) : (
                     <div className="msg-text">{m.text}</div>
                   ))}
+                {m.plan && (
+                  <PlanCard
+                    plan={m.plan}
+                    onResolve={(action, feedback) =>
+                      void resolvePlan(m.id, m.plan!.requestId, action, feedback)
+                    }
+                  />
+                )}
                 {m.attachmentThumbs && m.attachmentThumbs.length > 0 ? (
                   <div className="msg-shots">
                     {m.attachmentThumbs.map((src, i) => (
@@ -935,7 +1220,12 @@ export default function ChatPanel({
                 ) : null}
                 {m.notice && !m.pending && <div className="msg-notice">↻ {m.notice}</div>}
                 {m.pending && (
-                  <AgentStatus tools={m.tools} hasText={Boolean(m.text)} notice={m.notice} />
+                  <AgentStatus
+                    tools={m.tools}
+                    hasText={Boolean(m.text)}
+                    notice={m.notice}
+                    projectPath={project.path}
+                  />
                 )}
                 {m.error && (
                   <div className="alert alert--error msg-error">
@@ -994,14 +1284,65 @@ export default function ChatPanel({
             onPaste={onComposerPaste}
           />
           <div className="composer-actions">
-            <span className="composer-hint">
-              <kbd>Enter</kbd>
-              <span>to send</span>
-              <span className="composer-hint-sep">·</span>
-              <kbd>Shift</kbd>
-              <kbd>Enter</kbd>
-              <span>for newline</span>
-            </span>
+            <div className="composer-left">
+              <div
+                className="mode-menu"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setShowMode(false)
+                }}
+              >
+                <button
+                  type="button"
+                  className={`mode-trigger${showMode ? ' mode-trigger--open' : ''}`}
+                  onClick={() => setShowMode((s) => !s)}
+                  disabled={sending}
+                  aria-haspopup="menu"
+                  aria-expanded={showMode}
+                  title={currentMode.hint}
+                >
+                  <ModeIcon mode={mode} className="mode-trigger-icon" />
+                  <span className="mode-trigger-label">{currentMode.label}</span>
+                  <span className="mode-trigger-caret">▾</span>
+                </button>
+                {showMode && (
+                  <div className="mode-pop" role="menu">
+                    {MODES.map((m) => (
+                      <button
+                        key={m.id}
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={mode === m.id}
+                        className={`mode-opt${mode === m.id ? ' mode-opt--on' : ''}`}
+                        onClick={() => {
+                          setMode(m.id)
+                          setShowMode(false)
+                        }}
+                      >
+                        <ModeIcon mode={m.id} className="mode-opt-icon" />
+                        <span className="mode-opt-text">
+                          <span className="mode-opt-label">{m.label}</span>
+                          <span className="mode-opt-desc">{m.desc}</span>
+                        </span>
+                        {mode === m.id && (
+                          <span className="mode-opt-check" aria-hidden="true">
+                            ✓
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <span className="composer-hint">
+                <kbd>Enter</kbd>
+                <span>to send</span>
+                <span className="composer-hint-sep">·</span>
+                <kbd>Shift</kbd>
+                <kbd>Enter</kbd>
+                <span>for newline</span>
+              </span>
+            </div>
             <div className="composer-right">
               <input
                 ref={fileRef}

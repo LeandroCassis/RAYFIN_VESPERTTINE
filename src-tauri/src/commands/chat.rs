@@ -11,8 +11,12 @@
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
+use github_copilot_sdk::handler::{ExitPlanModeHandler, ExitPlanModeResult};
+use github_copilot_sdk::rpc::ModeSetRequest;
+use github_copilot_sdk::session_events::SessionMode;
 use github_copilot_sdk::subscription::RecvErrorKind;
 use github_copilot_sdk::{Attachment, MessageOptions};
 use once_cell::sync::Lazy;
@@ -22,10 +26,11 @@ use tauri::{AppHandle, State};
 use uuid::Uuid;
 
 use crate::commands::screenshot;
+use crate::services::copilot::PlanModeHandler;
 use crate::services::emit::emit_chat_event;
 use crate::services::history::{self, MAIN_THREAD_ID};
 use crate::services::store;
-use crate::state::AppState;
+use crate::state::{AppState, TurnRoute};
 use crate::types::{ChatEvent, ChatMessage, ChatOptions, ChatToolCall, ChatToolState, ChatTurnResult, CopilotModel};
 
 const MAX_TOOL_OUTPUT: usize = 4000;
@@ -44,6 +49,16 @@ static TRANSIENT_RE: Lazy<Regex> = Lazy::new(|| {
 
 /// A `rayfin up` invocation inside a tool call marks the turn as a deploy.
 static RAYFIN_UP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\brayfin\s+up\b").unwrap());
+
+/// Map the renderer's mode string to an SDK [`SessionMode`]. Unknown / missing
+/// falls back to the interactive "Agent" default.
+fn session_mode(mode: &Option<String>) -> SessionMode {
+  match mode.as_deref() {
+    Some("plan") => SessionMode::Plan,
+    Some("autopilot") => SessionMode::Autopilot,
+    _ => SessionMode::Interactive,
+  }
+}
 
 fn thread_opt(thread_id: &Option<String>) -> Option<&str> {
   thread_id.as_deref()
@@ -85,6 +100,10 @@ struct TurnCtx {
   errored: Option<String>,
   /// Characters of each assistant message already streamed as deltas (dedup).
   streamed: HashMap<String, usize>,
+  /// The assistant message currently being appended. When the agent emits a new
+  /// message mid-turn we insert a blank line, so consecutive messages don't run
+  /// together (e.g. "…the implementation.Now let me…").
+  cur_msg: Option<String>,
 }
 
 impl TurnCtx {
@@ -96,6 +115,7 @@ impl TurnCtx {
       saw_activity: false,
       errored: None,
       streamed: HashMap::new(),
+      cur_msg: None,
     }
   }
 }
@@ -106,6 +126,19 @@ enum Flow {
   Continue,
   /// Turn reached a terminal state (`session.idle` / `session.error`).
   Stop,
+}
+
+/// If the agent has started a *different* assistant message than the one we were
+/// appending, emit a blank-line delta first so the two messages read as separate
+/// paragraphs instead of being concatenated ("…implementation.Now let me…").
+fn ensure_separator(id: &str, sink: &mut dyn FnMut(ChatEvent), ctx: &mut TurnCtx) {
+  if ctx.cur_msg.as_deref() == Some(id) {
+    return;
+  }
+  if ctx.cur_msg.is_some() {
+    sink(ChatEvent::Delta { text: "\n\n".to_string() });
+  }
+  ctx.cur_msg = Some(id.to_string());
 }
 
 /// Map a single Copilot **server** event (`event_type` plus its `data` object) to
@@ -121,6 +154,7 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
         return Flow::Continue;
       }
       ctx.saw_activity = true;
+      ensure_separator(&id, sink, ctx);
       *ctx.streamed.entry(id).or_insert(0) += text.chars().count();
       sink(ChatEvent::Delta { text: text.to_string() });
     }
@@ -130,6 +164,7 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
       let total = content.chars().count();
       let have = *ctx.streamed.get(&id).unwrap_or(&0);
       if total > have {
+        ensure_separator(&id, sink, ctx);
         let rest: String = content.chars().skip(have).collect();
         sink(ChatEvent::Delta { text: rest });
         ctx.streamed.insert(id, total);
@@ -185,6 +220,13 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
             }
           }
         }
+      }
+    }
+    "exit_plan_mode.completed" => {
+      // The plan prompt was answered (here or by another client) — let the
+      // renderer dismiss its approval card.
+      if let Some(request_id) = data.get("requestId").and_then(|v| v.as_str()) {
+        sink(ChatEvent::PlanResolved { request_id: request_id.to_string() });
       }
     }
     "session.idle" => {
@@ -262,8 +304,9 @@ pub async fn chat_send(
   text: String,
   attachments: Option<Vec<String>>,
   thread_id: Option<String>,
+  mode: Option<String>,
 ) -> Result<ChatTurnResult, String> {
-  run_turn(app, state.inner(), project_id, turn_id, text, attachments, thread_id).await
+  run_turn(app, state.inner(), project_id, turn_id, text, attachments, thread_id, mode).await
 }
 
 /// The turn engine shared by `chat_send` and the side-thread merge flow. Drives
@@ -277,6 +320,7 @@ pub(crate) async fn run_turn(
   text: String,
   attachments: Option<Vec<String>>,
   thread_id: Option<String>,
+  mode: Option<String>,
 ) -> Result<ChatTurnResult, String> {
   let thread = thread_id.clone().unwrap_or_else(|| MAIN_THREAD_ID.to_string());
   let attachments = attachments.unwrap_or_default();
@@ -320,6 +364,12 @@ pub(crate) async fn run_turn(
     });
   };
 
+  // Surface plan-approval prompts (`exit_plan_mode`) to this turn's UI. The handler
+  // is installed on every chat turn (cheap, harmless when not in Plan mode) because
+  // the SDK session is cached/reused and may switch to Plan on a later turn.
+  let plan_handler: Arc<dyn ExitPlanModeHandler> =
+    Arc::new(PlanModeHandler::new(app.clone(), state.plan.clone()));
+
   // Open (or resume) this thread's persistent SDK session, reconciling model/effort.
   let session = match state
     .copilot
@@ -330,6 +380,7 @@ pub(crate) async fn run_turn(
       &ctx_info.session_id,
       project.model.clone(),
       project.effort.clone(),
+      Some(plan_handler),
     )
     .await
   {
@@ -341,6 +392,21 @@ pub(crate) async fn run_turn(
       return Ok(ChatTurnResult { ok: false, error: Some(e), files_modified: vec![], ran_deploy: false });
     }
   };
+
+  // Apply the requested mode (Agent / Plan / Autopilot) to the session before
+  // sending. Mode is sticky on the session, so this also handles switching modes
+  // between turns. A failure here is non-fatal — fall back to the prior mode.
+  let session_mode = session_mode(&mode);
+  if let Err(e) = session.rpc().mode().set(ModeSetRequest { mode: session_mode.clone() }).await {
+    log::warn!("failed to set session mode {session_mode:?}: {e}");
+  }
+
+  // Point the plan handler at this turn's UI for the duration of the turn.
+  let session_key = ctx_info.session_id.clone();
+  state.plan.set_route(
+    &session_key,
+    TurnRoute { project_id: project_id.clone(), thread_id: thread.clone(), turn_id: turn_id.clone() },
+  );
 
   // File attachments → typed SDK attachments (built once, cloned per attempt).
   let attach: Vec<Attachment> = attachments
@@ -447,6 +513,10 @@ pub(crate) async fn run_turn(
 
   screenshot::cleanup(&attachments);
   state.end_chat(&project_id, thread_opt(&thread_id));
+  // Drop this turn's plan route and unblock any handler still awaiting a decision
+  // (covers Stop / timeout while an approval card is open).
+  state.plan.clear_route(&session_key);
+  state.plan.reject_pending(&session_key);
 
   if let Some(e) = send_error {
     emit_chat_event(&app, &project_id, &thread, &turn_id, ChatEvent::Error { text: e.clone() });
@@ -519,6 +589,30 @@ pub async fn chat_reset(state: State<'_, AppState>, project_id: String, thread_i
 #[tauri::command]
 pub fn chat_history(project_id: String, thread_id: Option<String>) -> Vec<ChatMessage> {
   history::load_history(&project_id, thread_opt(&thread_id))
+}
+
+/// Resolve a pending Plan-mode approval prompt raised via `exit_plan_mode`.
+/// `action` is one of "interactive" | "autopilot" | "autopilot_fleet" | "exit_only"
+/// (approve and continue with that route) — anything else (e.g. "keep_planning")
+/// rejects the plan so the agent revises it, optionally using `feedback`.
+#[tauri::command]
+pub fn chat_resolve_plan(
+  state: State<'_, AppState>,
+  request_id: String,
+  action: String,
+  feedback: Option<String>,
+) -> Result<(), String> {
+  let result = match action.as_str() {
+    "interactive" | "autopilot" | "autopilot_fleet" | "exit_only" => {
+      ExitPlanModeResult { approved: true, selected_action: Some(action), feedback }
+    }
+    _ => ExitPlanModeResult { approved: false, selected_action: None, feedback },
+  };
+  if state.plan.resolve(&request_id, result) {
+    Ok(())
+  } else {
+    Err("No pending plan to resolve.".into())
+  }
 }
 
 #[tauri::command]
@@ -622,6 +716,49 @@ mod tests {
       ChatEvent::Delta { text } => assert_eq!(text, " world"),
       _ => panic!("expected remainder delta"),
     }
+  }
+
+  #[test]
+  fn new_message_inserts_blank_line_separator() {
+    let mut ctx = TurnCtx::new();
+    // Two distinct assistant messages in one turn must read as separate
+    // paragraphs, not concatenated ("First thought.Second thought.").
+    let events = collect(
+      &[
+        ("assistant.message", json!({"messageId":"m1","content":"First thought."})),
+        ("assistant.message", json!({"messageId":"m2","content":"Second thought."})),
+      ],
+      &mut ctx,
+    );
+    let text: String = events
+      .iter()
+      .map(|e| match e {
+        ChatEvent::Delta { text } => text.as_str(),
+        _ => "",
+      })
+      .collect();
+    assert_eq!(text, "First thought.\n\nSecond thought.");
+  }
+
+  #[test]
+  fn same_message_deltas_are_not_separated() {
+    let mut ctx = TurnCtx::new();
+    // Multiple deltas for the same messageId stream as one continuous paragraph.
+    let events = collect(
+      &[
+        ("assistant.message_delta", json!({"messageId":"m1","deltaContent":"Hel"})),
+        ("assistant.message_delta", json!({"messageId":"m1","deltaContent":"lo"})),
+      ],
+      &mut ctx,
+    );
+    let text: String = events
+      .iter()
+      .map(|e| match e {
+        ChatEvent::Delta { text } => text.as_str(),
+        _ => "",
+      })
+      .collect();
+    assert_eq!(text, "Hello");
   }
 
   #[test]

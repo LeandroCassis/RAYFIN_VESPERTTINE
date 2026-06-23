@@ -16,17 +16,22 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use github_copilot_sdk::handler::ApproveAllHandler;
+use async_trait::async_trait;
+use github_copilot_sdk::handler::{ApproveAllHandler, ExitPlanModeHandler, ExitPlanModeResult};
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::{
-  Client, ClientOptions, Error as SdkError, Model, ResumeSessionConfig, SessionConfig, SessionId,
-  SetModelOptions,
+  Client, ClientOptions, Error as SdkError, ExitPlanModeData, Model, ResumeSessionConfig,
+  SessionConfig, SessionId, SetModelOptions,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
+use tauri::AppHandle;
 use tokio::sync::{Mutex, OnceCell};
 
+use crate::services::emit::emit_chat_event;
 use crate::services::{exec, paths};
+use crate::state::PlanGate;
+use crate::types::ChatEvent;
 
 /// Application name reported to the CLI as User-Agent context.
 const CLIENT_NAME: &str = "rayfin-fabricator";
@@ -102,14 +107,65 @@ async fn apply_options(
   Ok(())
 }
 
+/// Bridges the SDK's `exit_plan_mode` callback to the renderer. When the agent
+/// (in Plan mode) finishes a plan and calls `exit_plan_mode`, the SDK invokes
+/// [`handle`](PlanModeHandler::handle): we emit a `plan-proposed` chat event to
+/// the active turn's conversation, then block on a oneshot until the user picks
+/// an action (via `chat_resolve_plan`) or the turn ends.
+pub struct PlanModeHandler {
+  app: AppHandle,
+  gate: Arc<PlanGate>,
+}
+
+impl PlanModeHandler {
+  pub fn new(app: AppHandle, gate: Arc<PlanGate>) -> Self {
+    Self { app, gate }
+  }
+}
+
+#[async_trait]
+impl ExitPlanModeHandler for PlanModeHandler {
+  async fn handle(&self, session_id: SessionId, data: ExitPlanModeData) -> ExitPlanModeResult {
+    // No active turn for this session → approve so the agent isn't left hanging.
+    let Some(route) = self.gate.route(session_id.as_str()) else {
+      return ExitPlanModeResult::default();
+    };
+    let request_id = uuid::Uuid::new_v4().to_string();
+    let rx = self.gate.register_pending(session_id.as_str(), &request_id);
+    emit_chat_event(
+      &self.app,
+      &route.project_id,
+      &route.thread_id,
+      &route.turn_id,
+      ChatEvent::PlanProposed {
+        request_id,
+        summary: data.summary,
+        plan_content: data.plan_content.unwrap_or_default(),
+        actions: data.actions,
+        recommended_action: data.recommended_action,
+      },
+    );
+    // Block the runtime's RPC until the user decides (or the turn ends and the
+    // sender is dropped, which we treat as "not approved").
+    rx.await.unwrap_or(ExitPlanModeResult {
+      approved: false,
+      selected_action: None,
+      feedback: None,
+    })
+  }
+}
+
 /// Resume (when on-disk state exists) or create a session bound to `session_id`,
-/// streaming enabled, auto-approving tool permissions, scoped to `cwd`.
+/// streaming enabled, auto-approving tool permissions, scoped to `cwd`. When
+/// `exit_plan` is supplied it is installed so Plan-mode turns surface their plan
+/// for approval (harmless for non-plan turns).
 async fn open_session(
   client: &Client,
   cwd: &str,
   session_id: &str,
   model: &Option<String>,
   effort: &Option<String>,
+  exit_plan: Option<Arc<dyn ExitPlanModeHandler>>,
 ) -> Result<Session, SdkError> {
   let handler = Arc::new(ApproveAllHandler);
   let sid = SessionId::new(session_id.to_string());
@@ -123,6 +179,9 @@ async fn open_session(
       .with_client_name(CLIENT_NAME)
       .with_working_directory(cwd_pb)
       .with_permission_handler(handler);
+    if let Some(h) = exit_plan {
+      cfg = cfg.with_exit_plan_mode_handler(h);
+    }
     cfg.reasoning_effort = eff;
     let session = client.resume_session(cfg).await?;
     // Resume can't carry a model in its config; switch after attaching.
@@ -135,6 +194,9 @@ async fn open_session(
       .with_client_name(CLIENT_NAME)
       .with_working_directory(cwd_pb)
       .with_permission_handler(handler);
+    if let Some(h) = exit_plan {
+      cfg = cfg.with_exit_plan_mode_handler(h);
+    }
     cfg.reasoning_effort = eff;
     if let Some(m) = &model {
       cfg = cfg.with_model(m.clone());
@@ -228,6 +290,7 @@ impl CopilotManager {
     session_id: &str,
     model: Option<String>,
     effort: Option<String>,
+    exit_plan: Option<Arc<dyn ExitPlanModeHandler>>,
   ) -> Result<Arc<Session>, String> {
     let key = cache_key(project_id, thread_id);
     let want_model = concrete_model(&model);
@@ -278,13 +341,13 @@ impl CopilotManager {
     }
 
     let client = self.ensure_client().await?;
-    let session = match open_session(&client, cwd, session_id, &model, &effort).await {
+    let session = match open_session(&client, cwd, session_id, &model, &effort, exit_plan.clone()).await {
       Ok(s) => s,
       Err(e) if e.is_transport_failure() => {
         // The CLI server died — restart it and try once more.
         self.reset_client().await;
         let client = self.ensure_client().await?;
-        open_session(&client, cwd, session_id, &model, &effort)
+        open_session(&client, cwd, session_id, &model, &effort, exit_plan)
           .await
           .map_err(|e| e.to_string())?
       }
@@ -314,12 +377,12 @@ impl CopilotManager {
   ) -> Result<Arc<Session>, String> {
     let client = self.ensure_client().await?;
     let id = uuid::Uuid::new_v4().to_string();
-    let session = match open_session(&client, cwd, &id, &model, &effort).await {
+    let session = match open_session(&client, cwd, &id, &model, &effort, None).await {
       Ok(s) => s,
       Err(e) if e.is_transport_failure() => {
         self.reset_client().await;
         let client = self.ensure_client().await?;
-        open_session(&client, cwd, &id, &model, &effort)
+        open_session(&client, cwd, &id, &model, &effort, None)
           .await
           .map_err(|e| e.to_string())?
       }

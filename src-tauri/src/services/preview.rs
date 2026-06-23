@@ -77,6 +77,10 @@ pub struct PreviewState {
 struct Inner {
   /// Whether the child webview has been created yet (created lazily on first show).
   created: bool,
+  /// The last URL the renderer explicitly told us to load (the current "root").
+  /// Re-shows compare against this — not the webview's drifted live URL — so a
+  /// pure re-show (e.g. after an overlay closes) never triggers a reload.
+  commanded: Option<String>,
   /// Committed main-frame URLs, oldest first (the back/forward stack).
   stack: Vec<String>,
   /// Index into `stack` of the currently displayed entry.
@@ -97,6 +101,7 @@ impl Inner {
 
   /// Reset the history to a single root entry (a fresh URL / project switch).
   fn reset_to(&mut self, url: &str) {
+    self.commanded = Some(url.to_string());
     self.stack = vec![url.to_string()];
     self.cursor = 0;
     self.programmatic = false;
@@ -237,13 +242,49 @@ pub async fn preview_show_url(
 
   if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
     let _ = wv.set_bounds(bounds.to_rect());
-    let current = wv.url().map(|u| u.to_string()).unwrap_or_default();
-    if current != url {
+    // Navigate only when the *commanded* URL changes — never when the webview's
+    // live URL has merely drifted (SPA route, trailing slash, AAD redirect, query
+    // params). A re-show after an overlay closes passes the same URL, so it stays
+    // a pure show and preserves the app's in-app/auth state (no reload).
+    let needs_nav = {
+      let inner = state.inner.lock().unwrap();
+      inner.commanded.as_deref() != Some(url.as_str())
+    };
+    if needs_nav {
       wv.navigate(parsed)
         .map_err(|e| AppError::Msg(e.to_string()))?;
       state.inner.lock().unwrap().reset_to(&url);
     }
     let _ = wv.show();
+  }
+  Ok(())
+}
+
+/// Navigate the preview to `url` (recording it as the new commanded root and
+/// resetting history) and reposition to `bounds`, **without** changing the
+/// webview's visibility.
+///
+/// The renderer uses this to load a switch / redeploy / Fabric-toggle target
+/// while the native surface is hidden behind a loading placeholder, so the stale
+/// page is never shown; it re-reveals the webview via [`preview_show_url`] once
+/// the new document finishes loading. Visibility stays owned by the renderer's
+/// positioning loop, avoiding show/hide races. A no-op until the webview exists
+/// (the first load goes through [`preview_show_url`]'s build path).
+#[tauri::command]
+pub fn preview_navigate(
+  app: AppHandle,
+  state: State<'_, PreviewState>,
+  url: String,
+  bounds: PreviewBounds,
+) -> AppResult<()> {
+  let parsed: Url = url
+    .parse()
+    .map_err(|e| AppError::Msg(format!("invalid preview url {url:?}: {e}")))?;
+  if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
+    let _ = wv.set_bounds(bounds.to_rect());
+    wv.navigate(parsed)
+      .map_err(|e| AppError::Msg(e.to_string()))?;
+    state.inner.lock().unwrap().reset_to(&url);
   }
   Ok(())
 }

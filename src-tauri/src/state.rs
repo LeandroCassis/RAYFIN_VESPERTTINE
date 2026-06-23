@@ -1,10 +1,15 @@
 //! Shared, mutable application state managed by Tauri (`app.manage(...)`).
 //!
 //! Holds the in-flight chat cancellation handles so a `chat_cancel` command can
-//! stop the running Copilot process for a specific project/thread turn.
+//! stop the running Copilot process for a specific project/thread turn, plus the
+//! [`PlanGate`] that bridges the SDK's `exit_plan_mode` callback to the renderer's
+//! plan-approval UI.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
+
+use github_copilot_sdk::handler::ExitPlanModeResult;
+use tokio::sync::oneshot;
 
 use crate::services::copilot::CopilotManager;
 use crate::services::exec::CancelToken;
@@ -18,6 +23,90 @@ pub struct AppState {
   advisor_cancels: Mutex<HashMap<String, CancelToken>>,
   /// Shared Copilot SDK client + per-thread session cache.
   pub copilot: CopilotManager,
+  /// Bridges Plan-mode `exit_plan_mode` requests to the renderer's approval UI.
+  pub plan: Arc<PlanGate>,
+}
+
+/// Where the active turn for a given Copilot session is streaming, so the
+/// `exit_plan_mode` handler can address its plan card to the right conversation.
+#[derive(Clone)]
+pub struct TurnRoute {
+  pub project_id: String,
+  pub thread_id: String,
+  pub turn_id: String,
+}
+
+/// One outstanding plan-approval prompt awaiting the user's decision.
+struct PendingPlan {
+  request_id: String,
+  tx: oneshot::Sender<ExitPlanModeResult>,
+}
+
+/// Routes Plan-mode prompts between the SDK callback (running on the client's
+/// dispatch task) and the renderer. Both maps are keyed by the Copilot session
+/// id; at most one plan prompt is outstanding per session (the agent calls
+/// `exit_plan_mode` sequentially).
+#[derive(Default)]
+pub struct PlanGate {
+  routes: Mutex<HashMap<String, TurnRoute>>,
+  pending: Mutex<HashMap<String, PendingPlan>>,
+}
+
+impl PlanGate {
+  /// Record where a session's current turn is streaming (called at turn start).
+  pub fn set_route(&self, session_id: &str, route: TurnRoute) {
+    self.routes.lock().unwrap().insert(session_id.to_string(), route);
+  }
+
+  /// The active turn route for a session, if a turn is in flight.
+  pub fn route(&self, session_id: &str) -> Option<TurnRoute> {
+    self.routes.lock().unwrap().get(session_id).cloned()
+  }
+
+  /// Forget a session's route (called at turn end).
+  pub fn clear_route(&self, session_id: &str) {
+    self.routes.lock().unwrap().remove(session_id);
+  }
+
+  /// Register a pending plan decision and return the receiver the handler awaits.
+  /// Any prior outstanding prompt for the session is dropped (its receiver then
+  /// resolves to "not approved").
+  pub fn register_pending(&self, session_id: &str, request_id: &str) -> oneshot::Receiver<ExitPlanModeResult> {
+    let (tx, rx) = oneshot::channel();
+    self.pending.lock().unwrap().insert(
+      session_id.to_string(),
+      PendingPlan { request_id: request_id.to_string(), tx },
+    );
+    rx
+  }
+
+  /// Resolve a pending plan decision by its request id. Returns `true` when a
+  /// matching prompt was found and answered.
+  pub fn resolve(&self, request_id: &str, result: ExitPlanModeResult) -> bool {
+    let mut map = self.pending.lock().unwrap();
+    let key = map
+      .iter()
+      .find(|(_, p)| p.request_id == request_id)
+      .map(|(k, _)| k.clone());
+    if let Some(k) = key {
+      if let Some(p) = map.remove(&k) {
+        return p.tx.send(result).is_ok();
+      }
+    }
+    false
+  }
+
+  /// Reject and drop any outstanding plan prompt for a session (turn end cleanup),
+  /// so a blocked `exit_plan_mode` handler never leaks.
+  pub fn reject_pending(&self, session_id: &str) {
+    if let Some(p) = self.pending.lock().unwrap().remove(session_id) {
+      let _ = p.tx.send(ExitPlanModeResult {
+        approved: false,
+        selected_action: None,
+        feedback: None,
+      });
+    }
+  }
 }
 
 fn key(project_id: &str, thread_id: Option<&str>) -> String {

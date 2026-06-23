@@ -283,6 +283,14 @@ export interface FabricDeployment {
 export type ReasoningEffort = 'none' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 /**
+ * Composer mode for a chat turn, mirroring the Copilot CLI:
+ * - `agent`: today's behaviour — do the work, auto-approving tools.
+ * - `plan`: research read-only, then propose a plan for approval before acting.
+ * - `autopilot`: run autonomously end-to-end, auto-approving tools.
+ */
+export type ChatMode = 'agent' | 'plan' | 'autopilot'
+
+/**
  * A Copilot model available to the signed-in user, as reported by the engine
  * (`models.list`). Drives the chat model picker so the choices match each user's
  * plan/policy instead of a hard-coded list.
@@ -591,6 +599,16 @@ export type ChatEvent =
   | { type: 'notice'; text: string }
   | { type: 'error'; text: string }
   | { type: 'result'; ok: boolean; filesModified: string[]; ranDeploy: boolean }
+  | {
+      type: 'plan-proposed'
+      requestId: string
+      summary: string
+      planContent: string
+      /** Allowed continuations, e.g. 'interactive' | 'autopilot' | 'autopilot_fleet' | 'exit_only'. */
+      actions: string[]
+      recommendedAction: string
+    }
+  | { type: 'plan-resolved'; requestId: string }
 
 /** Envelope so the renderer can route events to the right project's conversation. */
 export interface ChatEventEnvelope {
@@ -1090,12 +1108,20 @@ export interface RayfinStudioApi {
       turnId: string,
       text: string,
       attachments?: string[],
-      threadId?: string
+      threadId?: string,
+      mode?: ChatMode
     ) => Promise<ChatTurnResult>
     /** Cancel the in-flight turn for a project's thread (main when omitted). */
     cancel: (projectId: string, threadId?: string) => Promise<void>
     /** Start a fresh conversation (drops the persisted Copilot session id). */
     reset: (projectId: string, threadId?: string) => Promise<void>
+    /**
+     * Answer a Plan-mode approval prompt (`plan-proposed`). `action` is one of
+     * 'interactive' | 'autopilot' | 'autopilot_fleet' | 'exit_only' to approve and
+     * continue with that route, or 'keep_planning' to send the agent back to revise
+     * the plan (optionally with `feedback`).
+     */
+    resolvePlan: (requestId: string, action: string, feedback?: string) => Promise<void>
     /** Load the persisted conversation history for a project's thread. */
     history: (projectId: string, threadId?: string) => Promise<ChatMessage[]>
     /** Persist the conversation history for a thread (empty array clears it). */
@@ -1175,6 +1201,13 @@ export interface RayfinStudioApi {
      * first call; afterwards navigates (when `url` changed) and repositions.
      */
     showUrl: (url: string, bounds: PreviewBounds) => Promise<void>
+    /**
+     * Navigate the preview to `url` and reposition to `bounds`, **without**
+     * changing visibility. Used to load a switch/redeploy/Fabric-toggle target
+     * while the surface is hidden behind a loading placeholder; the renderer
+     * re-reveals it via {@link showUrl} once the new page finishes loading.
+     */
+    navigate: (url: string, bounds: PreviewBounds) => Promise<void>
     /** Reposition/resize the preview to track its host element. */
     setBounds: (bounds: PreviewBounds) => Promise<void>
     /** Hide the preview (call whenever the host is covered or unmounted). */

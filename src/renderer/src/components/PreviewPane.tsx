@@ -107,7 +107,6 @@ export default function PreviewPane({
   const hostRef = useRef<HTMLDivElement>(null)
   const logRef = useRef<HTMLPreElement>(null)
   const prevRunningRef = useRef(running)
-  const [reloadNonce, setReloadNonce] = useState(0)
   const [displayUrl, setDisplayUrl] = useState(deployedUrl ?? '')
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
@@ -121,6 +120,66 @@ export default function PreviewPane({
   // the last visible frame so the placeholder shows that still image, not black.
   const [frozen, setFrozen] = useState<string | null>(null)
 
+  // While a fresh page load is in flight (a redeploy, a deployment / project
+  // switch, or the Fabric toggle) we hide the native webview and show a spinner,
+  // so the user never sees the stale old app flash before the new one paints.
+  //   • `transitioning` (state) drives the re-render / spinner / hide gate.
+  //   • `transitioningRef` is the synchronous truth the positioning effect reads,
+  //     so it never shows during the same commit a switch begins.
+  //   • `pendingUrlRef` is the URL currently loading; `loadedUrlRef` is the URL
+  //     the webview already has revealed — a re-show at the same URL (e.g. after
+  //     an overlay closes) is then a pure show, never a reload.
+  //   • `sawLoadingRef` gates the reveal on the new load actually starting.
+  const [transitioning, setTransitioning] = useState(false)
+  const transitioningRef = useRef(false)
+  const pendingUrlRef = useRef<string | null>(null)
+  const loadedUrlRef = useRef<string | null>(null)
+  const sawLoadingRef = useRef(false)
+  const watchdogRef = useRef<number | null>(null)
+
+  const clearWatchdog = useCallback((): void => {
+    if (watchdogRef.current !== null) {
+      window.clearTimeout(watchdogRef.current)
+      watchdogRef.current = null
+    }
+  }, [])
+
+  // Reveal the webview again: record the loaded URL and drop the transition.
+  const endTransition = useCallback((): void => {
+    if (pendingUrlRef.current) loadedUrlRef.current = pendingUrlRef.current
+    pendingUrlRef.current = null
+    sawLoadingRef.current = false
+    clearWatchdog()
+    transitioningRef.current = false
+    setTransitioning(false)
+  }, [clearWatchdog])
+
+  // Begin hiding the preview for a fresh load of `url`; the caller then triggers
+  // the actual load (reload() for a redeploy, navigate() for a switch). A watchdog
+  // reveals anyway if the load never reports completion, so we never stay blank.
+  const beginTransition = useCallback(
+    (url: string): void => {
+      pendingUrlRef.current = url
+      sawLoadingRef.current = false
+      transitioningRef.current = true
+      setTransitioning(true)
+      clearWatchdog()
+      watchdogRef.current = window.setTimeout(() => {
+        watchdogRef.current = null
+        endTransition()
+      }, 12000)
+    },
+    [clearWatchdog, endTransition]
+  )
+
+  const measureHost = useCallback((): PreviewBounds | null => {
+    const host = hostRef.current
+    if (!host) return null
+    const r = host.getBoundingClientRect()
+    if (r.width < 1 || r.height < 1) return null
+    return { x: r.left, y: r.top, width: r.width, height: r.height }
+  }, [])
+
   const showWebview = !running && Boolean(deployedUrl)
   // Which URL the embedded webview actually loads. Falls back to the direct URL
   // whenever the Fabric link is unavailable or the toggle is off.
@@ -133,14 +192,17 @@ export default function PreviewPane({
     setPreviewMode(readPreviewMode(project.id))
   }, [project.id])
 
-  // Auto-reload the preview after a successful (re)deploy.
+  // After a successful (re)deploy the URL is usually unchanged but the server
+  // code changed, so force a reload — hidden behind the spinner so the previous
+  // build never flashes. Revealed once the fresh page finishes loading (onNavState).
   useEffect(() => {
     const wasRunning = prevRunningRef.current
     prevRunningRef.current = running
-    if (wasRunning && !running && deploy?.result?.ok) {
-      setReloadNonce((n) => n + 1)
+    if (wasRunning && !running && deploy?.result?.ok && previewUrl) {
+      beginTransition(previewUrl)
+      void window.api.preview.reload()
     }
-  }, [running, deploy?.result])
+  }, [running, deploy?.result, previewUrl, beginTransition])
 
   useEffect(() => {
     if (deployedUrl) setDisplayUrl(deployedUrl)
@@ -157,15 +219,34 @@ export default function PreviewPane({
       setLoading(s.loading)
       setCanBack(s.canGoBack)
       setCanForward(s.canGoForward)
+      // Reveal a hidden transition once its fresh load finishes (after it began).
+      if (s.loading) sawLoadingRef.current = true
+      else if (pendingUrlRef.current && sawLoadingRef.current) endTransition()
     })
-  }, [])
+  }, [endTransition])
+
+  // Load a new target (a deployment / project switch or the Fabric toggle) while
+  // the native surface stays hidden, so the stale page never shows. We navigate
+  // the hidden webview here; the positioning effect re-reveals it once the load
+  // completes. The first load (no webview yet) is skipped — the positioning effect
+  // builds it via showUrl; `loadedUrlRef` stays null until then.
+  useEffect(() => {
+    if (!showWebview || !previewUrl) return
+    if (loadedUrlRef.current === null) return // first load builds via positioning effect
+    if (loadedUrlRef.current === previewUrl) return // already revealed
+    if (pendingUrlRef.current === previewUrl) return // already loading it
+    beginTransition(previewUrl)
+    const b = measureHost()
+    void window.api.preview.navigate(previewUrl, b ?? { x: 0, y: 0, width: 1, height: 1 })
+  }, [previewUrl, showWebview, beginTransition, measureHost])
 
   // Position the native webview over its host placeholder and keep it tracking
   // the host's bounds. The webview is a real OS surface that paints above all
   // HTML, so when it is not meant to be visible (deploying, no deployment, a
   // covering modal, the pane collapsed to 0×0) we hide it instead.
   useEffect(() => {
-    const visible = showWebview && !suppressed && Boolean(deployedUrl)
+    const visible =
+      showWebview && !suppressed && !transitioningRef.current && Boolean(deployedUrl)
     const host = hostRef.current
     if (!visible || !host || !deployedUrl || !previewUrl) {
       // An HTML overlay (a dropdown/menu/modal) covering a live preview suppresses
@@ -196,8 +277,11 @@ export default function PreviewPane({
       return
     }
 
-    // Becoming visible again — drop any frozen frame so the live webview shows through.
+    // Becoming visible again — drop any frozen frame so the live webview shows
+    // through, and record that this URL is the one now revealed (so a later
+    // re-show after an overlay is a pure show, never a reload).
     setFrozen(null)
+    loadedUrlRef.current = previewUrl
 
     let raf = 0
     // `shownKey` is the bounds key the webview is currently shown at; '' means
@@ -267,17 +351,15 @@ export default function PreviewPane({
       window.removeEventListener('resize', onResize)
       cancelAnimationFrame(raf)
     }
-  }, [deployedUrl, previewUrl, showWebview, suppressed])
+  }, [deployedUrl, previewUrl, showWebview, suppressed, transitioning])
 
   // The positioning effect hides the webview whenever a dependency change makes it
   // not-visible (and its rAF loop hides it when the host collapses to 0×0); this
   // hides it once more when the pane itself unmounts.
   useEffect(() => () => void window.api.preview.hide(), [])
 
-  // Refresh the page after a successful (re)deploy (URL is often unchanged).
-  useEffect(() => {
-    if (reloadNonce > 0) void window.api.preview.reload()
-  }, [reloadNonce])
+  // Cancel a pending reveal watchdog on unmount.
+  useEffect(() => clearWatchdog, [clearWatchdog])
 
   const reload = useCallback((): void => {
     void window.api.preview.reload()
@@ -334,7 +416,7 @@ export default function PreviewPane({
             <button
               className="seg-btn seg-btn--icon"
               onClick={goBack}
-              disabled={!showWebview || !canBack}
+              disabled={!showWebview || !canBack || transitioning}
               aria-label="Back"
               title="Back"
             >
@@ -343,7 +425,7 @@ export default function PreviewPane({
             <button
               className="seg-btn seg-btn--icon"
               onClick={goForward}
-              disabled={!showWebview || !canForward}
+              disabled={!showWebview || !canForward || transitioning}
               aria-label="Forward"
               title="Forward"
             >
@@ -352,7 +434,7 @@ export default function PreviewPane({
             <button
               className="seg-btn seg-btn--icon"
               onClick={reload}
-              disabled={!showWebview}
+              disabled={!showWebview || transitioning}
               aria-label="Reload"
               title="Reload"
             >
@@ -385,7 +467,7 @@ export default function PreviewPane({
                   return next
                 })
               }
-              disabled={!showWebview || !fabricUrl}
+              disabled={!showWebview || !fabricUrl || transitioning}
               title={
                 !fabricUrl
                   ? 'The Fabric portal view is unavailable for this deployment'
@@ -400,7 +482,7 @@ export default function PreviewPane({
             <button
               className="seg-btn"
               onClick={() => void startAnnotate()}
-              disabled={!showWebview || capturing}
+              disabled={!showWebview || capturing || transitioning}
               title="Take a screenshot of the preview, draw on it, and attach it to your message"
             >
               <AnnotateIcon />
@@ -409,7 +491,7 @@ export default function PreviewPane({
             <button
               className="seg-btn seg-btn--icon"
               onClick={() => void clearSession()}
-              disabled={!showWebview || clearing}
+              disabled={!showWebview || clearing || transitioning}
               aria-label="Clear cookies"
               title="Clear the preview's cookies and cached sign-in, then reload — use this to sign in as a different account or Entra tenant"
             >
@@ -469,6 +551,11 @@ export default function PreviewPane({
                   here so the overlay floats over a still preview instead of black. */}
               <div className="preview-webview-host" ref={hostRef}>
                 {frozen && <img className="preview-frozen" src={frozen} alt="" draggable={false} />}
+                {transitioning && (
+                  <div className="preview-spinner" role="status" aria-label="Loading preview">
+                    <span className="preview-spinner-ring" />
+                  </div>
+                )}
               </div>
             </div>
           </div>

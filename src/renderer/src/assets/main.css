@@ -3794,6 +3794,27 @@ code {
   pointer-events: none;
 }
 
+/* Centered loading spinner shown over the dark host while a fresh page loads
+   (a redeploy, a deployment / project switch, or the Fabric toggle), so the
+   previous app never flashes before the new one paints. The native webview is
+   hidden during this window, so the spinner shows through. */
+.preview-spinner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.preview-spinner-ring {
+  width: 28px;
+  height: 28px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: ws-spin 0.7s linear infinite;
+}
+
 /* Preview-depth: device-width framing + console drawer. */
 .preview-canvas {
   flex: 1;
@@ -5063,12 +5084,60 @@ code {
   white-space: nowrap;
 }
 
+.agent-status-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  align-self: stretch;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .agent-status-steps {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  appearance: none;
+  font-family: inherit;
+  border: 0;
+  margin: 0;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
   font-size: 11.5px;
   font-variant-numeric: tabular-nums;
   color: var(--text-dim);
   white-space: nowrap;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.agent-status-steps:hover {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--text);
+}
+
+.agent-status-steps--open {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text);
+}
+
+.agent-status-steps-caret {
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
+.agent-status-steps-list {
+  width: min(560px, 100%);
+  max-height: 240px;
+  overflow-y: auto;
+  padding-bottom: 2px;
+  animation: statusIn 0.16s ease both;
 }
 
 .agent-status-time {
@@ -5079,8 +5148,8 @@ code {
   letter-spacing: 0.3px;
 }
 
-/* Hairline middot separators so label · steps · time read as one cohesive line. */
-.agent-status-steps::before,
+/* Hairline middot separator so label · time read as one cohesive line.
+   The steps chip is now a button with its own padding/hover, so it omits the dot. */
 .agent-status-time::before {
   content: '·';
   margin-right: 6px;
@@ -5741,6 +5810,7 @@ span.thread-pill {
   padding: 12px 14px 14px;
   background: var(--bg-elev);
   position: relative;
+  container-type: inline-size;
 }
 
 /* Thin indeterminate progress line above the composer while a turn is running. */
@@ -5837,10 +5907,19 @@ span.thread-pill {
 .composer-hint {
   display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  white-space: nowrap;
   gap: 4px;
   font-size: 11.5px;
   color: var(--text-faint);
+}
+
+/* In a narrow composer the mode selector takes priority — drop the (decorative)
+   keyboard hint rather than letting it wrap into a tall stack beside the modes. */
+@container (max-width: 560px) {
+  .composer-hint {
+    display: none;
+  }
 }
 
 .composer-hint kbd {
@@ -5856,6 +5935,241 @@ span.thread-pill {
 
 .composer-hint-sep {
   opacity: 0.6;
+}
+
+/* Composer left cluster: the mode selector sits beside the keyboard hint. */
+.composer-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Compact mode selector: a labeled pill that opens an upward menu, so Plan /
+   Autopilot stay discoverable without crowding the default Agent mode. */
+.mode-menu {
+  position: relative;
+  flex: none;
+}
+
+.mode-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 9px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.mode-trigger:hover:not(:disabled),
+.mode-trigger--open {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.mode-trigger:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.mode-trigger-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.mode-trigger-caret {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.mode-pop {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 6px);
+  z-index: 40;
+  width: 268px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--bg-elev-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: statusIn 0.14s ease both;
+}
+
+.mode-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 8px 9px;
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.mode-opt:hover {
+  background: var(--bg-elev-2);
+}
+
+.mode-opt--on {
+  background: var(--accent-soft);
+}
+
+.mode-opt-icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 1px;
+  flex: none;
+  color: var(--text-dim);
+}
+
+.mode-opt--on .mode-opt-icon {
+  color: var(--accent);
+}
+
+.mode-opt-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mode-opt-label {
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.mode-opt--on .mode-opt-label {
+  color: var(--accent);
+}
+
+.mode-opt-desc {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--text-dim);
+}
+
+.mode-opt-check {
+  flex: none;
+  margin-left: 2px;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+/* ── Plan-mode approval card ────────────────────────────────────────────────
+   Rendered on an assistant turn when Plan mode proposes a plan. The user
+   approves a continuation (run / autopilot) or sends it back to revise. */
+.plan-card {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg-elev-2);
+}
+.plan-card--resolved {
+  opacity: 0.65;
+  border-left-color: var(--border);
+}
+.plan-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.plan-card-icon {
+  display: inline-flex;
+  color: var(--accent);
+}
+.plan-card-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.plan-card-status {
+  margin-left: auto;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-faint);
+}
+.plan-card-summary {
+  font-size: 13px;
+  color: var(--text);
+}
+.plan-card-detail {
+  margin-top: 6px;
+}
+.plan-card-toggle {
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.plan-card-toggle:hover {
+  text-decoration: underline;
+}
+.plan-card-body {
+  margin-top: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 12.5px;
+  max-height: 320px;
+  overflow: auto;
+}
+.plan-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.plan-card-revise {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+.plan-card-feedback {
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.plan-card-feedback:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.plan-card-revise .btn {
+  align-self: flex-start;
 }
 
 .composer-send {

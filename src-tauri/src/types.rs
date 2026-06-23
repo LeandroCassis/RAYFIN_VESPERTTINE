@@ -556,6 +556,25 @@ pub enum ChatEvent {
     #[serde(rename = "ranDeploy")]
     ran_deploy: bool,
   },
+  /// Plan mode produced a plan and is awaiting the user's decision. The renderer
+  /// shows an approval card; the choice is sent back via `chat_resolve_plan`.
+  #[serde(rename = "plan-proposed")]
+  PlanProposed {
+    #[serde(rename = "requestId")]
+    request_id: String,
+    summary: String,
+    #[serde(rename = "planContent")]
+    plan_content: String,
+    actions: Vec<String>,
+    #[serde(rename = "recommendedAction")]
+    recommended_action: String,
+  },
+  /// A previously-proposed plan was resolved (so the card can dismiss itself).
+  #[serde(rename = "plan-resolved")]
+  PlanResolved {
+    #[serde(rename = "requestId")]
+    request_id: String,
+  },
 }
 
 #[derive(Serialize, Clone)]

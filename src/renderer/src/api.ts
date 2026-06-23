@@ -16,6 +16,7 @@ import {
   type AdvisorEventEnvelope,
   type ChatEventEnvelope,
   type ChatMessage,
+  type ChatMode,
   type ChatOptions,
   type CreateProjectInput,
   type CreateThreadInput,
@@ -129,11 +130,14 @@ export const api: RayfinStudioApi = {
       turnId: string,
       text: string,
       attachments?: string[],
-      threadId?: string
-    ) => invoke('chat_send', { projectId, turnId, text, attachments, threadId }),
+      threadId?: string,
+      mode?: ChatMode
+    ) => invoke('chat_send', { projectId, turnId, text, attachments, threadId, mode }),
     cancel: (projectId: string, threadId?: string) =>
       invoke('chat_cancel', { projectId, threadId }),
     reset: (projectId: string, threadId?: string) => invoke('chat_reset', { projectId, threadId }),
+    resolvePlan: (requestId: string, action: string, feedback?: string) =>
+      invoke('chat_resolve_plan', { requestId, action, feedback }),
     history: (projectId: string, threadId?: string) =>
       invoke('chat_history', { projectId, threadId }),
     saveHistory: (projectId: string, messages: ChatMessage[], threadId?: string) =>
@@ -175,6 +179,7 @@ export const api: RayfinStudioApi = {
 
   preview: {
     showUrl: (url: string, bounds: PreviewBounds) => invoke('preview_show_url', { url, bounds }),
+    navigate: (url: string, bounds: PreviewBounds) => invoke('preview_navigate', { url, bounds }),
     setBounds: (bounds: PreviewBounds) => invoke('preview_set_bounds', { bounds }),
     hide: () => invoke('preview_hide'),
     reload: () => invoke('preview_reload'),
