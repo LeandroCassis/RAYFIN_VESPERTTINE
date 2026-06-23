@@ -170,6 +170,11 @@ jobs:
             echo "Building signed + notarized app…"
           else
             echo "Building ad-hoc/unsigned app…"
+            # The APPLE_* env vars above are set to empty strings when their
+            # secrets are absent. Tauri treats a *present* (even empty)
+            # APPLE_CERTIFICATE as "sign me" and fails on `security import`, so
+            # remove them entirely for an unsigned build.
+            unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
           fi
           npm run tauri:build -- --bundles ${{ matrix.bundles }}
 
