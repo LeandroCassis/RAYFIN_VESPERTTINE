@@ -3,6 +3,7 @@ import {
   useEffect,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent,
   type KeyboardEvent as ReactKeyboardEvent
 } from 'react'
@@ -237,6 +238,14 @@ export default function AnnotateOverlay({ image, onCancel, onConfirm }: Props): 
     e.stopPropagation()
   }
 
+  // In text mode, stop the browser's default mousedown focus handling: it would
+  // move focus to <body> (the canvas isn't focusable) immediately *after* we focus
+  // the freshly-mounted editor, firing a blur that commits an empty label and
+  // closes the editor before a key is ever typed.
+  const onCanvasMouseDown = (e: ReactMouseEvent<HTMLCanvasElement>): void => {
+    if (tool === 'text') e.preventDefault()
+  }
+
   const onPointerDown = (e: PointerEvent<HTMLCanvasElement>): void => {
     if (!ready) return
     if (tool === 'text') {
@@ -378,6 +387,7 @@ export default function AnnotateOverlay({ image, onCancel, onConfirm }: Props): 
         <canvas
           ref={canvasRef}
           className={`annotate-canvas${tool === 'text' ? ' annotate-canvas--text' : ''}`}
+          onMouseDown={onCanvasMouseDown}
           onPointerDown={onPointerDown}
           onPointerMove={onPointerMove}
           onPointerUp={finishStroke}
@@ -387,6 +397,7 @@ export default function AnnotateOverlay({ image, onCancel, onConfirm }: Props): 
           <textarea
             ref={editRef}
             className="annotate-textedit"
+            autoFocus
             style={{
               left: `${editing.left}px`,
               top: `${editing.top}px`,
