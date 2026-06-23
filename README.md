@@ -3,62 +3,74 @@
 
   <h1>Rayfin Fabricator</h1>
 
-  <p><strong>Build Rayfin apps through chat, deploy them to Microsoft Fabric, and debug the real remote runtime from your Windows desktop.</strong></p>
+  <p><strong>The all-in-one workbench for building Rayfin apps — chat to build, preview inline, and ship to Microsoft Fabric, all in one window. No CLI wrangling, no new account: just your GitHub Copilot sign-in.</strong></p>
 
   <p>
-    <a href="#install"><img alt="Download Rayfin Fabricator" src="https://img.shields.io/badge/Download-Rayfin%20Fabricator-0078D4?style=for-the-badge&logo=windows&logoColor=white" /></a>
+    <a href="https://github.com/spatney/rayfin-fabricator/releases/latest"><img alt="Download Rayfin Fabricator" src="https://img.shields.io/badge/Download-Rayfin%20Fabricator-0078D4?style=for-the-badge&logo=windows&logoColor=white" /></a>
   </p>
 
   <p>
     <a href="./LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
     <img alt="Platform: Windows" src="https://img.shields.io/badge/platform-Windows-0078D4.svg" />
     <img alt="Built with Tauri" src="https://img.shields.io/badge/built%20with-Tauri-24C8DB.svg" />
-    <img alt="UI: React" src="https://img.shields.io/badge/UI-React-61DAFB.svg" />
-    <img alt="Language: TypeScript" src="https://img.shields.io/badge/language-TypeScript-3178C6.svg" />
   </p>
 </div>
 
-> **Personal project disclaimer**  
-> This is a personal project built by Sachin Patney in his own free time. Although the author works at Microsoft, Rayfin Fabricator is not a Microsoft product — it is not affiliated with, endorsed by, sponsored by, or supported by Microsoft.
+<div align="center">
+  <a href="https://github.com/spatney/rayfin-fabricator/releases/latest">
+    <img src="./docs/app-preview.svg" alt="The Rayfin Fabricator workbench: chat to build a Rayfin app on the left, with a live inline preview of the deployed app on the right." width="100%" />
+  </a>
+  <p><sub>Build, preview, and ship — all in one window. <em>(Representative UI.)</em></sub></p>
+</div>
 
-## What is Rayfin Fabricator?
+> **Personal project disclaimer**
+> Rayfin Fabricator is a personal project built by Sachin Patney in his own free time. The author works at Microsoft, but this is not a Microsoft product and is not affiliated with, endorsed by, sponsored by, or supported by Microsoft.
 
-**Rayfin Fabricator** is a Windows desktop app for building “Rayfin apps” through chat.
+Building a Rayfin app usually means living in your terminal: scaffold with one CLI, prompt the Copilot CLI, run `rayfin up` to deploy, wrangle git, flip to a browser to check it, repeat. Rayfin Fabricator folds all of that into a single desktop app.
 
-It combines a **Tauri v2 Rust backend**, a **React 18 + TypeScript renderer built with Vite**, a built-in Monaco editor, native WebView2 preview, git-backed project history, and two external CLIs:
+You chat, the app gets built, you watch it come together inline, and you manage every deployment from one panel. No commands to memorize, no terminal tabs to juggle.
 
-- **GitHub Copilot CLI** — the AI authoring agent that writes and edits app code.
-- **Rayfin CLI** — runs `rayfin up ...` to deploy apps to Microsoft Fabric.
+Best of all, it runs on the **GitHub Copilot account you already have**. Nothing new to sign up for and no extra subscription — sign in and start building.
 
-The core workflow is simple:
+### New to Rayfin?
 
-> **author locally → deploy, preview, debug, and validate remotely**
+Rayfin is Microsoft's **Backend-as-a-Service for the agentic era**. You define your data model with TypeScript decorators and the platform provisions and manages the database, authentication, data APIs, storage, and hosting for you — all on Microsoft Fabric, with enterprise-grade governance built in. Learn more at [microsoft/rayfin](https://github.com/microsoft/rayfin) and the [Rayfin docs](https://aka.ms/rayfin/docs).
 
-## Install
+Rayfin Fabricator is the desktop shell that makes building those apps effortless.
 
-Rayfin Fabricator is a **Windows 10/11** desktop app distributed as an NSIS installer.
+## Everything in one window
+
+1. **Chat to build.** Describe what you want in plain English. The built-in GitHub Copilot agent writes and edits the project files for you — you never touch a command line. Git quietly snapshots every change, so you can diff and roll back anytime.
+2. **See it as it's built.** Inspect and edit any file in a built-in Monaco editor, and watch the app itself in a live inline preview — no separate browser, no copy-pasting URLs.
+3. **Deploy with a click.** Hit deploy and Fabricator runs `rayfin up` for you, shipping the app to Microsoft Fabric. Create, switch, and redeploy across workspaces from a single deployments panel.
+4. **Harden it.** The Advisor runs Copilot-driven security and policy checks — unprotected routes, over-permissive database policies, that kind of thing — and flags them when the project changes.
+5. **Repeat** until it's exactly what you wanted.
+
+## Download
+
+Rayfin Fabricator is a Windows 10/11 desktop app shipped as a signed NSIS installer.
 
 > **[⬇️ Download the latest release](https://github.com/spatney/rayfin-fabricator/releases/latest)**
 
-1. Grab the `Rayfin Fabricator_<version>_x64-setup.exe` asset (the `*-setup.exe` file) from the [latest release](https://github.com/spatney/rayfin-fabricator/releases/latest), or browse every build on the [Releases](https://github.com/spatney/rayfin-fabricator/releases) page.
-2. Run the installer. The build is **code-signed** (Authenticode, via Azure Artifact Signing) and shows a verified publisher — *Sachin Patney* — instead of "Unknown Publisher". SmartScreen reputation accrues per signing certificate over time, so early downloads may still surface a warning; if so, choose **More info → Run anyway**.
-3. Launch **Rayfin Fabricator**. The built-in onboarding doctor checks the remaining prerequisites (WebView2 runtime, the GitHub Copilot CLI) and walks you through signing in to GitHub Copilot and Microsoft Fabric.
+1. Grab the `Rayfin Fabricator_<version>_x64-setup.exe` asset from the [latest release](https://github.com/spatney/rayfin-fabricator/releases/latest), or browse every build on the [Releases](https://github.com/spatney/rayfin-fabricator/releases) page.
+2. Run it. The installer is Authenticode code-signed (via Azure Artifact Signing) and shows a verified publisher, *Sachin Patney*. SmartScreen reputation builds per certificate over time, so an early download may still warn you — if it does, choose **More info → Run anyway**.
+3. Launch the app. The onboarding doctor checks the rest (WebView2 runtime, the GitHub Copilot CLI) and walks you through signing in to GitHub Copilot and Microsoft Fabric.
 
-To build apps you'll also create a Rayfin project with `npm create @microsoft/rayfin@latest` — Fabricator uses that project's pinned Rayfin CLI, so no global install is required.
+To build apps you'll create a Rayfin project with `npm create @microsoft/rayfin@latest`. Fabricator uses that project's pinned Rayfin CLI, so there's nothing to install globally. The app keeps itself up to date with in-app auto-updates.
 
-Prefer to build from source instead? See [Getting started](#getting-started).
+Want to build from source instead? Jump to [Build from source](#build-from-source).
 
-## Feature tour
+## What's inside
 
-- **Chat-driven app building** with the GitHub Copilot CLI under the hood, including threads and history.
-- **Built-in Monaco code editor** for inspecting and editing generated project files.
-- **Git controls** plus a history and restore view for local iteration.
-- **One-click deploy to Microsoft Fabric** via the Rayfin CLI, with a deployments panel for create, switch, and redeploy flows.
-- **Live embedded preview** of the deployed app in a native WebView2 surface.
-- Preview tools for **navigation, reload, clear cookies / sign out, focus mode, Fabric portal shell toggle**, and **annotate screenshot → attach to chat**.
-- **Skills view** for reusable capabilities.
-- **Advisor tab** for Copilot-driven security and policy validation, with saved results and stale detection.
-- **Onboarding doctor** that checks required tools and sign-in prerequisites.
+**Author.** Chat with a built-in GitHub Copilot agent (threads and history included), inspect and edit any generated file in a built-in Monaco editor, browse the agent's reusable Skills, and lean on a git timeline you can diff and restore.
+
+**Ship.** One-click `rayfin up` deploys to Microsoft Fabric. A deployments panel handles create, switch, and redeploy across workspaces.
+
+**Preview.** A native inline preview loads your running app — navigation, reload, sign-out / clear-cookies, focus mode, a Fabric portal shell toggle, and annotate-a-screenshot-straight-into-chat.
+
+**Validate.** The Advisor runs AI security and policy checks, saves the results, and tells you when they've gone stale.
+
+**Stay current.** Fabricator tracks each project's pinned Rayfin version and can hand an upgrade straight to the agent, keeping the app building as it goes.
 
 ## Architecture
 
@@ -107,75 +119,30 @@ flowchart TD
   Portal --> Runtime
 ```
 
-The React renderer provides the workbench, chat, editor, preview, deployment controls, settings, skills, advisor, and history views. The Rust backend owns IPC handlers in `src-tauri/src/commands/` and services in `src-tauri/src/services/` for executing external tools, persistence, preview hosting, telemetry, history, crash logs, and path management.
+A React renderer drives the workbench, chat, editor, preview, deployments, advisor, settings, skills, and history. A Tauri v2 Rust core owns the IPC handlers in `src-tauri/src/commands/` and the services in `src-tauri/src/services/` for running external tools, persistence, preview hosting, telemetry, history, crash logs, and path management.
 
-Rayfin Fabricator shells out to the Copilot CLI for authoring and to the Rayfin CLI for deployment. The app source stays local, but the running app is the instance deployed to Microsoft Fabric and loaded into the embedded WebView2 preview.
+The idea: Fabricator wraps the tools you'd otherwise run by hand. It shells out to the GitHub Copilot CLI to author and to the Rayfin CLI to deploy, tracks your project with git, and loads the running app — deployed to Microsoft Fabric — into the embedded preview. The Advisor closes the loop with AI validation that flags issues like unauthenticated routes or loose database policies and goes stale when the project moves on. You get the whole build-and-ship loop without leaving the window.
 
-## Local authoring, remote debug & validation
+## Build from source
 
-```mermaid
-sequenceDiagram
-  participant Dev as Developer
-  participant App as Rayfin Fabricator
-  participant Local as Local workspace + git
-  participant Copilot as GitHub Copilot CLI
-  participant Rayfin as Rayfin CLI
-  participant Fabric as Microsoft Fabric
-  participant Preview as WebView2 preview
-  participant Advisor as Advisor
-
-  Dev->>App: Chat and edit in Monaco
-  App->>Copilot: Ask agent to create or change code
-  Copilot->>Local: Write project files
-  App->>Local: Track changes with git
-  Dev->>App: Deploy
-  App->>Rayfin: rayfin up
-  Rayfin->>Fabric: Deploy app
-  Fabric-->>App: Remote hosting URL
-  App->>Preview: Load deployed URL
-  Preview->>Fabric: Debug real remote app
-  Dev->>Advisor: Run validation
-  Advisor->>Copilot: Security and policy checks
-  Advisor->>Local: Save results and detect staleness
-  Dev->>App: Iterate
-```
-
-Rayfin Fabricator does **not** run your Rayfin app in a local dev server. You author files locally, then `rayfin up` deploys the project to Microsoft Fabric. The embedded preview loads the deployed remote hosting URL and can toggle into the Microsoft Fabric portal shell, so you debug the same instance users will run.
-
-Validation is remote and AI-assisted: the Advisor uses Copilot-driven checks to flag issues such as routes not protected by auth or over-permissive database policies, then saves results and marks them stale when the project changes.
-
-## Prerequisites
-
-Rayfin Fabricator relies on these tools and sign-ins:
+You'll need:
 
 | Requirement | Notes |
 | --- | --- |
-| Windows 10/11 | WebView2 runtime required. |
-| Node.js 20+ and npm | Required for the renderer and build scripts. |
-| Rust stable with MSVC | Required only when building the desktop app from source. |
-| Tauri prerequisites | Required for local desktop development and packaging. |
+| Windows 10/11 | WebView2 runtime required (the in-app doctor checks it). |
+| Node.js 20+ and npm | For the renderer and build scripts. |
+| Rust stable with MSVC | For building the desktop app. |
+| Tauri prerequisites | For local desktop development and packaging. |
 | Git | Used for local project history. |
-| Rayfin CLI | Not required globally — it ships with each Rayfin project (`npm create @microsoft/rayfin@latest`); Fabricator runs the project-pinned version via `npx rayfin`. Sign in to Microsoft Fabric in-app. |
+| Rayfin CLI | Ships with each Rayfin project (`npm create @microsoft/rayfin@latest`); Fabricator runs the project-pinned version via `npx rayfin`. Sign in to Microsoft Fabric in-app. |
 | GitHub Copilot CLI | Available as a command; sign in to GitHub Copilot. |
 
-## Getting started
-
-Clone the repository:
+Clone, install, and run:
 
 ```powershell
 git clone https://github.com/spatney/rayfin-fabricator.git
 cd rayfin-fabricator
-```
-
-Install dependencies:
-
-```powershell
 npm install
-```
-
-Run the desktop app in development mode:
-
-```powershell
 npm run dev
 ```
 
@@ -185,22 +152,22 @@ Build the desktop app and NSIS installer:
 npm run build
 ```
 
-External CLI setup and sign-ins are required to deploy and preview apps:
+Sanity-check the external CLIs and sign-ins before deploying or previewing:
 
 ```powershell
 npx rayfin --help
 copilot --help
 ```
 
-Useful scripts:
+Scripts worth knowing:
 
-| Script | Description |
+| Script | What it does |
 | --- | --- |
-| `npm run dev` | Run the app in development mode with Tauri and Vite. |
+| `npm run dev` | Run the app in development mode (Tauri + Vite). |
 | `npm run build` | Build the desktop app and installer. |
-| `npm run dev:renderer` | Run the Vite renderer only. |
-| `npm run build:renderer` | Build the Vite renderer only. |
-| `npm run typecheck` | Type-check Node and web TypeScript projects. |
+| `npm run dev:renderer` | Run the Vite renderer on its own. |
+| `npm run build:renderer` | Build the Vite renderer on its own. |
+| `npm run typecheck` | Type-check the Node and web TypeScript projects. |
 | `npm run lint` | Run ESLint. |
 | `npm run format` | Format renderer source with Prettier. |
 
@@ -208,15 +175,15 @@ Useful scripts:
 
 ```text
 rayfin-fabricator/
-├─ src-tauri/                 Rust Tauri backend, IPC commands, services, resources, and packaging
-│  ├─ src/commands/           IPC handlers for advisor, auth, chat, deploy, doctor, files, git, projects, settings, threads, and more
-│  ├─ src/services/           exec, preview, store, telemetry, history, crashlog, emit, and paths services
-│  └─ vendor/wry/             Vendored wry crate with WebView2 device-compliance SSO patch
+├─ src-tauri/                 Rust Tauri backend, IPC commands, services, resources, packaging
+│  ├─ src/commands/           IPC handlers: advisor, auth, chat, deploy, doctor, files, git, projects, settings, threads, …
+│  ├─ src/services/           exec, preview, store, telemetry, history, crashlog, emit, paths
+│  └─ vendor/wry/             Vendored wry crate with the WebView2 device-compliance SSO patch
 ├─ src/renderer/              React 18 + TypeScript UI built with Vite
 │  ├─ screens/                SetupScreen onboarding and Workbench shell
-│  └─ components/             ChatPanel, PreviewPane, CodeViewer, DeploymentsControl, AdvisorView, GitControl, SettingsModal, and more
+│  └─ components/             ChatPanel, PreviewPane, CodeViewer, DeploymentsControl, AdvisorView, GitControl, SettingsModal, …
 ├─ src/shared/ipc.ts          Shared TypeScript IPC types
-├─ docs/                      Maintainer deployment notes and vendored wry patch documentation
+├─ docs/                      Maintainer deployment notes and the vendored wry patch write-up
 ├─ analytics/                 Application Insights KQL queries and notes
 ├─ resources/                 Runtime resources, including telemetry configuration placeholders
 ├─ .github/workflows/         Release workflow for NSIS installer builds
@@ -224,28 +191,27 @@ rayfin-fabricator/
 └─ logo.png                   Project logo
 ```
 
-The vendored `wry` patch is documented in [`docs/VENDORED-WRY-PATCH.md`](./docs/VENDORED-WRY-PATCH.md). It enables WebView2 device-compliance SSO so the embedded preview can sign in to Entra Conditional Access “compliant device” apps.
+The vendored `wry` patch is documented in [`docs/VENDORED-WRY-PATCH.md`](./docs/VENDORED-WRY-PATCH.md). It enables WebView2 device-compliance SSO so the embedded preview can sign in to Entra Conditional Access "compliant device" apps.
 
 ## Telemetry & privacy
 
-Telemetry is optional and **off unless a connection string is present**.
+Telemetry is optional and stays off unless a connection string is present.
 
-- Official release builds can inject `resources/telemetry.json`.
-- `resources/telemetry.example.json` is a zeroed placeholder.
+- Official release builds can inject `resources/telemetry.json`; `resources/telemetry.example.json` is a zeroed placeholder.
 - Local development builds send nothing by default.
-- Events are intentionally coarse product signals such as `signin` and `deploy`.
-- User and tenant identifiers are SHA-256 hashes of the email or email domain; raw emails are not sent.
-- A salt ships in the binary and is explicitly **not** treated as a secret.
+- Events are coarse product signals like `signin` and `deploy` — nothing more.
+- User and tenant identifiers are SHA-256 hashes of the email or email domain; raw emails are never sent.
+- A salt ships in the binary and is explicitly not treated as a secret.
 
-Maintainer provisioning details live in [`docs/DEPLOY.md`](./docs/DEPLOY.md).
+Maintainer provisioning lives in [`docs/DEPLOY.md`](./docs/DEPLOY.md).
 
 ## Contributing
 
-Contributions are welcome. Please read [`CONTRIBUTING.md`](./CONTRIBUTING.md) and follow the project [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
+Contributions are welcome. Read [`CONTRIBUTING.md`](./CONTRIBUTING.md) and follow the [`CODE_OF_CONDUCT.md`](./CODE_OF_CONDUCT.md).
 
 ## Security
 
-Please report security issues according to [`SECURITY.md`](./SECURITY.md). Do not open public issues for sensitive reports.
+Report security issues per [`SECURITY.md`](./SECURITY.md). Please don't open public issues for sensitive reports.
 
 ## License
 
@@ -253,4 +219,4 @@ Rayfin Fabricator is released under the [MIT License](./LICENSE).
 
 ## Disclaimer
 
-This is a personal project built by [Sachin Patney](https://github.com/spatney) in his own free time. Although the author works at Microsoft, Rayfin Fabricator is not a Microsoft product — it is not affiliated with, endorsed by, sponsored by, or supported by Microsoft.
+This is a personal project built by [Sachin Patney](https://github.com/spatney) in his own free time. The author works at Microsoft, but Rayfin Fabricator is not a Microsoft product and is not affiliated with, endorsed by, sponsored by, or supported by Microsoft.
