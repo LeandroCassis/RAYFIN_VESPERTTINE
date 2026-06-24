@@ -9,11 +9,21 @@ interface Props {
   project: StudioProject
   /** Hand a finding to the Build chat so Copilot can fix it. */
   onFix: (finding: AdvisorFinding) => void
+  /** Ask the Build chat to explain a finding in more depth (no code changes). */
+  onExplain: (finding: AdvisorFinding) => void
+  /** Hand the whole findings list to the Build chat to fix in one task. */
+  onFixAll: (findings: AdvisorFinding[]) => void
+  /**
+   * When true, automatically re-run the review on open if the saved analysis has
+   * gone stale (code changed since), instead of just flagging it. Opt-in.
+   */
+  autoRun?: boolean
 }
 
 interface FindingGroup {
   key: string
   title: string
+  icon: string
   findings: AdvisorFinding[]
 }
 
@@ -24,12 +34,21 @@ interface Step {
   tool?: string
 }
 
-/** Display order + copy for each check category. */
-const CATEGORIES: { key: string; title: string }[] = [
-  { key: 'auth', title: 'Authentication & access' },
-  { key: 'policy', title: 'Data policies' },
-  { key: 'version', title: 'Versions & dependencies' }
+/** Display order + copy + icon for each check category. */
+const CATEGORIES: { key: string; title: string; icon: string }[] = [
+  { key: 'auth', title: 'Authentication & access', icon: '🔐' },
+  { key: 'policy', title: 'Data policies', icon: '🛡️' },
+  { key: 'data-modeling', title: 'Data model', icon: '🗂️' },
+  { key: 'performance', title: 'Performance', icon: '⚡' },
+  { key: 'accessibility', title: 'Accessibility', icon: '♿' },
+  { key: 'version', title: 'Versions & dependencies', icon: '📦' }
 ]
+
+/** Title + icon for a category key, falling back to a generic "Other" bucket. */
+export function categoryMeta(key: string): { title: string; icon: string } {
+  const found = CATEGORIES.find((c) => c.key === key)
+  return found ?? { title: 'Other', icon: '•' }
+}
 
 function sevRank(severity: string): number {
   switch (severity.toLowerCase()) {
@@ -76,7 +95,7 @@ function groupFindings(findings: AdvisorFinding[]): FindingGroup[] {
 
   const extras = findings.filter((f) => !seen.has(f.category || 'other'))
   if (extras.length) {
-    groups.push({ key: 'other', title: 'Other', findings: extras })
+    groups.push({ key: 'other', title: 'Other', icon: '•', findings: extras })
   }
 
   for (const g of groups) {
@@ -152,7 +171,13 @@ function relativeTime(iso: string): string {
  * and offers a re-run. Each finding is a severity-coded card with a one-click
  * "Fix with Copilot" hand-off to the Build chat.
  */
-export default function AdvisorView({ project, onFix }: Props): JSX.Element {
+export default function AdvisorView({
+  project,
+  onFix,
+  onExplain,
+  onFixAll,
+  autoRun = false
+}: Props): JSX.Element {
   const [snapshot, setSnapshot] = useState<AdvisorSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [running, setRunning] = useState(false)
@@ -165,6 +190,8 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
   const startedAtRef = useRef(0)
   const stepSeq = useRef(0)
   const feedRef = useRef<HTMLDivElement>(null)
+  // Guards the stale auto-refresh so it fires at most once per project visit.
+  const autoRanRef = useRef(false)
 
   useEffect(() => {
     mountedRef.current = true
@@ -181,6 +208,7 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
     setError(null)
     setSteps([])
     setRunning(false)
+    autoRanRef.current = false
     window.api.advisor
       .load(project.id)
       .then((snap) => {
@@ -255,6 +283,18 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
     void window.api.advisor.cancel(project.id)
   }, [project.id])
 
+  // Opt-in: when a saved review has gone stale, refresh it automatically on open
+  // instead of waiting for the user to click Re-run. Fires at most once per visit
+  // (autoRanRef), and only for a previously-successful, now-stale analysis — so it
+  // never kicks off a first-ever review or loops on a failing one.
+  useEffect(() => {
+    if (!autoRun || loading || running || autoRanRef.current) return
+    if (snapshot?.report.ok && snapshot.stale) {
+      autoRanRef.current = true
+      void run()
+    }
+  }, [autoRun, loading, running, snapshot, run])
+
   const report = snapshot?.report ?? null
   const issueCount = report?.ok ? report.findings.length : 0
   const groups = useMemo(
@@ -269,9 +309,10 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
         <div>
           <h2 className="advisor-title">Advisor</h2>
           <p className="advisor-sub">
-            A Copilot-powered review of your app. It looks for access that isn’t properly
-            authenticated, data policies that are too permissive, and outdated Rayfin CLI or
-            SDK versions.
+            A Copilot-powered review of your app. It looks for security gaps like access
+            that isn’t properly authenticated or over-permissive data policies, plus
+            data-model, performance, and accessibility issues — and outdated Rayfin
+            versions.
           </p>
         </div>
         <div className="advisor-actions">
@@ -299,8 +340,8 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
             <div className="advisor-analyze-headmain">
               <span className="advisor-analyze-title">Analyzing your app…</span>
               <span className="advisor-analyze-desc">
-                Copilot is reading your code, checking routes and data policies, and comparing
-                your Rayfin versions against the latest release.
+                Copilot is reading your code — checking auth and data policies, the data
+                model, performance, accessibility, and your Rayfin versions.
               </span>
             </div>
             <div className="advisor-analyze-meta">
@@ -379,6 +420,15 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
                     </span>
                   </div>
                 </div>
+                {issueCount > 1 && (
+                  <button
+                    className="btn btn--sm btn--primary advisor-fixall"
+                    onClick={() => onFixAll(report.findings)}
+                    title="Send all findings to the Build chat for Copilot to fix in one task"
+                  >
+                    ✨ Fix all {issueCount}
+                  </button>
+                )}
               </div>
 
               {report.summary && (
@@ -388,7 +438,12 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
               {groups.map((group) => (
                 <section className="advisor-group" key={group.key}>
                   <div className="advisor-group-head">
-                    <h3 className="advisor-group-title">{group.title}</h3>
+                    <h3 className="advisor-group-title">
+                      <span className="advisor-group-icon" aria-hidden="true">
+                        {group.icon}
+                      </span>
+                      {group.title}
+                    </h3>
                     <span className="advisor-group-count">{group.findings.length}</span>
                   </div>
                   <div className="advisor-grid">
@@ -414,6 +469,13 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
                         )}
                         <div className="advisor-finding-foot">
                           <button
+                            className="btn btn--sm btn--ghost"
+                            onClick={() => onExplain(finding)}
+                            title="Ask the Build chat to explain this issue in more depth"
+                          >
+                            Explain
+                          </button>
+                          <button
                             className="btn btn--sm btn--primary"
                             onClick={() => onFix(finding)}
                             title="Send this issue to the Build chat for Copilot to fix"
@@ -436,9 +498,10 @@ export default function AdvisorView({ project, onFix }: Props): JSX.Element {
                 <h3 className="advisor-intro-title">Security review</h3>
                 <p className="advisor-intro-sub">
                   Ask Copilot to review your app for security and best-practice issues — like
-                  access that isn’t properly authenticated, data policies that are too
-                  permissive, or an outdated Rayfin CLI or SDK. It reads your code and reports
-                  what it finds, without changing anything.
+                  access that isn’t properly authenticated, over-permissive data policies,
+                  data-model or performance problems, accessibility gaps, or an outdated
+                  Rayfin CLI or SDK. It reads your code and reports what it finds, without
+                  changing anything.
                 </p>
                 <button
                   className="btn btn--primary advisor-intro-run"

@@ -4,11 +4,13 @@
 //! in the project's Build chat history. The model is asked to emit a single
 //! fenced JSON report which we parse into [`AdvisorReport`].
 //!
-//! The review currently covers three checks: data/routes not behind
-//! authentication (`category: "auth"`), overly permissive database policies
-//! (`category: "policy"`), and stale Rayfin CLI/SDK versions
-//! (`category: "version"`). The `category` field drives grouping in the UI, so new
-//! checks can be added later by extending the prompt alone.
+//! The review covers six checks: data/routes not behind authentication
+//! (`category: "auth"`), overly permissive database policies
+//! (`category: "policy"`), stale Rayfin CLI/SDK versions (`category: "version"`),
+//! data-model best practices (`category: "data-modeling"`), runtime/query
+//! performance (`category: "performance"`), and frontend accessibility
+//! (`category: "accessibility"`). The `category` field drives grouping in the UI,
+//! so new checks can be added later by extending the prompt alone.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -29,9 +31,9 @@ const RUN_TIMEOUT_MS: u64 = 10 * 60_000;
 
 /// The full instruction handed to Copilot. Read-only; ends with a strict JSON
 /// contract we can parse out of the assistant's final message.
-const ADVISOR_PROMPT: &str = r#"You are a security reviewer for a Rayfin app (a Microsoft Fabric app: a TypeScript frontend under `src/` plus a Rayfin backend defined under `rayfin/`). Perform a READ-ONLY review of the app in this directory. DO NOT modify, create, or delete any files, and DO NOT run any deploy or `rayfin up` command.
+const ADVISOR_PROMPT: &str = r#"You are a reviewer for a Rayfin app (a Microsoft Fabric app: a TypeScript frontend under `src/` plus a Rayfin backend defined under `rayfin/`). Perform a READ-ONLY review of the app in this directory covering security, data-model quality, performance, and accessibility. DO NOT modify, create, or delete any files, and DO NOT run any deploy or `rayfin up` command.
 
-Review for these three categories of issues:
+Review for these categories of issues:
 
 1) category "auth" — data or routes not behind authentication:
    - Rayfin data entities (in `rayfin/data/schema.ts` and any files it imports) that are MISSING an explicit permission decorator. An entity without one silently defaults to `authenticated: *` (full CRUD for ANY signed-in user). Flag each such entity.
@@ -49,11 +51,28 @@ Review for these three categories of issues:
    - Flag a finding when the project is meaningfully behind the latest release. Severity: "high" if a MAJOR version behind (risks missing security or breaking fixes), "medium" if a minor version behind, "low" if only patch versions behind. State the current and latest versions in the detail and recommend the upgrade (e.g. `npm install <package>@latest`, or `npm create @microsoft/rayfin@latest` to refresh the project scaffold).
    - If you cannot determine the latest published version (for example there is no network access), do NOT raise anything for this category.
 
+4) category "data-modeling" — Rayfin data-model best practices (read `rayfin/data/schema.ts` and the entity files under `rayfin/data/` it imports):
+   - Foreign-key / lookup fields (typically `*_id` columns the app filters or joins on) that have no index, which will slow queries as data grows. Recommend an index.
+   - Fields missing sensible constraints or validation (e.g. `@text` with no `min`/`max` where bounded input is expected, or a field left optional/nullable that the app always requires).
+   - Sensitive or internal fields returned to clients that should be hidden from reads via `exclude: [...]` (e.g. tokens, internal flags, another user's identifiers).
+   - Duplicated/denormalized data across entities that can drift out of sync, where a relation would be safer.
+   Severity: "high" for sensitive data exposure; "medium" for missing indexes/constraints that will bite at scale; "low" for minor cleanups.
+
+5) category "performance" — runtime / query performance:
+   - List queries that fetch entire tables with no pagination or limit (will degrade as data grows), or obvious N+1 query patterns in the frontend data access.
+   - Expensive work on hot render paths in `src/` (e.g. unmemoized heavy computation, fetching in a tight loop) or obviously oversized client bundles.
+   Severity: "medium" for issues that scale badly with data/usage; "low" for minor inefficiencies.
+
+6) category "accessibility" — frontend accessibility (review the React UI under `src/`):
+   - Interactive elements (custom buttons/menus on `div`/`span`) without an accessible name or role, or with no keyboard handling (not reachable/operable via keyboard).
+   - Images/icons conveying meaning without alt text or an aria-label, form inputs without associated labels, or likely color-contrast problems.
+   Severity: "medium" for content unreachable by assistive tech or keyboard; "low" for smaller gaps.
+
 Use the `rayfin` MCP tools or `rayfin docs ...` if you need to confirm decorator or policy semantics. Read `rayfin/rayfin.yml`, `rayfin/data/schema.ts`, and the frontend routing under `src/`. Only report real issues you verified by reading the code — do not invent problems.
 
-Severity guidance: "high" = unauthenticated/public access to data, or one user able to reach another user's data; "medium" = overly broad authenticated access; "low" = minor hardening.
+Severity guidance: "high" = unauthenticated/public access to data, one user able to reach another user's data, or sensitive data exposed to clients; "medium" = overly broad authenticated access, or data-model/performance/accessibility issues that degrade the app as it grows or block assistive-tech users; "low" = minor hardening or cleanup.
 
-Each finding's "category" must be exactly one of "auth", "policy", or "version".
+Each finding's "category" must be exactly one of "auth", "policy", "version", "data-modeling", "performance", or "accessibility".
 
 When you are done, the FINAL thing in your reply must be a single fenced ```json code block (and nothing after it) exactly matching this schema:
 

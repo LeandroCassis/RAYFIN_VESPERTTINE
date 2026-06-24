@@ -14,6 +14,8 @@ interface Props {
   onRequestDeploy?: () => void
   /** Hand a slice of history (commit/file/comparison) to the Build chat. */
   onSendToChat?: (display: string, prompt: string) => void
+  /** Open a specific project file in the Files browser (e.g. from the Model tab). */
+  openRequest?: { path: string; nonce: number }
 }
 
 function formatBytes(n: number): string {
@@ -112,7 +114,12 @@ function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps): JSX.Ele
 }
 
 /** Read-only project code browser: a file tree + a Monaco (VS Code) viewer. */
-function FilesView({ project, refreshKey, theme }: Props & { theme: string }): JSX.Element {
+function FilesView({
+  project,
+  refreshKey,
+  theme,
+  openRequest
+}: Props & { theme: string }): JSX.Element {
   const [tree, setTree] = useState<FileNode[] | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
   const [file, setFile] = useState<FileContent | null>(null)
@@ -163,6 +170,13 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
   useEffect(() => {
     if (selected) void readPath(selected)
   }, [refreshKey, selected, readPath])
+
+  // Honour an external request to open a specific file (e.g. from the Model tab).
+  useEffect(() => {
+    if (!openRequest?.path) return
+    didDefaultRef.current = true
+    setSelected(openRequest.path)
+  }, [openRequest?.nonce, openRequest?.path])
 
   const onSelect = useCallback((node: FileNode): void => {
     setSelected(node.path)
@@ -307,11 +321,17 @@ export default function CodeViewer({
   project,
   refreshKey,
   onRequestDeploy,
-  onSendToChat
+  onSendToChat,
+  openRequest
 }: Props): JSX.Element {
   const [tab, setTab] = useState<'files' | 'history'>('files')
   const [editorHint, setEditorHint] = useState(false)
   const theme = useEditorTheme()
+
+  // An external open request always lands in the Files browser.
+  useEffect(() => {
+    if (openRequest?.path) setTab('files')
+  }, [openRequest?.nonce, openRequest?.path])
 
   const openInEditor = useCallback(async (): Promise<void> => {
     try {
@@ -380,7 +400,12 @@ export default function CodeViewer({
         </div>
       )}
       {tab === 'files' ? (
-        <FilesView project={project} refreshKey={refreshKey} theme={theme} />
+        <FilesView
+          project={project}
+          refreshKey={refreshKey}
+          theme={theme}
+          openRequest={openRequest}
+        />
       ) : (
         <HistoryView
           project={project}

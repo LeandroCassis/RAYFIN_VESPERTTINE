@@ -34,7 +34,8 @@ import GitControl from '../components/GitControl'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
 import SkillsView from '../components/SkillsView'
-import AdvisorView from '../components/AdvisorView'
+import AdvisorView, { categoryMeta } from '../components/AdvisorView'
+import ModelView from '../components/ModelView'
 import { InfoIcon, GearIcon, SignOutIcon } from '../components/icons'
 import logo from '../assets/logo.png'
 
@@ -191,7 +192,11 @@ export default function Workbench({
     (OutboundPrompt & { projectId: string; threadId: string }) | null
   >(null)
   /** Project content view: the build loop (chat + preview) or the code browser. */
-  const [viewMode, setViewMode] = useState<'build' | 'code' | 'skills' | 'advisor'>('build')
+  const [viewMode, setViewMode] = useState<
+    'build' | 'code' | 'model' | 'skills' | 'advisor'
+  >('build')
+  /** A pending request to open a specific file in the Code tab (Model → file). */
+  const [codeOpen, setCodeOpen] = useState<{ path: string; nonce: number } | null>(null)
   /** Build-view focus: expand a single pane to fill the area (null = split). */
   const [focusPane, setFocusPane] = useState<'chat' | 'preview' | null>(null)
   /** Chat's share of the build split (0..1); the rest goes to the preview. */
@@ -638,15 +643,10 @@ export default function Workbench({
   const fixWithCopilot = useCallback((finding: AdvisorFinding): void => {
     const id = activeIdRef.current
     if (!id) return
-    const category =
-      finding.category === 'auth'
-        ? 'Authentication & access'
-        : finding.category === 'policy'
-          ? 'Data policies'
-          : finding.category
+    const category = categoryMeta(finding.category).title
     const location = finding.file ? `\nLocation: ${finding.file}` : ''
     const prompt =
-      'The Advisor security review flagged an issue in this app. Please fix it.\n\n' +
+      'The Advisor review flagged an issue in this app. Please fix it.\n\n' +
       `Issue: ${finding.title}\n` +
       `Severity: ${finding.severity}\n` +
       `Category: ${category}${location}\n\n` +
@@ -661,6 +661,63 @@ export default function Workbench({
       projectId: id,
       threadId: MAIN_THREAD_ID,
       display: `Fix: ${finding.title}`,
+      prompt
+    })
+  }, [])
+
+  // Ask the Build chat to explain an Advisor finding in more depth (read-only —
+  // no code changes), staged so the user can add follow-up questions.
+  const explainFinding = useCallback((finding: AdvisorFinding): void => {
+    const id = activeIdRef.current
+    if (!id) return
+    const category = categoryMeta(finding.category).title
+    const location = finding.file ? `\nLocation: ${finding.file}` : ''
+    const prompt =
+      'The Advisor review flagged the issue below. Please explain it in more depth: ' +
+      'what the underlying problem is, why it matters for this app, and how you would ' +
+      'fix it. Do NOT change any code yet — just explain.\n\n' +
+      `Issue: ${finding.title}\n` +
+      `Severity: ${finding.severity}\n` +
+      `Category: ${category}${location}\n\n` +
+      `Details: ${finding.detail}`
+    setViewMode('build')
+    setFocusPane(null)
+    setChatOutbound({
+      id: `advisor-explain-${Date.now()}`,
+      projectId: id,
+      threadId: MAIN_THREAD_ID,
+      display: `Explain: ${finding.title}`,
+      prompt
+    })
+  }, [])
+
+  // Hand the whole Advisor findings list to the Build chat to fix in one task.
+  const fixAllFindings = useCallback((findings: AdvisorFinding[]): void => {
+    const id = activeIdRef.current
+    if (!id || findings.length === 0) return
+    const lines = findings
+      .map((f, i) => {
+        const category = categoryMeta(f.category).title
+        const location = f.file ? ` (${f.file})` : ''
+        return (
+          `${i + 1}. [${f.severity}] ${category}: ${f.title}${location}\n` +
+          `   Problem: ${f.detail}\n` +
+          `   Suggested fix: ${f.recommendation}`
+        )
+      })
+      .join('\n\n')
+    const prompt =
+      `The Advisor review found ${findings.length} issues in this app. Please fix all of ` +
+      'them, most severe first. Keep the app building and follow Rayfin conventions. ' +
+      'Do not run `rayfin up` or deploy — Rayfin Fabricator redeploys automatically.\n\n' +
+      `${lines}`
+    setViewMode('build')
+    setFocusPane(null)
+    setChatOutbound({
+      id: `advisor-fixall-${Date.now()}`,
+      projectId: id,
+      threadId: MAIN_THREAD_ID,
+      display: `Fix all ${findings.length} Advisor issues`,
       prompt
     })
   }, [])
@@ -683,7 +740,31 @@ export default function Workbench({
     })
   }, [])
 
-  // Load the active project's local Rayfin version + upgrade availability.
+  // Open a project file in the Code tab (used by the Model tab's entity cards).
+  const openFileInCode = useCallback((path: string): void => {
+    setCodeOpen({ path, nonce: Date.now() })
+    setViewMode('code')
+  }, [])
+
+  // Hand a Model-tab prompt to the Build chat. `stage` drops the text in the
+  // composer (for open-ended asks) instead of sending it immediately.
+  const sendModelToChat = useCallback(
+    (display: string, prompt: string, stage = false): void => {
+      const id = activeIdRef.current
+      if (!id) return
+      setViewMode('build')
+      setFocusPane(null)
+      setChatOutbound({
+        id: `model-${Date.now()}`,
+        projectId: id,
+        threadId: MAIN_THREAD_ID,
+        display,
+        prompt,
+        stage
+      })
+    },
+    []
+  )
   useEffect(() => {
     const id = projects?.activeProjectId
     if (!id) {
@@ -1109,6 +1190,14 @@ export default function Workbench({
                     Code
                   </button>
                   <button
+                    className={`project-tab${viewMode === 'model' ? ' project-tab--active' : ''}`}
+                    role="tab"
+                    aria-selected={viewMode === 'model'}
+                    onClick={() => setViewMode('model')}
+                  >
+                    Model
+                  </button>
+                  <button
                     className={`project-tab${viewMode === 'skills' ? ' project-tab--active' : ''}`}
                     role="tab"
                     aria-selected={viewMode === 'skills'}
@@ -1165,12 +1254,26 @@ export default function Workbench({
                       void requestUserDeploy(active.id)
                     }}
                     onSendToChat={sendHistoryToChat}
+                    openRequest={codeOpen ?? undefined}
                   />
                 </Suspense>
+              ) : viewMode === 'model' ? (
+                <ModelView
+                  project={active}
+                  refreshKey={gitRefresh}
+                  onOpenFile={openFileInCode}
+                  onSendToChat={sendModelToChat}
+                />
               ) : viewMode === 'skills' ? (
                 <SkillsView project={active} onChanged={() => setGitRefresh((n) => n + 1)} />
               ) : viewMode === 'advisor' ? (
-                <AdvisorView project={active} onFix={fixWithCopilot} />
+                <AdvisorView
+                  project={active}
+                  onFix={fixWithCopilot}
+                  onExplain={explainFinding}
+                  onFixAll={fixAllFindings}
+                  autoRun={Boolean(settings?.experiments?.advisorAutoRun)}
+                />
               ) : (
                 <div
                   className={`panes${focusPane ? ` panes--focus-${focusPane}` : ''}${

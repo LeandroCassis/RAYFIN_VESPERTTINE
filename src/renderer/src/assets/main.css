@@ -2412,6 +2412,11 @@ code {
   gap: 5px;
 }
 
+.advisor-fixall {
+  flex: none;
+  white-space: nowrap;
+}
+
 .advisor-banner-title {
   font-size: 16px;
   font-weight: 650;
@@ -2480,11 +2485,21 @@ code {
 
 .advisor-group-title {
   margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
   font-size: 13px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--text-dim);
+}
+
+.advisor-group-icon {
+  font-size: 14px;
+  line-height: 1;
+  /* Keep emoji glyphs from inheriting the uppercase letter-spacing. */
+  letter-spacing: normal;
 }
 
 .advisor-group-count {
@@ -8334,4 +8349,338 @@ span.thread-pill {
   .chat-jump {
     animation: none;
   }
+}
+
+/* ── Model tab (data-model visualizer) ──────────────────────────────────────
+   A static ER diagram parsed from rayfin/data: entity cards with field/type
+   chips and a per-entity access badge, joined by SVG relation edges. */
+.model-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.model-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: none;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.model-head-titles {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.model-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.model-subtitle {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.model-legend {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex: none;
+}
+
+.model-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.model-badge-dot {
+  font-size: 9px;
+  line-height: 1;
+}
+.model-badge-dot--ok {
+  color: var(--ok);
+}
+.model-badge-dot--warn {
+  color: var(--pending);
+}
+.model-badge-dot--danger {
+  color: var(--danger);
+}
+
+.model-canvas {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px;
+}
+
+.model-grid {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  gap: 26px 30px;
+  align-items: start;
+}
+
+.model-edges {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.model-edge {
+  fill: none;
+  stroke-width: 1.6;
+}
+.model-edge--rel {
+  stroke: var(--accent);
+}
+.model-edge--fk {
+  stroke: color-mix(in srgb, var(--text-dim) 70%, transparent);
+  stroke-dasharray: 4 4;
+}
+.model-arrow-head {
+  fill: var(--text-dim);
+}
+
+.model-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-top: 2px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  transition:
+    border-color 0.12s ease,
+    opacity 0.12s ease;
+}
+.model-card--ok {
+  border-top-color: var(--ok);
+}
+.model-card--warn {
+  border-top-color: var(--pending);
+}
+.model-card--danger {
+  border-top-color: var(--danger);
+}
+.model-card--dim {
+  opacity: 0.4;
+}
+
+.model-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev-2);
+}
+
+.model-card-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  min-width: 0;
+}
+.model-card-name:hover {
+  color: var(--accent);
+}
+.model-card-alias {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+}
+
+.model-badge {
+  flex: none;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.model-badge--ok {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 14%, transparent);
+  border-color: color-mix(in srgb, var(--ok) 36%, transparent);
+}
+.model-badge--warn {
+  color: var(--pending);
+  background: color-mix(in srgb, var(--pending) 14%, transparent);
+  border-color: color-mix(in srgb, var(--pending) 36%, transparent);
+}
+.model-badge--danger {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
+}
+
+.model-fields {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.model-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 11px;
+  font-size: 12px;
+}
+.model-field--empty {
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.model-field-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.model-field-key {
+  color: var(--pending);
+  font-size: 11px;
+}
+.model-field-opt {
+  color: var(--text-faint);
+}
+
+.model-field-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+
+.model-mark {
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+}
+
+.model-fk {
+  font-size: 10.5px;
+  color: var(--accent);
+  background: transparent;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  white-space: nowrap;
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+}
+.model-fk:hover {
+  text-decoration: underline;
+}
+
+.model-chip {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg-elev-3);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.model-chip--id {
+  color: var(--pending);
+}
+.model-chip--rel {
+  color: var(--accent);
+}
+.model-chip--num {
+  color: var(--accent-2);
+}
+.model-chip--bool {
+  color: #c8a6f0;
+}
+.model-chip--enum {
+  color: #c8a6f0;
+}
+
+.model-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: auto;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.model-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.model-empty-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+.model-empty-sub {
+  max-width: 440px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.model-warnings {
+  flex: none;
+  border-top: 1px solid var(--border);
+  background: var(--bg-elev);
+  padding: 6px 14px;
+  max-height: 96px;
+  overflow: auto;
+}
+.model-warning {
+  font-size: 11px;
+  color: var(--text-faint);
+  padding: 2px 0;
 }

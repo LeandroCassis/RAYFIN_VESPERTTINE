@@ -365,6 +365,9 @@ pub struct ProjectsState {
 pub struct ExperimentFlags {
   #[serde(skip_serializing_if = "Option::is_none")]
   pub side_threads: Option<bool>,
+  /// Auto-refresh the Advisor review when its results go stale (opt-in).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub advisor_auto_run: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

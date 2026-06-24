@@ -419,6 +419,12 @@ export interface ExperimentFlags {
    * in their own git branch/worktree and auto-merge + redeploy when idle.
    */
   sideThreads?: boolean
+  /**
+   * Advisor auto-refresh: when the Advisor tab is opened and its saved analysis
+   * has gone stale (the code changed since the last review), automatically
+   * re-run the review instead of just flagging it as stale.
+   */
+  advisorAutoRun?: boolean
 }
 
 export interface CreateProjectInput {
@@ -799,14 +805,27 @@ export interface SkillSource {
 }
 
 /**
- * One issue surfaced by the Advisor (a Copilot-driven, read-only security review
- * of the app). Findings are grouped in the UI by {@link category}.
+ * One issue surfaced by the Advisor (a Copilot-driven, read-only review of the
+ * app spanning security, data-model quality, performance, and accessibility).
+ * Findings are grouped in the UI by {@link category}.
  */
 export interface AdvisorFinding {
   /** Short slug; the UI falls back to the array index if empty. */
   id: string
-  /** Check bucket: 'auth' (access/authentication), 'policy' (data policies), or 'version' (stale Rayfin CLI/SDK). */
-  category: 'auth' | 'policy' | 'version' | string
+  /**
+   * Check bucket: 'auth' (access/authentication), 'policy' (data policies),
+   * 'version' (stale Rayfin CLI/SDK), 'data-modeling' (data-model best
+   * practices), 'performance' (runtime/query performance), or 'accessibility'
+   * (frontend a11y). Unknown values fall back to an "Other" group.
+   */
+  category:
+    | 'auth'
+    | 'policy'
+    | 'version'
+    | 'data-modeling'
+    | 'performance'
+    | 'accessibility'
+    | string
   severity: 'high' | 'medium' | 'low' | string
   /** Short headline for the card. */
   title: string

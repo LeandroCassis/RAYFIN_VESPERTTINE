@@ -132,6 +132,22 @@ export default function SettingsModal({
                 </span>
               </span>
             </label>
+            <label className="settings-check">
+              <input
+                type="checkbox"
+                checked={Boolean(settings.experiments?.advisorAutoRun)}
+                onChange={(e) =>
+                  onChange({ experiments: { advisorAutoRun: e.target.checked } })
+                }
+              />
+              <span>
+                <span className="settings-check-label">Auto-refresh the Advisor</span>
+                <span className="field-hint">
+                  When you open the Advisor and its last review is out of date (your code
+                  changed since), re-run it automatically instead of just flagging it as stale.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="field">
