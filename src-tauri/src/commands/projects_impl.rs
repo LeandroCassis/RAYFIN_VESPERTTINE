@@ -1,7 +1,8 @@
 //! Project scaffolding/registration (ported from `src/main/services/projects.ts`).
-//! Handles listing templates, creating a project via `rayfin init` (streaming
-//! live output on the `create:project` proc channel), opening an existing
-//! project, renaming, and removing.
+//! Handles listing templates, creating a project via `npm create
+//! @microsoft/rayfin` (the official scaffolder, streaming live output on the
+//! `create:project` proc channel), opening an existing project, renaming, and
+//! removing.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -22,63 +23,143 @@ use crate::types::{
 
 const CREATE_CHANNEL: &str = "create:project";
 
-fn fallback_templates() -> Vec<TemplateInfo> {
+/// Curated built-in template set shown in New Project. The two upstream
+/// data/todo templates are replaced by the bundled Fabricator variants
+/// (`fabricator-dataapp` / `fabricator-todoapp`), which strip the local-testing
+/// surface for the deploy-to-test workflow. `discovered` enriches the upstream
+/// `blankapp` / `gettingstartedauth` entries with their live displayName /
+/// description when the create command could be queried; otherwise curated copy
+/// is used so the picker still works offline.
+fn curated_templates(discovered: &HashMap<String, TemplateInfo>) -> Vec<TemplateInfo> {
+  let upstream = |name: &str, display: &str, description: &str| -> TemplateInfo {
+    discovered.get(name).cloned().unwrap_or_else(|| TemplateInfo {
+      name: name.into(),
+      display_name: display.into(),
+      description: description.into(),
+    })
+  };
   vec![
+    upstream(
+      "blankapp",
+      "Blank App",
+      "Bare-bones Fabric-authenticated React + Vite app — no data layer.",
+    ),
     TemplateInfo {
-      name: "blankapp".into(),
-      display_name: "Blank App".into(),
-      description: "Bare-bones Fabric-authenticated React + Vite app — no data layer.".into(),
-    },
-    TemplateInfo {
-      name: "todoapp".into(),
-      display_name: "Basic Todo App".into(),
-      description: "End-to-end Fabric-authenticated todo CRUD exercising the full data path.".into(),
-    },
-    TemplateInfo {
-      name: "gettingstartedauth".into(),
-      display_name: "Todo App with Auth + Docs".into(),
-      description: "Todo app with Fabric auth, Tailwind CSS, and getting-started docs.".into(),
-    },
-    TemplateInfo {
-      name: "dataapp".into(),
+      name: "fabricator-dataapp".into(),
       display_name: "Data App".into(),
-      description: "Build a data analytics app based on your data in Fabric.".into(),
+      description:
+        "Fabric-authenticated React + Vite app wired for Rayfin data — add an entity and deploy to Fabric to try it."
+          .into(),
     },
+    TemplateInfo {
+      name: "fabricator-todoapp".into(),
+      display_name: "Todo App".into(),
+      description:
+        "A polished todo app with per-user row-level security on a Rayfin data model, ready to deploy to Fabric."
+          .into(),
+    },
+    upstream(
+      "gettingstartedauth",
+      "Todo App with Auth + Docs",
+      "Todo app with Fabric auth, Tailwind CSS, and getting-started docs.",
+    ),
   ]
 }
 
-/// List available templates via the Rayfin CLI (falls back to a static list).
-pub async fn list_templates() -> Vec<TemplateInfo> {
-  let res = run("rayfin", &["init", "--list-templates"], RunOptions::timeout(60_000)).await;
-  if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&res.stdout) {
-    if let Some(bundled) = parsed.get("bundled").and_then(|b| b.as_array()) {
-      let list: Vec<TemplateInfo> = bundled
-        .iter()
-        .filter_map(|t| {
-          let name = t.get("name")?.as_str()?.to_string();
-          let display_name = t
-            .get("displayName")
-            .and_then(|v| v.as_str())
-            .unwrap_or(&name)
-            .to_string();
-          let description = t
-            .get("description")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string();
-          Some(TemplateInfo {
-            name,
-            display_name,
-            description,
-          })
-        })
-        .collect();
-      if !list.is_empty() {
-        return list;
+/// Parse the `{ bundled: [...] }` JSON emitted by `--list-templates` into a
+/// name -> TemplateInfo map, tolerating non-JSON noise (npm chatter) by scanning
+/// each line for the first object that parses with a non-empty `bundled` array.
+fn parse_bundled_templates(stdout: &str) -> HashMap<String, TemplateInfo> {
+  fn collect(v: &serde_json::Value) -> Option<HashMap<String, TemplateInfo>> {
+    let bundled = v.get("bundled")?.as_array()?;
+    let mut out = HashMap::new();
+    for t in bundled {
+      let Some(name) = t.get("name").and_then(|n| n.as_str()) else {
+        continue;
+      };
+      let display_name = t
+        .get("displayName")
+        .and_then(|v| v.as_str())
+        .unwrap_or(name)
+        .to_string();
+      let description = t
+        .get("description")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      out.insert(
+        name.to_string(),
+        TemplateInfo {
+          name: name.to_string(),
+          display_name,
+          description,
+        },
+      );
+    }
+    if out.is_empty() {
+      None
+    } else {
+      Some(out)
+    }
+  }
+
+  if let Ok(v) = serde_json::from_str::<serde_json::Value>(stdout.trim()) {
+    if let Some(map) = collect(&v) {
+      return map;
+    }
+  }
+  for line in stdout.lines() {
+    let line = line.trim();
+    if !line.starts_with('{') {
+      continue;
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(line) {
+      if let Some(map) = collect(&v) {
+        return map;
       }
     }
   }
-  fallback_templates()
+  // Last resort: carve the widest `{...}` span out of mixed output (handles
+  // pretty-printed JSON interleaved with npm's lifecycle preamble).
+  if let (Some(start), Some(end)) = (stdout.find('{'), stdout.rfind('}')) {
+    if end > start {
+      if let Ok(v) = serde_json::from_str::<serde_json::Value>(&stdout[start..=end]) {
+        if let Some(map) = collect(&v) {
+          return map;
+        }
+      }
+    }
+  }
+  HashMap::new()
+}
+
+/// Caches the curated template list for the session. Discovery via the create
+/// command costs several seconds *even when npm has it cached* (it re-resolves
+/// `@latest` against the registry), and the set is stable, so we only pay it
+/// once per session.
+static TEMPLATES_CACHE: Lazy<std::sync::Mutex<Option<Vec<TemplateInfo>>>> =
+  Lazy::new(|| std::sync::Mutex::new(None));
+
+/// List the curated built-in templates. Discovery runs through the official
+/// `npm create @microsoft/rayfin@latest -- --list-templates` scaffolder (the
+/// same engine as creation) to pull live upstream metadata; the Fabricator
+/// variants replace the upstream data/todo templates, and a curated fallback
+/// keeps the picker populated offline. The result is cached for the session so
+/// New Project opens instantly after the first call.
+pub async fn list_templates() -> Vec<TemplateInfo> {
+  if let Some(cached) = TEMPLATES_CACHE.lock().unwrap().clone() {
+    return cached;
+  }
+  let res = run(
+    "npm",
+    &["create", "@microsoft/rayfin@latest", "--", "--list-templates"],
+    RunOptions::timeout(60_000),
+  )
+  .await;
+  let discovered = parse_bundled_templates(&res.stdout);
+  let curated = curated_templates(&discovered);
+  *TEMPLATES_CACHE.lock().unwrap() = Some(curated.clone());
+  curated
 }
 
 /// Default community gallery (the user can point at any compatible repo).
@@ -371,39 +452,73 @@ pub async fn create_project(app: &AppHandle, input: CreateProjectInput) -> Proje
   }
 
   let on = emit::proc_streamer(app, CREATE_CHANNEL);
+
+  // Resolve the template source passed to `-t`:
+  //   - bundled Fabricator templates -> the local template dir under resources
+  //     (an absolute path, which the scaffolder treats as a local template),
+  //   - community/URL templates       -> the URL (+ optional --template-name),
+  //   - upstream built-in names       -> the bare name (the scaffolder resolves
+  //     it against its bundled set).
+  let is_fabricator = matches!(template.as_str(), "fabricator-dataapp" | "fabricator-todoapp");
+  let template_source = if is_fabricator {
+    let tmpl_dir = crate::services::paths::fabricator_templates_dir(app).join(&template);
+    if !tmpl_dir.is_dir() {
+      return err(format!(
+        "The bundled \"{template}\" template is missing from this install."
+      ));
+    }
+    tmpl_dir.to_string_lossy().to_string()
+  } else {
+    template.clone()
+  };
+
   let label = if is_url { "community template".to_string() } else { format!("{template} template") };
   say(&on, &format!("Creating \"{slug}\" from the {label}…\n"));
 
-  let mut init_args: Vec<String> = vec!["init".into(), slug.clone(), "-t".into(), template.clone()];
+  // npm create @microsoft/rayfin@latest -- <slug> -t <source>
+  //   [--template-name <name>] --project-name "<name>"
+  // The positional <slug> is the target directory; --project-name carries the
+  // human identity (rayfin.yml id/name + package name). A bundled single-entry
+  // local template needs no --template-name.
+  let mut create_args: Vec<String> = vec![
+    "create".into(),
+    "@microsoft/rayfin@latest".into(),
+    "--".into(),
+    slug.clone(),
+    "-t".into(),
+    template_source,
+  ];
   if is_url {
     if let Some(tn) = &template_name {
-      init_args.push("--template-name".into());
-      init_args.push(tn.clone());
+      create_args.push("--template-name".into());
+      create_args.push(tn.clone());
     }
   }
-  init_args.push("-y".into());
-  let arg_refs: Vec<&str> = init_args.iter().map(String::as_str).collect();
+  create_args.push("--project-name".into());
+  create_args.push(name.clone());
+
+  let arg_refs: Vec<&str> = create_args.iter().map(String::as_str).collect();
   let init = run(
-    "rayfin",
+    "npm",
     &arg_refs,
     RunOptions {
       cwd: Some(Path::new(&root).to_path_buf()),
       on_data: Some(on.clone()),
-      timeout_ms: Some(300_000),
+      timeout_ms: Some(600_000),
       ..Default::default()
     },
   )
   .await;
 
   if init.not_found {
-    return err("The rayfin CLI was not found on PATH.");
+    return err("npm was not found on PATH. Install Node.js (which includes npm) to create projects.");
   }
   if !init.ok || !is_rayfin_project(&dir.to_string_lossy()) {
     let code = init.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".into());
     return err(if is_url {
-      format!("rayfin init from the template URL failed (exit code {code}). Check the URL is a valid Rayfin template.")
+      format!("Creating the project from the template URL failed (exit code {code}). Check the URL is a valid Rayfin template.")
     } else {
-      format!("rayfin init failed (exit code {code}).")
+      format!("Project creation failed (exit code {code}).")
     });
   }
 
@@ -549,5 +664,69 @@ entries:
     assert_eq!(yaml_str(doc.get("a")), ""); // number → ""
     assert_eq!(yaml_str(doc.get("b")), "hello");
     assert_eq!(yaml_str(None), "");
+  }
+
+  // The exact stdout shape `npm create @microsoft/rayfin@latest -- --list-templates`
+  // emits: npm's lifecycle preamble lines, then a single-line JSON document.
+  const NPM_LIST_OUTPUT: &str = r#"
+> rayfin-fabricator@0.16.0 npx
+> create-rayfin --list-templates
+
+{"schemaVersion":1,"bundled":[{"name":"blankapp","displayName":"Blank App","description":"Bare-bones app"},{"name":"dataapp","displayName":"Data App","description":"upstream data"},{"name":"gettingstartedauth","displayName":"Auth Docs","description":"upstream auth"},{"name":"todoapp","displayName":"Basic Todo App","description":"upstream todo"}],"registry":[]}
+"#;
+
+  #[test]
+  fn parse_bundled_templates_ignores_npm_preamble() {
+    let map = parse_bundled_templates(NPM_LIST_OUTPUT);
+    assert_eq!(map.len(), 4);
+    assert_eq!(map.get("blankapp").unwrap().display_name, "Blank App");
+    assert_eq!(map.get("dataapp").unwrap().description, "upstream data");
+  }
+
+  #[test]
+  fn parse_bundled_templates_handles_pretty_printed_json() {
+    let pretty = "noise\n{\n  \"bundled\": [\n    { \"name\": \"blankapp\", \"displayName\": \"Blank App\" }\n  ]\n}\ntrailer";
+    let map = parse_bundled_templates(pretty);
+    assert_eq!(map.len(), 1);
+    assert_eq!(map.get("blankapp").unwrap().display_name, "Blank App");
+  }
+
+  #[test]
+  fn parse_bundled_templates_empty_on_garbage() {
+    assert!(parse_bundled_templates("not json at all").is_empty());
+    assert!(parse_bundled_templates("{\"bundled\":[]}").is_empty());
+  }
+
+  #[test]
+  fn curated_templates_replaces_data_and_todo_with_fabricator_variants() {
+    let discovered = parse_bundled_templates(NPM_LIST_OUTPUT);
+    let curated = curated_templates(&discovered);
+    let names: Vec<&str> = curated.iter().map(|t| t.name.as_str()).collect();
+    // Curated, ordered set: upstream data/todo are dropped in favor of the
+    // bundled Fabricator variants.
+    assert_eq!(
+      names,
+      vec!["blankapp", "fabricator-dataapp", "fabricator-todoapp", "gettingstartedauth"]
+    );
+    assert!(!names.contains(&"dataapp"));
+    assert!(!names.contains(&"todoapp"));
+    // Upstream entries are enriched from discovery…
+    assert_eq!(curated[0].display_name, "Blank App");
+    assert_eq!(curated[3].display_name, "Auth Docs");
+    // …while the Fabricator variants carry curated copy.
+    assert_eq!(curated[1].display_name, "Data App");
+    assert_eq!(curated[2].display_name, "Todo App");
+  }
+
+  #[test]
+  fn curated_templates_uses_fallback_copy_when_discovery_empty() {
+    let curated = curated_templates(&HashMap::new());
+    let names: Vec<&str> = curated.iter().map(|t| t.name.as_str()).collect();
+    assert_eq!(
+      names,
+      vec!["blankapp", "fabricator-dataapp", "fabricator-todoapp", "gettingstartedauth"]
+    );
+    // No discovery → curated fallback copy is present (non-empty descriptions).
+    assert!(curated.iter().all(|t| !t.description.is_empty()));
   }
 }

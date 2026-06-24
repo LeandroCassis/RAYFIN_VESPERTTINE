@@ -102,3 +102,26 @@ pub fn store_file() -> PathBuf {
 pub fn shots_dir() -> PathBuf {
   temp_dir().join("rayfin-fabricator-shots")
 }
+
+/// Absolute path to the bundled Fabricator templates directory.
+///
+/// Packaged builds ship the templates under `<resource_dir>/resources/
+/// fabricator-templates` (see `bundle.resources` in `tauri.conf.json`). In dev
+/// there is no resource bundle, so fall back to the in-repo source tree at
+/// `<crate>/../resources/fabricator-templates`.
+pub fn fabricator_templates_dir(app: &tauri::AppHandle) -> PathBuf {
+  use tauri::Manager;
+  if let Ok(res) = app.path().resource_dir() {
+    let bundled = res.join("resources").join("fabricator-templates");
+    if bundled.is_dir() {
+      return bundled;
+    }
+  }
+  let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  crate_dir
+    .parent()
+    .map(|p| p.to_path_buf())
+    .unwrap_or(crate_dir)
+    .join("resources")
+    .join("fabricator-templates")
+}

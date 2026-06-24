@@ -176,7 +176,7 @@ export interface InstallResult extends ProcResult {
  * Projects
  * ------------------------------------------------------------------ */
 
-/** A Rayfin project template (from `rayfin init --list-templates`). */
+/** A Rayfin project template (from `npm create @microsoft/rayfin -- --list-templates`). */
 export interface TemplateInfo {
   name: string
   displayName: string
@@ -185,7 +185,7 @@ export interface TemplateInfo {
 
 /** One template entry from a community gallery repo's root `rayfin-template.yml`. */
 export interface CommunityTemplate {
-  /** Gallery repo URL this is scaffolded from (`rayfin init -t <repoUrl>`). */
+  /** Gallery repo URL this is scaffolded from (`npm create @microsoft/rayfin -- -t <repoUrl>`). */
   repoUrl: string
   /** Path within the repo (e.g. `templates/field-technician`). */
   path: string
@@ -443,14 +443,15 @@ export interface CreateProjectInput {
   name: string
   /**
    * Template the project is scaffolded from. Either a built-in name
-   * ('blankapp' | 'dataapp' | 'gettingstartedauth' | 'todoapp') or a community
-   * template URL (e.g. an awesome-rayfin git/tarball URL) — `rayfin init -t`
-   * accepts either.
+   * ('blankapp' | 'fabricator-dataapp' | 'fabricator-todoapp' |
+   * 'gettingstartedauth') or a community template URL (e.g. an awesome-rayfin
+   * git/tarball URL) — `npm create @microsoft/rayfin -- -t` accepts either.
    */
   template: string
   /**
    * For a multi-template source URL, the specific template to pick
-   * (`rayfin init --template-name <name>`). Ignored for built-in templates.
+   * (`npm create @microsoft/rayfin -- --template-name <name>`). Ignored for
+   * built-in templates.
    */
   templateName?: string
 }

@@ -1,0 +1,11 @@
+apiVersion: v1
+metadata:
+  name: fabricator-dataapp
+  displayName: Data App
+  description: >-
+    Fabric-authenticated React + Vite app wired for Rayfin data. Add an entity
+    in rayfin/data/ and you get a typed GraphQL client — built for the
+    Fabricator deploy-to-test loop, with no local backend or test harness.
+entries:
+  - path: .
+    name: fabricator-dataapp

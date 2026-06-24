@@ -36,7 +36,8 @@
     "category": "DeveloperTool",
     "copyright": "Copyright © 2026 Sachin Patney",
     "resources": {
-      "../resources/telemetry*.json": "resources/"
+      "../resources/telemetry*.json": "resources/",
+      "../resources/fabricator-templates/": "resources/fabricator-templates/"
     },
     "icon": [
       "icons/32x32.png",
