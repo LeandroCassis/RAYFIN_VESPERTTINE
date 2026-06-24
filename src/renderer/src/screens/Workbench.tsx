@@ -990,6 +990,10 @@ export default function Workbench({
 
   // Derived side-thread view state for the active project (experimental).
   const sideThreadsOn = Boolean(settings?.experiments?.sideThreads)
+  // Top-level tab groups: Code groups the file browser + Skills; Data groups the
+  // schema Model + the live data browser. The leaf `viewMode` drives the sub-nav.
+  const codeGroup = viewMode === 'code' || viewMode === 'skills'
+  const dataGroup = viewMode === 'model' || viewMode === 'data'
   const liveThreads = (active?.threads ?? []).filter(
     (t) => t.status === 'active' || t.status === 'error'
   )
@@ -1193,36 +1197,24 @@ export default function Workbench({
                     Build
                   </button>
                   <button
-                    className={`project-tab${viewMode === 'code' ? ' project-tab--active' : ''}`}
+                    className={`project-tab${codeGroup ? ' project-tab--active' : ''}`}
                     role="tab"
-                    aria-selected={viewMode === 'code'}
-                    onClick={() => setViewMode('code')}
+                    aria-selected={codeGroup}
+                    onClick={() => {
+                      if (!codeGroup) setViewMode('code')
+                    }}
                   >
                     Code
                   </button>
                   <button
-                    className={`project-tab${viewMode === 'model' ? ' project-tab--active' : ''}`}
+                    className={`project-tab${dataGroup ? ' project-tab--active' : ''}`}
                     role="tab"
-                    aria-selected={viewMode === 'model'}
-                    onClick={() => setViewMode('model')}
-                  >
-                    Model
-                  </button>
-                  <button
-                    className={`project-tab${viewMode === 'data' ? ' project-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'data'}
-                    onClick={() => setViewMode('data')}
+                    aria-selected={dataGroup}
+                    onClick={() => {
+                      if (!dataGroup) setViewMode('model')
+                    }}
                   >
                     Data
-                  </button>
-                  <button
-                    className={`project-tab${viewMode === 'skills' ? ' project-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'skills'}
-                    onClick={() => setViewMode('skills')}
-                  >
-                    Skills
                   </button>
                   <button
                     className={`project-tab${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
@@ -1263,6 +1255,46 @@ export default function Workbench({
                   />
                 </div>
               </div>
+              {codeGroup && (
+                <div className="sub-tabs" role="tablist" aria-label="Code views">
+                  <button
+                    className={`sub-tab${viewMode === 'code' ? ' sub-tab--active' : ''}`}
+                    role="tab"
+                    aria-selected={viewMode === 'code'}
+                    onClick={() => setViewMode('code')}
+                  >
+                    Files
+                  </button>
+                  <button
+                    className={`sub-tab${viewMode === 'skills' ? ' sub-tab--active' : ''}`}
+                    role="tab"
+                    aria-selected={viewMode === 'skills'}
+                    onClick={() => setViewMode('skills')}
+                  >
+                    Skills
+                  </button>
+                </div>
+              )}
+              {dataGroup && (
+                <div className="sub-tabs" role="tablist" aria-label="Data views">
+                  <button
+                    className={`sub-tab${viewMode === 'model' ? ' sub-tab--active' : ''}`}
+                    role="tab"
+                    aria-selected={viewMode === 'model'}
+                    onClick={() => setViewMode('model')}
+                  >
+                    Model
+                  </button>
+                  <button
+                    className={`sub-tab${viewMode === 'data' ? ' sub-tab--active' : ''}`}
+                    role="tab"
+                    aria-selected={viewMode === 'data'}
+                    onClick={() => setViewMode('data')}
+                  >
+                    Browse
+                  </button>
+                </div>
+              )}
               {viewMode === 'code' ? (
                 <Suspense fallback={<div className="code-empty">Loading editor…</div>}>
                   <CodeViewer

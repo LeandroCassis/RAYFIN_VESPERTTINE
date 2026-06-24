@@ -1951,6 +1951,38 @@ code {
   color: var(--text);
 }
 
+/* Secondary navigation within a primary tab (Code -> Files/Skills, Data ->
+   Model/Browse). Flat underline style to read as a level below the pill tabs. */
+.sub-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 16px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+}
+
+.sub-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 8px 12px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  cursor: pointer;
+}
+
+.sub-tab:hover {
+  color: var(--text);
+}
+
+.sub-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
 /* Skills tab: curated app-building guidance the user can switch on per project. */
 .skills {
   flex: 1;
