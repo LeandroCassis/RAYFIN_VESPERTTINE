@@ -5,6 +5,7 @@ import { monacoLanguage } from '../monaco'
 import { EditorIcon } from './icons'
 import HistoryView from './HistoryView'
 import RayfinConfigGuide from './RayfinConfigGuide'
+import SkillsView from './SkillsView'
 
 interface Props {
   project: StudioProject
@@ -16,6 +17,8 @@ interface Props {
   onSendToChat?: (display: string, prompt: string) => void
   /** Open a specific project file in the Files browser (e.g. from the Model tab). */
   openRequest?: { path: string; nonce: number }
+  /** Called after a skill is toggled in the Skills sub-view (parent refreshes). */
+  onSkillsChanged?: () => void
 }
 
 function formatBytes(n: number): string {
@@ -322,9 +325,10 @@ export default function CodeViewer({
   refreshKey,
   onRequestDeploy,
   onSendToChat,
-  openRequest
+  openRequest,
+  onSkillsChanged
 }: Props): JSX.Element {
-  const [tab, setTab] = useState<'files' | 'history'>('files')
+  const [tab, setTab] = useState<'files' | 'history' | 'skills'>('files')
   const [editorHint, setEditorHint] = useState(false)
   const theme = useEditorTheme()
 
@@ -361,6 +365,14 @@ export default function CodeViewer({
             onClick={() => setTab('history')}
           >
             History
+          </button>
+          <button
+            className={`code-seg-btn${tab === 'skills' ? ' code-seg-btn--on' : ''}`}
+            role="tab"
+            aria-selected={tab === 'skills'}
+            onClick={() => setTab('skills')}
+          >
+            Skills
           </button>
         </div>
         {tab === 'history' && (
@@ -406,7 +418,7 @@ export default function CodeViewer({
           theme={theme}
           openRequest={openRequest}
         />
-      ) : (
+      ) : tab === 'history' ? (
         <HistoryView
           project={project}
           refreshKey={refreshKey}
@@ -414,6 +426,8 @@ export default function CodeViewer({
           onRequestDeploy={onRequestDeploy}
           onSendToChat={onSendToChat}
         />
+      ) : (
+        <SkillsView project={project} onChanged={() => onSkillsChanged?.()} />
       )}
     </div>
   )

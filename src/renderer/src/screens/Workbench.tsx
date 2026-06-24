@@ -33,7 +33,6 @@ import DeploymentsControl from '../components/DeploymentsControl'
 import GitControl from '../components/GitControl'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
-import SkillsView from '../components/SkillsView'
 import AdvisorView, { categoryMeta } from '../components/AdvisorView'
 import ModelView from '../components/ModelView'
 import DataView from '../components/DataView'
@@ -196,7 +195,7 @@ export default function Workbench({
   >(null)
   /** Project content view: the build loop (chat + preview) or the code browser. */
   const [viewMode, setViewMode] = useState<
-    'build' | 'code' | 'model' | 'data' | 'skills' | 'advisor'
+    'build' | 'code' | 'model' | 'data' | 'advisor'
   >('build')
   /** A pending request to open a specific file in the Code tab (Model → file). */
   const [codeOpen, setCodeOpen] = useState<{ path: string; nonce: number } | null>(null)
@@ -990,9 +989,9 @@ export default function Workbench({
 
   // Derived side-thread view state for the active project (experimental).
   const sideThreadsOn = Boolean(settings?.experiments?.sideThreads)
-  // Top-level tab groups: Code groups the file browser + Skills; Data groups the
-  // schema Model + the live data browser. The leaf `viewMode` drives the sub-nav.
-  const codeGroup = viewMode === 'code' || viewMode === 'skills'
+  // The Data top-level tab groups the schema Model + the live data browser; the
+  // leaf `viewMode` drives its sub-nav. (Code's Files/History/Skills sub-nav lives
+  // inside CodeViewer.)
   const dataGroup = viewMode === 'model' || viewMode === 'data'
   const liveThreads = (active?.threads ?? []).filter(
     (t) => t.status === 'active' || t.status === 'error'
@@ -1197,12 +1196,10 @@ export default function Workbench({
                     Build
                   </button>
                   <button
-                    className={`project-tab${codeGroup ? ' project-tab--active' : ''}`}
+                    className={`project-tab${viewMode === 'code' ? ' project-tab--active' : ''}`}
                     role="tab"
-                    aria-selected={codeGroup}
-                    onClick={() => {
-                      if (!codeGroup) setViewMode('code')
-                    }}
+                    aria-selected={viewMode === 'code'}
+                    onClick={() => setViewMode('code')}
                   >
                     Code
                   </button>
@@ -1255,26 +1252,6 @@ export default function Workbench({
                   />
                 </div>
               </div>
-              {codeGroup && (
-                <div className="sub-tabs" role="tablist" aria-label="Code views">
-                  <button
-                    className={`sub-tab${viewMode === 'code' ? ' sub-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'code'}
-                    onClick={() => setViewMode('code')}
-                  >
-                    Files
-                  </button>
-                  <button
-                    className={`sub-tab${viewMode === 'skills' ? ' sub-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'skills'}
-                    onClick={() => setViewMode('skills')}
-                  >
-                    Skills
-                  </button>
-                </div>
-              )}
               {dataGroup && (
                 <div className="sub-tabs" role="tablist" aria-label="Data views">
                   <button
@@ -1306,6 +1283,7 @@ export default function Workbench({
                     }}
                     onSendToChat={sendHistoryToChat}
                     openRequest={codeOpen ?? undefined}
+                    onSkillsChanged={() => setGitRefresh((n) => n + 1)}
                   />
                 </Suspense>
               ) : viewMode === 'model' ? (
@@ -1321,8 +1299,6 @@ export default function Workbench({
                   refreshKey={gitRefresh}
                   onSendToChat={sendModelToChat}
                 />
-              ) : viewMode === 'skills' ? (
-                <SkillsView project={active} onChanged={() => setGitRefresh((n) => n + 1)} />
               ) : viewMode === 'advisor' ? (
                 <AdvisorView
                   project={active}
