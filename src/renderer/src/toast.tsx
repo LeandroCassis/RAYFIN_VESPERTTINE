@@ -52,10 +52,30 @@ const ICON: Record<ToastKind, string> = {
 
 const ToastContext = createContext<ToastApi | null>(null)
 
-/** Access the toast API. Must be called within a {@link ToastProvider}. */
+/**
+ * No-op fallback returned when {@link useToast} is called without a provider in
+ * the tree. Toasts are auxiliary feedback, so a momentarily-missing provider
+ * (e.g. a hot-reload remount that swaps the context instance) must degrade
+ * silently rather than crash the whole app — mirroring the graceful fallback the
+ * overlay hooks use.
+ */
+const NOOP_TOAST: ToastApi = {
+  show: () => -1,
+  success: () => -1,
+  error: () => -1,
+  info: () => -1,
+  dismiss: () => {}
+}
+
+/** Access the toast API. Intended to be called within a {@link ToastProvider}. */
 export function useToast(): ToastApi {
   const ctx = useContext(ToastContext)
-  if (!ctx) throw new Error('useToast must be used within a <ToastProvider>')
+  if (!ctx) {
+    if (import.meta.env.DEV) {
+      console.warn('useToast called outside <ToastProvider>; toasts are disabled for this render.')
+    }
+    return NOOP_TOAST
+  }
   return ctx
 }
 
