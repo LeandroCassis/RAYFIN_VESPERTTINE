@@ -166,6 +166,14 @@ pub struct ProcResult {
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct OpenInEditorResult {
+  pub opened: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub revealed_folder: Option<bool>,
+}
+
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct InstallResult {
   pub ok: bool,
   pub exit_code: Option<i32>,
@@ -491,6 +499,9 @@ pub struct FileNode {
   pub r#type: String,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub children: Option<Vec<FileNode>>,
+  /// `Some(true)` when git ignores this path (set only for ignored nodes).
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub ignored: Option<bool>,
 }
 
 #[derive(Serialize, Clone)]

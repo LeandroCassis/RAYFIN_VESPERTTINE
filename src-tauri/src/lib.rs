@@ -75,6 +75,7 @@ pub fn run() {
       commands::misc::get_versions,
       commands::misc::open_external,
       commands::misc::open_logs,
+      commands::misc::open_in_editor,
       commands::misc::relaunch,
       // updates
       commands::updates::update_check,
@@ -113,6 +114,9 @@ pub fn run() {
       commands::projects::projects_git_log,
       commands::projects::projects_git_changes,
       commands::projects::projects_git_file_diff,
+      commands::projects::projects_git_compare_changes,
+      commands::projects::projects_git_compare_file_diff,
+      commands::projects::projects_git_file_log,
       commands::projects::projects_git_revert,
       commands::projects::projects_files_tree,
       commands::projects::projects_files_read,

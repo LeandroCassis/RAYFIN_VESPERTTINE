@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import type { FileContent, FileNode, StudioProject } from '@shared/ipc'
 import { monacoLanguage } from '../monaco'
+import { EditorIcon } from './icons'
 import HistoryView from './HistoryView'
+import RayfinConfigGuide from './RayfinConfigGuide'
 
 interface Props {
   project: StudioProject
@@ -10,12 +12,30 @@ interface Props {
   refreshKey: number
   /** Ask the parent to deploy the current code (used by History → Restore). */
   onRequestDeploy?: () => void
+  /** Hand a slice of history (commit/file/comparison) to the Build chat. */
+  onSendToChat?: (display: string, prompt: string) => void
 }
 
 function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`
   return `${(n / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/** Project-relative paths (lowercased) opened by default on first entry to Files. */
+const DEFAULT_FILES = ['rayfin/rayfin.yml', 'rayfin/rayfin.yaml']
+
+/** Depth-first search for the first file node matching `pred`. */
+function findFile(nodes: FileNode[], pred: (n: FileNode) => boolean): FileNode | null {
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      if (pred(node)) return node
+    } else if (node.children) {
+      const hit = findFile(node.children, pred)
+      if (hit) return hit
+    }
+  }
+  return null
 }
 
 /** Track the app's resolved theme so Monaco matches light/dark. */
@@ -38,16 +58,26 @@ interface TreeRowProps {
 }
 
 function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps): JSX.Element {
-  const [open, setOpen] = useState(false)
+  const isAncestor =
+    node.type === 'dir' &&
+    selectedPath != null &&
+    (selectedPath === node.path || selectedPath.startsWith(`${node.path}/`))
+  const [open, setOpen] = useState(isAncestor)
+  // Auto-expand folders that contain the selected file (e.g. the default pick),
+  // without ever force-collapsing folders the user has opened.
+  useEffect(() => {
+    if (isAncestor) setOpen(true)
+  }, [isAncestor])
   const indent = 8 + depth * 12
 
   if (node.type === 'dir') {
     return (
       <div>
         <button
-          className="tree-row tree-row--dir"
+          className={`tree-row tree-row--dir${node.ignored ? ' tree-row--ignored' : ''}`}
           style={{ paddingLeft: indent }}
           onClick={() => setOpen((o) => !o)}
+          title={node.ignored ? 'Ignored by Git' : undefined}
         >
           <span className="tree-caret">{open ? '▾' : '▸'}</span>
           <span className="tree-name">{node.name}</span>
@@ -68,11 +98,15 @@ function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps): JSX.Ele
 
   return (
     <button
-      className={`tree-row tree-row--file${selectedPath === node.path ? ' tree-row--active' : ''}`}
+      className={`tree-row tree-row--file${selectedPath === node.path ? ' tree-row--active' : ''}${
+        node.ignored ? ' tree-row--ignored' : ''
+      }`}
       style={{ paddingLeft: indent + 14 }}
       onClick={() => onSelect(node)}
+      title={node.ignored ? `${node.path} — ignored by Git` : undefined}
     >
       <span className="tree-name">{node.name}</span>
+      {node.ignored && <span className="tree-ignored-tag">ignored</span>}
     </button>
   )
 }
@@ -84,6 +118,10 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
   const [file, setFile] = useState<FileContent | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  // rayfin.yml gets a friendly "Guide" view by default (with a YAML toggle).
+  const [configMode, setConfigMode] = useState<'guide' | 'yaml'>('guide')
+  // Guards the one-time default pick so we never override a manual selection.
+  const didDefaultRef = useRef(false)
 
   const loadTree = useCallback(async (): Promise<void> => {
     setTree(await window.api.projects.files.tree(project.id))
@@ -101,10 +139,26 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
     [project.id]
   )
 
+  // Reset the default-pick guard (and selection) when switching projects.
+  useEffect(() => {
+    didDefaultRef.current = false
+    setSelected(null)
+    setFile(null)
+  }, [project.id])
+
   // Load (and refresh) the tree; re-read the open file when files may have changed.
   useEffect(() => {
     void loadTree()
   }, [loadTree, refreshKey])
+
+  // On first entry, open the project's Rayfin config (rayfin/rayfin.yml). Skipped
+  // once the user has picked a file, so manual selections are never overridden.
+  useEffect(() => {
+    if (!tree || didDefaultRef.current || selected) return
+    didDefaultRef.current = true
+    const target = findFile(tree, (n) => DEFAULT_FILES.includes(n.path.toLowerCase()))
+    if (target) setSelected(target.path)
+  }, [tree, selected])
 
   useEffect(() => {
     if (selected) void readPath(selected)
@@ -120,6 +174,11 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
     setCopied(true)
     setTimeout(() => setCopied(false), 1200)
   }
+
+  // The Rayfin config file gets special "extra treatment": a plain-language
+  // guide (default) that explains the backend, plus a raw-YAML toggle.
+  const isRayfinConfig = selected != null && DEFAULT_FILES.includes(selected.toLowerCase())
+  const showGuide = isRayfinConfig && configMode === 'guide'
 
   return (
     <div className="code-viewer">
@@ -156,10 +215,32 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
               {selected}
             </span>
             <span className="code-head-spacer" />
-            {file && !file.error && file.size > 0 && (
+            {isRayfinConfig && file?.content != null && (
+              <div className="code-seg code-cfg-seg" role="tablist" aria-label="rayfin.yml view">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={configMode === 'guide'}
+                  className={`code-seg-btn${configMode === 'guide' ? ' code-seg-btn--on' : ''}`}
+                  onClick={() => setConfigMode('guide')}
+                >
+                  Guide
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={configMode === 'yaml'}
+                  className={`code-seg-btn${configMode === 'yaml' ? ' code-seg-btn--on' : ''}`}
+                  onClick={() => setConfigMode('yaml')}
+                >
+                  YAML
+                </button>
+              </div>
+            )}
+            {file && !file.error && file.size > 0 && !showGuide && (
               <span className="code-size">{formatBytes(file.size)}</span>
             )}
-            {file?.content != null && (
+            {file?.content != null && !showGuide && (
               <button className="btn btn--xs btn--ghost" onClick={copy}>
                 {copied ? 'Copied' : 'Copy'}
               </button>
@@ -182,6 +263,8 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
             </div>
           ) : file?.content === '' ? (
             <div className="code-empty">Empty file.</div>
+          ) : showGuide && file?.content != null ? (
+            <RayfinConfigGuide content={file.content} />
           ) : file?.content != null ? (
             <div className="code-editor-host">
               <Editor
@@ -220,9 +303,24 @@ function FilesView({ project, refreshKey, theme }: Props & { theme: string }): J
  * with a segmented control. Both share one resolved Monaco theme so the editor
  * and diff editor stay in sync with the app's light/dark mode.
  */
-export default function CodeViewer({ project, refreshKey, onRequestDeploy }: Props): JSX.Element {
+export default function CodeViewer({
+  project,
+  refreshKey,
+  onRequestDeploy,
+  onSendToChat
+}: Props): JSX.Element {
   const [tab, setTab] = useState<'files' | 'history'>('files')
+  const [editorHint, setEditorHint] = useState(false)
   const theme = useEditorTheme()
+
+  const openInEditor = useCallback(async (): Promise<void> => {
+    try {
+      const res = await window.api.openInEditor(project.id)
+      setEditorHint(!res.opened)
+    } catch {
+      setEditorHint(true)
+    }
+  }, [project.id])
 
   return (
     <div className="code-shell">
@@ -250,7 +348,37 @@ export default function CodeViewer({ project, refreshKey, onRequestDeploy }: Pro
             A timeline of every change to your app — pick one to see what changed.
           </span>
         )}
+        <span className="code-toolbar-spacer" />
+        <button
+          className="btn btn--xs btn--ghost code-open-editor"
+          onClick={() => void openInEditor()}
+          title="Open this project's folder in VS Code"
+        >
+          <EditorIcon className="btn-ico" />
+          Open in VS Code
+        </button>
       </div>
+      {editorHint && (
+        <div className="code-editor-hint" role="status">
+          <span className="code-editor-hint-text">
+            VS Code isn’t installed, so we opened the project folder instead.
+          </span>
+          <button
+            className="code-editor-hint-link"
+            onClick={() => void window.api.openExternal('https://code.visualstudio.com/')}
+          >
+            Get VS Code
+          </button>
+          <button
+            className="code-editor-hint-x"
+            onClick={() => setEditorHint(false)}
+            aria-label="Dismiss"
+            title="Dismiss"
+          >
+            ×
+          </button>
+        </div>
+      )}
       {tab === 'files' ? (
         <FilesView project={project} refreshKey={refreshKey} theme={theme} />
       ) : (
@@ -259,6 +387,7 @@ export default function CodeViewer({ project, refreshKey, onRequestDeploy }: Pro
           refreshKey={refreshKey}
           theme={theme}
           onRequestDeploy={onRequestDeploy}
+          onSendToChat={onSendToChat}
         />
       )}
     </div>

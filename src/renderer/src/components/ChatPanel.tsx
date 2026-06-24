@@ -62,6 +62,12 @@ export interface OutboundPrompt {
   id: string
   display: string
   prompt: string
+  /**
+   * When true the prompt is dropped into the composer (and focused) instead of
+   * being sent immediately — used to "stage" context (e.g. a slice of history)
+   * so the user can append their actual request before sending.
+   */
+  stage?: boolean
 }
 
 interface Props {
@@ -88,6 +94,9 @@ interface Props {
   onOptionsChanged?: () => void
   /** A prompt to send on behalf of the user (e.g. the Rayfin upgrade hand-off). */
   outbound?: OutboundPrompt | null
+  /** Called once an outbound prompt has been consumed so the parent can clear it
+   * (prevents the one-shot prompt from replaying when the panel remounts). */
+  onOutboundConsumed?: () => void
   /** True when chat is expanded to fill the build view (preview hidden). */
   focused?: boolean
   /** Toggle chat focus (full-width chat ⇄ split with preview). */
@@ -1022,6 +1031,7 @@ export default function ChatPanel({
   onClearHistory,
   onOptionsChanged,
   outbound,
+  onOutboundConsumed,
   focused,
   onToggleFocus
 }: Props): JSX.Element {
@@ -1313,17 +1323,20 @@ export default function ChatPanel({
   }
 
   // Send a prompt queued from outside (e.g. the status-bar Rayfin upgrade). If a
-  // turn is mid-flight we drop it into the composer instead of dropping it.
+  // turn is mid-flight we drop it into the composer instead of dropping it. We
+  // notify the parent so it clears the one-shot prompt; otherwise it would
+  // replay every time this panel remounts (e.g. after switching tabs).
   const handledOutbound = useRef<string | null>(null)
   useEffect(() => {
     if (!outbound || outbound.id === handledOutbound.current) return
     handledOutbound.current = outbound.id
-    if (sending) {
+    if (sending || outbound.stage) {
       setInput(outbound.prompt)
       taRef.current?.focus()
     } else {
       void dispatch(outbound.display, outbound.prompt, [])
     }
+    onOutboundConsumed?.()
   }, [outbound?.id])
 
   return (

@@ -553,6 +553,8 @@ export interface FileNode {
   path: string
   type: 'file' | 'dir'
   children?: FileNode[]
+  /** True when git ignores this path (or it sits under an ignored folder). */
+  ignored?: boolean
 }
 
 /** The result of reading one project file for the viewer. */
@@ -914,6 +916,9 @@ export const IpcChannels = {
   projectsGitLog: 'projects:gitLog',
   projectsGitChanges: 'projects:gitChanges',
   projectsGitFileDiff: 'projects:gitFileDiff',
+  projectsGitCompareChanges: 'projects:gitCompareChanges',
+  projectsGitCompareFileDiff: 'projects:gitCompareFileDiff',
+  projectsGitFileLog: 'projects:gitFileLog',
   projectsGitRevert: 'projects:gitRevert',
   projectsFilesTree: 'projects:filesTree',
   projectsFilesRead: 'projects:filesRead',
@@ -960,6 +965,14 @@ export const IpcChannels = {
 
 export type IpcChannel = (typeof IpcChannels)[keyof typeof IpcChannels]
 
+/** Outcome of "Open in VSCode": whether the editor actually launched. */
+export interface OpenInEditorResult {
+  /** True when VS Code's `code` CLI was found and launched on the folder. */
+  opened: boolean
+  /** True when we fell back to revealing the folder in the OS file manager. */
+  revealedFolder?: boolean
+}
+
 /* ------------------------------------------------------------------ *
  * Renderer-facing API (exposed via preload contextBridge as window.api)
  * ------------------------------------------------------------------ */
@@ -971,6 +984,12 @@ export interface RayfinStudioApi {
   openExternal: (url: string) => Promise<void>
   /** Open the logs folder (userData/logs) in the OS file manager; returns its path. */
   openLogs: () => Promise<string>
+  /**
+   * Open the project folder in VS Code (`code <dir>`). When VS Code's CLI isn't
+   * found, the project folder is revealed in the OS file manager instead and
+   * `opened` is false, so the UI can nudge the user to install VS Code.
+   */
+  openInEditor: (id: string) => Promise<OpenInEditorResult>
   /** Restart the app (used to pick up newly installed Node/Git on PATH). */
   relaunch: () => Promise<void>
 
@@ -1060,6 +1079,21 @@ export interface RayfinStudioApi {
       changes: (id: string, ref: string) => Promise<GitChange[]>
       /** Before/after content for one changed file (drives the diff view). */
       fileDiff: (id: string, ref: string, path: string, oldPath?: string) => Promise<GitFileDiff>
+      /**
+       * Files changed between two commits (`base`..`target`) — powers the
+       * History "Compare" mode, where the user picks any two snapshots.
+       */
+      compareChanges: (id: string, base: string, target: string) => Promise<GitChange[]>
+      /** Before (`base`) / after (`target`) content for one file across a range. */
+      compareFileDiff: (
+        id: string,
+        base: string,
+        target: string,
+        path: string,
+        oldPath?: string
+      ) => Promise<GitFileDiff>
+      /** Every commit that touched one file (newest first), following renames. */
+      fileLog: (id: string, path: string) => Promise<GitCommitSummary[]>
       /**
        * Restore the project to the snapshot at `ref` (a commit SHA) by recording
        * it as a new commit on top of the current history (nothing is lost). The

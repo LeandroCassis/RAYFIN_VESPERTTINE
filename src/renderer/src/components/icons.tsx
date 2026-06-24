@@ -208,3 +208,110 @@ export function ImageIcon(props: IconProps): JSX.Element {
     </Icon>
   )
 }
+
+/** Window with code chevrons — Open in an external editor (VS Code). */
+export function EditorIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="M9 9l-2.5 3L9 15" />
+      <path d="M15 9l2.5 3L15 15" />
+    </Icon>
+  )
+}
+
+/** Magnifier — Search/filter. */
+export function SearchIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="11" cy="11" r="7" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </Icon>
+  )
+}
+
+/** Overlapping pages — Copy to clipboard. */
+export function CopyIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <rect x="9" y="9" width="11" height="11" rx="2" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h8" />
+    </Icon>
+  )
+}
+
+/** Speech bubble — Send to chat / ask the agent. */
+export function ChatIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 9 9 0 0 1-3.8-.8L3 21l1.8-5.4A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 21 11.5z" />
+    </Icon>
+  )
+}
+
+/** Two arrows — Compare two snapshots. */
+export function CompareIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M7 4v13" />
+      <path d="M4 7l3-3 3 3" />
+      <path d="M17 20V7" />
+      <path d="M14 17l3 3 3-3" />
+    </Icon>
+  )
+}
+
+/** Clock with a counter-arrow — File history / past versions. */
+export function HistoryIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M3 3v5h5" />
+      <path d="M3.05 13A9 9 0 1 0 6 5.3L3 8" />
+      <path d="M12 7v5l3 2" />
+    </Icon>
+  )
+}
+
+/** Shield — Authentication / who can sign in. */
+export function ShieldIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M12 3 5 6v5c0 4.5 3 7.5 7 9 4-1.5 7-4.5 7-9V6l-7-3Z" />
+      <path d="m9.2 12 2 2 3.6-3.8" />
+    </Icon>
+  )
+}
+
+/** Key — a sign-in credential (e.g. email & password). */
+export function KeyIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="8" cy="8" r="4" />
+      <path d="m11 11 8 8" />
+      <path d="m16 16 2-2" />
+      <path d="m19 13 2-2" />
+    </Icon>
+  )
+}
+
+/** Stacked disks — Database / your app's data. */
+export function DatabaseIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <ellipse cx="12" cy="5" rx="8" ry="3" />
+      <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+      <path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+    </Icon>
+  )
+}
+
+/** Globe — Hosting / your live website. */
+export function GlobeIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18" />
+      <path d="M12 3c2.5 2.5 3.8 5.7 3.8 9S14.5 18.5 12 21c-2.5-2.5-3.8-5.7-3.8-9S9.5 5.5 12 3Z" />
+    </Icon>
+  )
+}

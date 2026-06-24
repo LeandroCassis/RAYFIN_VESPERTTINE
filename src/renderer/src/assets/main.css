@@ -2706,7 +2706,8 @@ code {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  min-height: 44px;
+  padding: 6px 12px;
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.6px;
@@ -2764,8 +2765,34 @@ code {
 }
 
 .tree-name {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Git-ignored entries are shown but de-emphasized so real source stands out. */
+.tree-row--ignored .tree-name,
+.tree-row--ignored .tree-caret {
+  color: var(--text-dim);
+  opacity: 0.75;
+}
+
+.tree-row--ignored.tree-row--active .tree-name {
+  color: var(--text);
+  opacity: 0.9;
+}
+
+.tree-ignored-tag {
+  margin-left: auto;
+  flex: none;
+  padding-left: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  opacity: 0.55;
 }
 
 .code-main {
@@ -2777,21 +2804,33 @@ code {
 }
 
 .code-head {
+  container-type: inline-size;
+  container-name: codehead;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  min-height: 44px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elev);
 }
 
 .code-path {
+  min-width: 0;
   font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
   font-size: 12.5px;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Drop the path when the editor pane is narrow — the file name is already in
+   the tree on the left, and this keeps the size/Copy controls from wrapping. */
+@container codehead (max-width: 340px) {
+  .code-path {
+    display: none;
+  }
 }
 
 .code-head-spacer {
@@ -2827,6 +2866,371 @@ code {
   min-height: 0;
 }
 
+/* rayfin.yml "extra treatment": a friendly, parsed guide to the config. */
+.cfg-guide {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 24px 28px 40px;
+  background: var(--bg);
+}
+
+.cfg-guide--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-dim);
+  font-size: 13px;
+  text-align: center;
+}
+
+.cfg-empty-icon {
+  width: 22px;
+  height: 22px;
+  color: var(--text-dim);
+}
+
+.cfg-head,
+.cfg-card,
+.cfg-foot {
+  max-width: 720px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.cfg-head {
+  margin-bottom: 18px;
+}
+
+.cfg-head-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cfg-head-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev));
+  color: var(--accent);
+}
+
+.cfg-head-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
+.cfg-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.cfg-sub {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.cfg-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.cfg-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-elev);
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.cfg-meta-k {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.cfg-meta-item--file {
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  color: var(--text-dim);
+}
+
+.cfg-card {
+  margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-elev);
+  overflow: hidden;
+}
+
+.cfg-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev-2);
+}
+
+.cfg-card-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+}
+
+.cfg-card-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.cfg-card-title {
+  margin: 0;
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cfg-status {
+  flex: none;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cfg-status--on {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 16%, transparent);
+}
+
+.cfg-status--off {
+  color: var(--text-dim);
+  background: var(--bg-elev-3);
+}
+
+.cfg-card-body {
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cfg-card-desc {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.cfg-methods {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cfg-method {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-elev-2);
+}
+
+.cfg-method-icon {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-sm);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.cfg-method-icon svg {
+  width: 15px;
+  height: 15px;
+}
+
+.cfg-method-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cfg-method-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cfg-method-desc {
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.cfg-method-mark {
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ok);
+}
+
+.cfg-method--off {
+  opacity: 0.6;
+}
+
+.cfg-method--off .cfg-method-icon {
+  color: var(--text-dim);
+  background: var(--bg-elev-3);
+}
+
+.cfg-method--off .cfg-method-mark {
+  color: var(--text-dim);
+  font-weight: 500;
+}
+
+.cfg-note {
+  margin: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius);
+  background: var(--bg-elev-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.cfg-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cfg-list-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cfg-list-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.cfg-list-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.cfg-list-items {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cfg-list-items li {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.cfg-guide code {
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  font-size: 11.5px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--bg-elev-3);
+  color: var(--text);
+}
+
+.cfg-kv {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.cfg-kv-k {
+  flex: none;
+  width: 120px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.cfg-kv-v {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.cfg-foot {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 11px 14px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.cfg-foot-icon {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  margin-top: 1px;
+  color: var(--accent);
+}
+
+.cfg-foot strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* The Guide / YAML toggle sits in the file header. */
+.code-cfg-seg {
+  margin-right: 2px;
+}
+
 /* Code tab shell: Files / History switcher above the active view. */
 .code-shell {
   display: flex;
@@ -2857,6 +3261,7 @@ code {
 .code-seg,
 .hist-seg {
   display: inline-flex;
+  flex: none;
   gap: 2px;
   padding: 2px;
   background: var(--bg-elev-2);
@@ -2873,7 +3278,16 @@ code {
   font-size: 12px;
   padding: 4px 12px;
   border-radius: 6px;
+  white-space: nowrap;
   cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.code-seg-btn:hover,
+.hist-seg-btn:hover {
+  color: var(--text);
 }
 
 .hist-seg-btn {
@@ -2957,10 +3371,11 @@ code {
 .hist-rail-head,
 .hist-files-head {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 10px 14px;
+  min-height: 44px;
+  padding: 6px 14px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -3015,6 +3430,7 @@ code {
   padding: 9px 10px;
   border-radius: 8px;
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 
 .hist-commit:hover {
@@ -3095,6 +3511,7 @@ code {
   padding: 7px 9px;
   border-radius: 7px;
   cursor: pointer;
+  transition: background 0.12s ease;
 }
 
 .hist-file:hover {
@@ -3186,22 +3603,36 @@ code {
 }
 
 .hist-diff-head {
+  container-type: inline-size;
+  container-name: histdiffhead;
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   gap: 10px;
   flex: none;
+  min-height: 44px;
   padding: 7px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elev);
 }
 
 .hist-diff-path {
+  min-width: 0;
   font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
   font-size: 12.5px;
   color: var(--text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* When the diff pane is narrow, drop the path — it's already shown in the
+   changed-files list to the left — so the diff controls never get cramped. */
+@container histdiffhead (max-width: 520px) {
+  .hist-diff-path {
+    display: none;
+  }
 }
 
 .hist-diff-spacer {
@@ -3234,6 +3665,472 @@ code {
   color: var(--text-dim);
   line-height: 1.5;
 }
+
+/* Compare toggle in the timeline header. */
+.hist-cmp-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.hist-cmp-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.hist-cmp-toggle--on {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elev));
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.hist-cmp-toggle .btn-ico {
+  width: 13px;
+  height: 13px;
+}
+
+/* Timeline search box. */
+.hist-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  margin: 8px 10px 4px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.hist-search:focus-within {
+  border-color: var(--accent);
+}
+
+.hist-search-ico {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--text-dim);
+}
+
+.hist-search-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  outline: none;
+}
+
+.hist-search-input::placeholder {
+  color: var(--text-dim);
+}
+
+.hist-search-x {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.hist-search-x:hover {
+  color: var(--text);
+}
+
+/* Compare-range picker (base + target selects). */
+.hist-cmp {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: none;
+  margin: 8px 10px 4px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+
+.hist-cmp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.hist-cmp-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.hist-cmp-sel {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.hist-cmp-sel:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.hist-cmp-arrow {
+  text-align: center;
+  font-size: 13px;
+  color: var(--accent);
+  line-height: 1;
+}
+
+/* Base / Target tags on timeline rows while comparing. */
+.hist-cmp-tag {
+  flex: none;
+  margin-top: 3px;
+  font-size: 9.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 18%, transparent);
+  border-radius: 10px;
+  padding: 1px 6px;
+}
+
+.hist-cmp-tag--target {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* Date-group headers (Today / Yesterday / This week / Earlier). */
+.hist-group-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hist-group {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  background: var(--bg-elev);
+  padding: 7px 10px 4px;
+}
+
+/* Changed-files header extras (send-to-chat, file count, commit detail). */
+.hist-files-spacer {
+  flex: 1;
+}
+
+/* Center the small action buttons in the (taller) Code-tab headers — .btn--xs
+   otherwise forces align-self: flex-start, which top-aligns them. */
+.code-tree-head .btn,
+.code-head .btn,
+.hist-files-head .btn {
+  align-self: center;
+}
+
+.hist-send {
+  flex: none;
+  gap: 6px;
+}
+
+.hist-send .btn-ico {
+  color: var(--accent);
+}
+
+.hist-send:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elev-2));
+}
+
+.hist-files-count {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  padding: 4px 9px 6px;
+}
+
+.hist-detail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+
+.hist-detail-sha {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+  color: var(--text);
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+  font-size: 11.5px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.hist-detail-sha:hover {
+  border-color: var(--accent);
+  background: var(--bg-elev-3);
+}
+
+.hist-detail-sha .btn-ico {
+  width: 12px;
+  height: 12px;
+  color: var(--text-dim);
+}
+
+.hist-detail-meta {
+  flex: 1;
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Diff toolbar icon buttons (file history, send, copy, wrap) — uniform pills. */
+.hist-diff-tool {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: none;
+  height: 28px;
+  min-width: 30px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  padding: 0 8px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+.hist-diff-tool:hover {
+  background: var(--bg-elev-2);
+  color: var(--text);
+}
+
+.hist-diff-tool--on {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elev));
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  color: var(--text);
+}
+
+/* Thin separator between the action icons and the view-option controls. */
+.hist-diff-divider {
+  flex: none;
+  width: 1px;
+  height: 18px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
+.hist-diff-copied {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Per-file history popover. */
+.hist-filelog {
+  position: relative;
+  flex: none;
+}
+
+.hist-filelog-pop {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 300px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+
+.hist-filelog-title {
+  flex: none;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.hist-filelog-body {
+  flex: 1;
+  overflow: auto;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.hist-filelog-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  padding: 7px 9px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.hist-filelog-row:hover {
+  background: var(--bg-elev-2);
+}
+
+.hist-filelog-row--sel {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-elev));
+}
+
+.hist-filelog-msg {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hist-filelog-meta {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+}
+
+/* Code tab toolbar: push "Open in VSCode" to the right + fallback hint. */
+.code-toolbar-spacer {
+  flex: 1;
+}
+
+.code-open-editor {
+  flex: none;
+  align-self: center;
+  gap: 7px;
+  padding: 5px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev-2);
+}
+
+.code-open-editor:hover:not(:disabled) {
+  border-color: var(--accent);
+  background: var(--bg-elev-3);
+  color: var(--text);
+}
+
+.code-open-editor .btn-ico {
+  color: var(--accent);
+}
+
+.code-editor-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 7px 14px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-elev));
+}
+
+.code-editor-hint-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.code-editor-hint-link {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.code-editor-hint-link:hover {
+  text-decoration: underline;
+}
+
+.code-editor-hint-x {
+  flex: none;
+  border: none;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+}
+
+.code-editor-hint-x:hover {
+  color: var(--text);
+}
+
 
 /* Preview pane (deploy controls + embedded app) */
 .preview {

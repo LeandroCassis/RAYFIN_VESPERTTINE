@@ -5,7 +5,7 @@ use tauri_plugin_opener::OpenerExt;
 
 use crate::error::{AppError, AppResult};
 use crate::services::paths;
-use crate::types::AppVersions;
+use crate::types::{AppVersions, OpenInEditorResult};
 
 #[tauri::command]
 pub fn ping() -> &'static str {
@@ -53,6 +53,52 @@ pub async fn open_logs(app: AppHandle) -> AppResult<String> {
     .open_path(path.clone(), None::<&str>)
     .map_err(|e| AppError::Msg(e.to_string()))?;
   Ok(path)
+}
+
+/// Open the project folder in VS Code (`code <dir>`). Falls back to revealing the
+/// folder in the OS file manager when VS Code's CLI isn't installed.
+#[tauri::command]
+pub async fn open_in_editor(app: AppHandle, id: String) -> AppResult<OpenInEditorResult> {
+  let project = crate::services::store::find_project(&id)
+    .ok_or_else(|| AppError::Msg("Project not found.".into()))?;
+  let path = project.path.clone();
+
+  if launch_vscode(&path) {
+    return Ok(OpenInEditorResult { opened: true, revealed_folder: None });
+  }
+  app
+    .opener()
+    .open_path(path.clone(), None::<&str>)
+    .map_err(|e| AppError::Msg(e.to_string()))?;
+  Ok(OpenInEditorResult { opened: false, revealed_folder: Some(true) })
+}
+
+/// Try to launch VS Code on `dir`, detached. Returns false when `code` isn't on PATH
+/// or the spawn failed. On Windows `code` is a `.cmd` shim that must run via cmd.exe.
+fn launch_vscode(dir: &str) -> bool {
+  use std::process::{Command, Stdio};
+  if which::which("code").is_err() {
+    return false;
+  }
+  #[cfg(windows)]
+  let mut cmd = {
+    let mut c = Command::new("cmd");
+    c.args(["/C", "code"]).arg(dir);
+    c
+  };
+  #[cfg(not(windows))]
+  let mut cmd = {
+    let code = which::which("code").expect("checked above");
+    let mut c = Command::new(code);
+    c.arg(dir);
+    c
+  };
+  cmd
+    .stdin(Stdio::null())
+    .stdout(Stdio::null())
+    .stderr(Stdio::null())
+    .spawn()
+    .is_ok()
 }
 
 /// Restart the app (used to pick up newly installed Node/Git on PATH).

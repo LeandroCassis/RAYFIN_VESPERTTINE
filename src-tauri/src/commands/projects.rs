@@ -9,7 +9,7 @@ use crate::services::store;
 use crate::state::AppState;
 use crate::types::{
   CommunityGalleryResult, CreateProjectInput, FileContent, FileNode, GitChange, GitCommitResult,
-  GitFileDiff, GitHistory, GitStatus, ProjectActionResult, ProjectsState, RevertResult,
+  GitCommitSummary, GitFileDiff, GitHistory, GitStatus, ProjectActionResult, ProjectsState, RevertResult,
   TemplateInfo,
 };
 
@@ -145,6 +145,27 @@ pub async fn projects_git_file_diff(
   old_path: Option<String>,
 ) -> GitFileDiff {
   crate::commands::git::git_file_diff(id, r#ref, path, old_path).await
+}
+
+#[tauri::command]
+pub async fn projects_git_compare_changes(id: String, base: String, target: String) -> Vec<GitChange> {
+  crate::commands::git::git_compare_changes(id, base, target).await
+}
+
+#[tauri::command]
+pub async fn projects_git_compare_file_diff(
+  id: String,
+  base: String,
+  target: String,
+  path: String,
+  old_path: Option<String>,
+) -> GitFileDiff {
+  crate::commands::git::git_compare_file_diff(id, base, target, path, old_path).await
+}
+
+#[tauri::command]
+pub async fn projects_git_file_log(id: String, path: String) -> Vec<GitCommitSummary> {
+  crate::commands::git::git_file_log(id, path).await
 }
 
 #[tauri::command]

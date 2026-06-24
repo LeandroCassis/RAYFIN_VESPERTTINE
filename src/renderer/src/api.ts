@@ -48,6 +48,7 @@ export const api: RayfinStudioApi = {
   getVersions: () => invoke('get_versions'),
   openExternal: (url: string) => invoke('open_external', { url }),
   openLogs: () => invoke('open_logs'),
+  openInEditor: (id: string) => invoke('open_in_editor', { id }),
   relaunch: () => invoke('relaunch'),
 
   updates: {
@@ -97,6 +98,11 @@ export const api: RayfinStudioApi = {
       changes: (id: string, ref: string) => invoke('projects_git_changes', { id, ref }),
       fileDiff: (id: string, ref: string, path: string, oldPath?: string) =>
         invoke('projects_git_file_diff', { id, ref, path, oldPath }),
+      compareChanges: (id: string, base: string, target: string) =>
+        invoke('projects_git_compare_changes', { id, base, target }),
+      compareFileDiff: (id: string, base: string, target: string, path: string, oldPath?: string) =>
+        invoke('projects_git_compare_file_diff', { id, base, target, path, oldPath }),
+      fileLog: (id: string, path: string) => invoke('projects_git_file_log', { id, path }),
       revert: (id: string, ref: string) => invoke('projects_git_revert', { id, ref })
     },
     files: {

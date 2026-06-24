@@ -630,6 +630,24 @@ export default function Workbench({
     })
   }, [])
 
+  // Hand a slice of git history (a commit, a file's change, or a comparison) to
+  // the Build chat so Copilot can act on it. Mirrors `fixWithCopilot`'s handoff,
+  // but stages the context in the composer so the user adds their own request.
+  const sendHistoryToChat = useCallback((display: string, prompt: string): void => {
+    const id = activeIdRef.current
+    if (!id) return
+    setViewMode('build')
+    setFocusPane(null)
+    setChatOutbound({
+      id: `history-${Date.now()}`,
+      projectId: id,
+      threadId: MAIN_THREAD_ID,
+      display,
+      prompt,
+      stage: true
+    })
+  }, [])
+
   // Load the active project's local Rayfin version + upgrade availability.
   useEffect(() => {
     const id = projects?.activeProjectId
@@ -1106,6 +1124,7 @@ export default function Workbench({
                       setViewMode('build')
                       void runDeploy(active.id)
                     }}
+                    onSendToChat={sendHistoryToChat}
                   />
                 </Suspense>
               ) : viewMode === 'skills' ? (
@@ -1175,6 +1194,7 @@ export default function Workbench({
                                 ? chatOutbound
                                 : null
                             }
+                            onOutboundConsumed={() => setChatOutbound(null)}
                             focused={focusPane === 'chat'}
                             onToggleFocus={() =>
                               setFocusPane((f) => (f === 'chat' ? null : 'chat'))

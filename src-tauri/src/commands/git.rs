@@ -317,16 +317,9 @@ fn parse_numstat(stdout: &str) -> std::collections::HashMap<String, Count> {
   map
 }
 
-async fn commit_changes(cwd: &str, hash: &str) -> Vec<GitChange> {
-  let name_status = git(cwd, &["show", hash, "--name-status", "--format=", "-M"]).await;
-  if !name_status.ok {
-    return vec![];
-  }
-  let numstat = git(cwd, &["show", hash, "--numstat", "--format=", "-M"]).await;
-  let counts = parse_numstat(if numstat.ok { &numstat.stdout } else { "" });
-
+fn parse_name_status(name_status_stdout: &str, counts: &std::collections::HashMap<String, Count>) -> Vec<GitChange> {
   let mut changes = Vec::new();
-  for line in name_status.stdout.split('\n') {
+  for line in name_status_stdout.split('\n') {
     if line.trim().is_empty() {
       continue;
     }
@@ -349,6 +342,16 @@ async fn commit_changes(cwd: &str, hash: &str) -> Vec<GitChange> {
     });
   }
   changes
+}
+
+async fn commit_changes(cwd: &str, hash: &str) -> Vec<GitChange> {
+  let name_status = git(cwd, &["show", hash, "--name-status", "--format=", "-M"]).await;
+  if !name_status.ok {
+    return vec![];
+  }
+  let numstat = git(cwd, &["show", hash, "--numstat", "--format=", "-M"]).await;
+  let counts = parse_numstat(if numstat.ok { &numstat.stdout } else { "" });
+  parse_name_status(&name_status.stdout, &counts)
 }
 
 async fn working_change_list(cwd: &str) -> Vec<GitChange> {
@@ -403,6 +406,22 @@ pub async fn git_changes(id: String, reference: String) -> Vec<GitChange> {
   } else {
     commit_changes(&cwd, &reference).await
   };
+  list.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
+  list
+}
+
+pub async fn git_compare_changes(id: String, base: String, target: String) -> Vec<GitChange> {
+  let Some(project) = find_project(&id) else {
+    return vec![];
+  };
+  let cwd = project.path;
+  let name_status = git(&cwd, &["diff", "--name-status", "-M", &base, &target]).await;
+  if !name_status.ok {
+    return vec![];
+  }
+  let numstat = git(&cwd, &["diff", "--numstat", "-M", &base, &target]).await;
+  let counts = parse_numstat(if numstat.ok { &numstat.stdout } else { "" });
+  let mut list = parse_name_status(&name_status.stdout, &counts);
   list.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()));
   list
 }
@@ -495,6 +514,101 @@ pub async fn git_file_diff(id: String, reference: String, path: String, old_path
   }
 }
 
+pub async fn git_compare_file_diff(
+  id: String,
+  base: String,
+  target: String,
+  path: String,
+  old_path: Option<String>,
+) -> GitFileDiff {
+  let Some(project) = find_project(&id) else {
+    return GitFileDiff {
+      path,
+      old_path: None,
+      status: "modified".into(),
+      before: String::new(),
+      after: String::new(),
+      binary: None,
+      too_large: None,
+      error: Some("Project not found.".into()),
+    };
+  };
+  let cwd = project.path;
+  let source = old_path.as_deref().unwrap_or(&path);
+
+  let before = show_at(&cwd, &base, source).await;
+  let after = show_at(&cwd, &target, &path).await;
+
+  let status = if old_path.is_some() {
+    "renamed"
+  } else if !before.is_empty() && after.is_empty() {
+    "deleted"
+  } else if before.is_empty() && !after.is_empty() {
+    "added"
+  } else {
+    "modified"
+  };
+
+  if looks_binary(before.as_bytes()) || looks_binary(after.as_bytes()) {
+    return GitFileDiff {
+      path,
+      old_path,
+      status: status.into(),
+      before: String::new(),
+      after: String::new(),
+      binary: Some(true),
+      too_large: None,
+      error: None,
+    };
+  }
+  if before.len() > MAX_DIFF_BYTES || after.len() > MAX_DIFF_BYTES {
+    return GitFileDiff {
+      path,
+      old_path,
+      status: status.into(),
+      before: String::new(),
+      after: String::new(),
+      binary: None,
+      too_large: Some(true),
+      error: None,
+    };
+  }
+  GitFileDiff {
+    path,
+    old_path,
+    status: status.into(),
+    before,
+    after,
+    binary: None,
+    too_large: None,
+    error: None,
+  }
+}
+
+pub async fn git_file_log(id: String, path: String) -> Vec<GitCommitSummary> {
+  let Some(project) = find_project(&id) else {
+    return vec![];
+  };
+  let cwd = project.path;
+  let fmt = format!("{RECORD}%H{FIELD}%h{FIELD}%an{FIELD}%ar{FIELD}%aI{FIELD}%s");
+  let n = MAX_COMMITS.to_string();
+  let log = git(
+    &cwd,
+    &[
+      "log",
+      "-n",
+      &n,
+      "--follow",
+      "--shortstat",
+      &format!("--pretty=format:{fmt}"),
+      "--",
+      &path,
+    ],
+  )
+  .await;
+  if log.ok { parse_log(&log.stdout) } else { vec![] }
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -548,6 +662,27 @@ mod tests {
     assert_eq!(c.files_changed, 1);
     assert_eq!(c.insertions, 2);
     assert_eq!(c.deletions, 1);
+  }
+
+  #[test]
+  fn parse_name_status_reads_renames_and_counts() {
+    let counts = parse_numstat("3\t1\told.txt => new.txt\n-\t-\tbin.dat\n");
+    let changes = parse_name_status("R100\told.txt\tnew.txt\nA\tbin.dat\n", &counts);
+    assert_eq!(changes.len(), 2);
+
+    assert_eq!(changes[0].path, "new.txt");
+    assert_eq!(changes[0].old_path.as_deref(), Some("old.txt"));
+    assert_eq!(changes[0].status, "renamed");
+    assert_eq!(changes[0].insertions, 3);
+    assert_eq!(changes[0].deletions, 1);
+    assert_eq!(changes[0].binary, None);
+
+    assert_eq!(changes[1].path, "bin.dat");
+    assert_eq!(changes[1].old_path, None);
+    assert_eq!(changes[1].status, "added");
+    assert_eq!(changes[1].insertions, 0);
+    assert_eq!(changes[1].deletions, 0);
+    assert_eq!(changes[1].binary, Some(true));
   }
 }
 
