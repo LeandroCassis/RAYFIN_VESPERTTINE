@@ -41,6 +41,12 @@ export interface UIChatMessage extends ChatMessage {
   turnId?: string
   /** True while the assistant turn is still streaming. */
   pending: boolean
+  /**
+   * Epoch ms when the assistant turn began (live only). Sourced here rather than
+   * from the status component's mount time so the elapsed timer keeps counting
+   * correctly after the chat unmounts/remounts (e.g. switching workbench tabs).
+   */
+  startedAt?: number
   /** Transient status note (e.g. a transient-failure retry); not persisted. */
   notice?: string
   /** A Plan-mode proposal awaiting the user's decision (live only). */
@@ -848,22 +854,31 @@ function AgentStatus({
   hasText,
   notice,
   projectPath,
-  awaitingDecision
+  awaitingDecision,
+  startedAt
 }: {
   tools: ChatToolCall[]
   hasText: boolean
   notice?: string
   projectPath: string
   awaitingDecision?: boolean
+  startedAt?: number
 }): JSX.Element {
-  const [elapsed, setElapsed] = useState(0)
-  const startRef = useRef(Date.now())
+  // Anchor the timer to the turn's real start time (persisted on the message),
+  // not this component's mount time — otherwise remounting (e.g. switching away
+  // from and back to the chat tab) would reset the elapsed counter to 0.
+  const startRef = useRef(startedAt ?? Date.now())
+  const [elapsed, setElapsed] = useState(() =>
+    Math.max(0, Math.floor((Date.now() - startRef.current) / 1000))
+  )
   useEffect(() => {
-    const id = window.setInterval(() => {
-      setElapsed(Math.floor((Date.now() - startRef.current) / 1000))
-    }, 1000)
+    if (startedAt != null) startRef.current = startedAt
+    const tick = (): void =>
+      setElapsed(Math.max(0, Math.floor((Date.now() - startRef.current) / 1000)))
+    tick()
+    const id = window.setInterval(tick, 1000)
     return () => window.clearInterval(id)
-  }, [])
+  }, [startedAt])
 
   if (awaitingDecision) {
     return (
@@ -1547,7 +1562,8 @@ export default function ChatPanel({
       text: '',
       tools: [],
       segments: [],
-      pending: true
+      pending: true,
+      startedAt: Date.now()
     }
     onChange((prev) => [...prev, userMsg, assistantMsg])
     setSending(true)
@@ -1988,6 +2004,7 @@ export default function ChatPanel({
                     notice={m.notice}
                     projectPath={project.path}
                     awaitingDecision={Boolean(m.plan && !m.plan.resolved)}
+                    startedAt={m.startedAt}
                   />
                 )}
                 {m.error && (

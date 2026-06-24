@@ -36,8 +36,9 @@ use crate::types::{ChatEvent, ChatMessage, ChatOptions, ChatToolCall, ChatToolSt
 const MAX_TOOL_OUTPUT: usize = 4000;
 /// Up to this many copilot invocations per turn on a transient pre-work failure.
 const MAX_ATTEMPTS: u32 = 3;
-/// 20 minute per-turn timeout (matches chat.ts).
-const TURN_TIMEOUT_MS: u64 = 20 * 60_000;
+/// 1 hour per-turn timeout. Long agent turns (large refactors, multi-step
+/// deploys) can legitimately run well past 20 minutes.
+const TURN_TIMEOUT_MS: u64 = 60 * 60_000;
 
 /// Stderr signatures that indicate a transient, safe-to-retry failure.
 static TRANSIENT_RE: Lazy<Regex> = Lazy::new(|| {
@@ -446,7 +447,7 @@ pub(crate) async fn run_turn(
     }
 
     // Drain events until the session goes idle / errors, while honouring the stop
-    // button (→ `session.abort()`) and a 20-minute per-turn cap.
+    // button (→ `session.abort()`) and a 1-hour per-turn cap.
     let drain = async {
       loop {
         if token.is_cancelled() {
@@ -534,7 +535,7 @@ pub(crate) async fn run_turn(
   // `session.error` already emitted its own Error; cancellation is user-initiated.
   if !ok && !cancelled && ctx.errored.is_none() {
     let detail = if timed_out {
-      "Copilot timed out after 20 minutes.".to_string()
+      "Copilot timed out after an hour.".to_string()
     } else {
       "Copilot ended unexpectedly.".to_string()
     };
