@@ -16,6 +16,11 @@ The `fabric-app-data` CLI manages Fabric data source connections in a
 production) and generates TypeScript config that the `@microsoft/fabric-app-data`
 consumes at runtime.
 
+For a typical **Phase 1 — Hero slice (time to wow)** build, you mainly need the
+`query` command to discover schema and quick-test the hero DAX. The connection
+(`fabric.yaml` + generated config) is usually already wired by the template/agent,
+so you rarely run `init`, `add`, or `generate` yourself; keep the rest as reference.
+
 ## Workflow
 
 ```sh

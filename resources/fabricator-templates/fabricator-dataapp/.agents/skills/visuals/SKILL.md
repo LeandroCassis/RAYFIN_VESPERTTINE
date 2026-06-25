@@ -12,6 +12,16 @@ description: >
 
 # Visuals
 
+## Fast path
+
+Optimize *time to wow*: ship a working vertical slice fast, then iterate via deploy + review.
+**Phase 1 — Hero slice (time to wow):** render ONE compelling, real visual the simplest way — a single `VegaVisual` (or `DataGrid`) fed a `DataTable` built from your hero query, plus the theme via `useCssTheme()`.
+That is enough to deploy and review the running app.
+Use the minimal `<VegaVisual spec={...} data={dataTable} theme={theme} />` shape shown in Packages & Imports rather than building a full visual system up front.
+**Phase 2 — Breadth:** add remaining visuals/KPIs, deploying + reviewing every 1–2.
+**Phase 3 — Polish:** add interactivity, edge cases, and final audits driven by the deployed result.
+Multi-table/layered data input, `onInteraction` selection events, cross-highlight overlays, custom visuals, and the references below are Phase 2/3 — open them only when you actually add interactivity or coordinated visuals.
+
 ## Types of visuals
 There are 2 different types of visuals that can be used in a project:
 1. Charts and Graphs: These are used to represent data in a visual format, such as bar charts, line charts, pie charts, etc. These are built using vega-lite, see [references/vega-lite-visual.md](references/vega-lite-visual.md) for more details.

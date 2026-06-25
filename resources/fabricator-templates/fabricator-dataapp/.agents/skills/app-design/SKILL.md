@@ -10,9 +10,21 @@ description: >
 
 Your job is to build cohesive, distinctive apps — not just correct ones. Add character through intentional design decisions — typography pairing, color emphasis, spatial rhythm, and a clear visual point of view.
 
+## Fast path
+
+Optimize **time to wow**: ship a working vertical slice fast, then iterate via deploy + review. In **Phase 1 — Hero slice (time to wow)**, use a clean default look quickly and move on: get ONE compelling, real visual wired to live data on screen and deployed.
+
+For that first slice, pick one characterful `--font-heading` plus a complementary `--font-base`, loaded via Google Fonts in `index.html`; set `--color-primary` and `--radius` in `src/global.css`; then get back to the hero visual. Do NOT perfect theming in Phase 1.
+
+After the hero slice is running, continue with **Phase 2 — Breadth** by adding remaining visuals/KPIs, deploying and reviewing every 1–2. Use **Phase 3 — Polish** for theme/typography refinement, loading/empty/error states, edge-case correctness, and final audits.
+
+Deploy early and often — never one final deploy. Deploy and review the running app (Fabricator handles deploy + screenshots for you), read deep references only when a specific problem demands it, and never block the first deploy on exhaustive discovery or perfect theming.
+
+The deep theming workflow, reference files, and Final Audit below are for Phase 2/3 polish — don't do them before the first deploy.
+
 ## Aesthetic Direction
 
-Before building anything, decide the app's tone in one word and its signature detail — the one thing someone notices first. These two choices guide every decision that follows. Pick a tone that is specific and bold, not safe or generic. Examples like editorial, geometric, organic, industrial, playful, or minimal are starting points — don't limit yourself to these. Invent a direction that fits the app's purpose.
+Before building, quickly decide the app's tone in one word and its signature detail — the one thing someone notices first — but do not let this block the first deploy. A clean default is fine for Phase 1; deepen the aesthetic direction in the polish pass. These two choices guide every decision that follows. Pick a tone that is specific and bold, not safe or generic. Examples like editorial, geometric, organic, industrial, playful, or minimal are starting points — don't limit yourself to these. Invent a direction that fits the app's purpose.
 
 Then match your execution to your direction — a maximalist direction needs layered effects and rich detail in the code; a minimalist direction needs precise spacing, restraint, and careful typography. Elegance comes from committing to the direction fully, not from adding more.
 
@@ -41,7 +53,7 @@ Keep these principles in mind:
 - Keep spacing consistent — use the spacing tokens from the theme rather than arbitrary values.
 - Ensure all interactive elements are keyboard-accessible with visible focus indicators and appropriate disabled states.
 
-Read these reference files — they include "Make it yours" prompts that tie back to the aesthetic direction above:
+Read these reference files on demand during Phase 2–3 iteration, when refining a specific element — they include "Make it yours" prompts that tie back to the aesthetic direction above:
 - [UI Style Recipes](references/ui-style-recipes.md) — per-element styling guidance for buttons, cards, inputs, dialogs, tabs, tooltips, tables, and more.
 - [Visual Style Recipes](references/visual-style-recipes.md) — chart theming, Vega-Lite config, dark mode chart support, and mark-specific styling.
 
@@ -118,5 +130,7 @@ Examples:
 ---
 
 ## Final Audit
+
+Treat this as a Phase 3 polish-pass activity after the dashboard is built, deployed, and reviewed — not before the first deploy.
 
 After assembling a layout, audit each element in its actual context — not in isolation. A component may look correct on its own but break the visual rhythm of the page. Check: Is every text legible? Are labels proportional to their controls? Are toolbar rows aligned on a shared edge? Do charts fill their containers? Do repeated elements (badges in tables, icons in lists) maintain appropriate visual weight for their density? Fix anything that fails.

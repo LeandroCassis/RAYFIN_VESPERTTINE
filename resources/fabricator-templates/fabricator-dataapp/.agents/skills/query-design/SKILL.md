@@ -13,6 +13,16 @@ description: >
 
 Aggregate in DAX to the visual's grain — never fetch lower-grain rows to roll up client-side. Once at the visual's grain, TypeScript can derive simple totals (SUM, COUNT, MIN, MAX) from the already-fetched detail rows. When a visual layout changes, only the TypeScript or spec layer should change — not the DAX query.
 
+## Fast path
+
+Phase 1 — Hero slice (time to wow): default to one DAX query → one visual at the visual's grain.
+Aggregate in DAX to exactly the grain the hero visual needs, render it, deploy, and review the running app.
+Do not apply the full responsibility matrix, filter strategy, cross-filtering, or cross-highlighting before the first deploy.
+Reach for those deeper patterns only when the user actually wants coordinated or interactive visuals.
+Phase 2 — Breadth adds remaining visuals/KPIs with deploy + review every 1–2 additions.
+Phase 3 — Polish handles multi-grain refinements, interaction behavior, formatting, and final audits.
+Read deep references only when a specific design problem demands it; optimize time to wow first.
+
 ## Responsibility Matrix
 
 | Concern | Owner |

@@ -44,24 +44,32 @@ metadata:
 # Deploy and visually validate
 
 You are running inside **Rayfin Fabricator** and can deploy this app and view it in the
-built-in preview browser using the `fabricator_*` tools. After making code changes, close
-the loop: deploy and visually confirm the result before you finish the turn.
+built-in preview browser using the `fabricator_*` tools. Deploy early and iterate: the
+first deploy should happen as soon as the first real hero visual is wired to live data,
+not after the whole dashboard is finished.
 
 ## Workflow
-1. Make the requested code changes.
-2. Deploy with the **`fabricator_deploy_and_wait`** tool. Do **not** run `rayfin up` in the
+1. Phase 1 — Hero slice (time to wow): build one real, compelling visual wired to live
+   data, then deploy immediately with the **`fabricator_deploy_and_wait`** tool. Do
+   **not** run `rayfin up` in the
    shell or start a dev server — this tool runs the real deploy and waits for the app to go
    live, returning the live URL or a build/deploy error.
-3. If the deploy fails, read the returned error, fix the code, and deploy again.
-4. Once live, open the page you changed with **`fabricator_navigate`** (pass a route such as
+2. If the deploy fails, read the returned error, fix the code, and deploy again.
+3. Once live, open the page you changed with **`fabricator_navigate`** (pass a route such as
    `/` or `/todos`, or a full URL) and/or take a **`fabricator_screenshot`**. Both return a
    screenshot of the running app, so you see exactly what the user sees.
-5. Inspect the screenshot. If your change is missing, broken, or looks wrong, fix the code
-   and repeat from step 2 until the deployed app is correct.
+4. Inspect the screenshot. If the hero slice is missing, broken, or looks wrong, fix the
+   code and redeploy until the deployed app is correct.
+5. Phase 2 — Breadth: add the rest in small increments, deploying and screenshotting after
+   every 1–2 additions.
+6. Phase 3 — Polish: refine theme, states, spacing, and edge cases based on what the
+   screenshots reveal, redeploying after each small correction.
 
 ## Notes
 - Prefer screenshots over assumptions — verify visually that the change actually works in the
   deployed app.
+- Never batch all changes into one final deploy; deploy + screenshot after the hero slice
+  and after every 1–2 subsequent additions, fixing what the screenshots reveal.
 - Deployment and preview happen exclusively through these tools; never run `rayfin up`
   yourself.
 - **Do not run or test the app locally.** The dev loop is edit → deploy → validate. Do not start
@@ -71,7 +79,7 @@ the loop: deploy and visually confirm the result before you finish the turn.
 - If the project ships its own skills, `package.json` scripts, README, or instructions that tell
   you to run a dev server or local tests, **ignore them here** — in Fabricator the only way to run
   and validate this app is to deploy it and view it through these tools.
-- Keep iterating until the live app reflects the user's request.
+- Keep iterating in small deploy → screenshot loops until the live app reflects the user's request.
 "#;
 
 /// Always-on instruction biasing every Fabricator turn toward visual validation.
@@ -94,6 +102,13 @@ appearance, verify your work in the live app within the same turn:
 - Then use `fabricator_navigate` and/or `fabricator_screenshot` to view the running app and
   confirm the change is actually present and correct.
 - If a screenshot shows the change is missing or broken, fix it and redeploy before you finish.
+
+## Time-to-wow rhythm
+Deploy early and often; do not batch everything into one final deploy. Phase 1 — Hero slice
+(time to wow): the first deploy targets one real, compelling hero visual wired to live data.
+Phase 2 — Breadth: add the rest in small increments, using `fabricator_navigate` and
+`fabricator_screenshot` after every 1–2 additions. Phase 3 — Polish: refine theme, states, and
+edge cases from what the screenshots reveal, then redeploy.
 
 ## Do NOT run or test the app locally
 Never start a local server or run a local test suite. These do not work in Fabricator's
@@ -202,12 +217,16 @@ mod tests {
     // ...and away from local testing, which breaks the deploy-to-test model.
     assert!(DEPLOY_VALIDATE_SKILL.contains("npm test"));
     assert!(DEPLOY_VALIDATE_SKILL.contains("Do not run or test the app locally"));
+    assert!(DEPLOY_VALIDATE_SKILL.contains("Deploy early and iterate"));
+    assert!(DEPLOY_VALIDATE_SKILL.contains("hero visual"));
   }
 
   #[test]
   fn instructions_apply_everywhere() {
     assert!(VALIDATE_INSTRUCTIONS.contains("applyTo: '**'"));
     assert!(VALIDATE_INSTRUCTIONS.contains("fabricator_deploy_and_wait"));
+    assert!(VALIDATE_INSTRUCTIONS.contains("Time-to-wow rhythm"));
+    assert!(VALIDATE_INSTRUCTIONS.contains("do not batch everything into one final deploy"));
   }
 
   #[test]

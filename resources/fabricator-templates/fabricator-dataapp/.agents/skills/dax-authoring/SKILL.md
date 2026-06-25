@@ -8,6 +8,16 @@ description: >
 
 # DAX Authoring
 
+## Fast path
+
+Phase 1 — Hero slice (time to wow): write the one DAX query needed for the hero visual, test it once, and ship it.
+Quick-test that query via `npx fabric-app-data query <alias> --query '<DAX>'`; fix only blocking syntax/data-shape errors before the first deploy.
+Keep "always test before shipping" scoped upfront to the hero query in Phase 1, not every future query.
+Deploy and review the running app, then iterate correctness from what the real visual shows.
+Phase 2 — Breadth adds remaining queries/visuals with deploy + review every 1–2 additions.
+Phase 3 — Polish covers edge-case correctness, formatting, and final audits.
+Open time-intelligence and core-reference files on demand when a query actually needs them, not as upfront reading.
+
 ## Table of Contents
 
 | Task | Reference | Notes |

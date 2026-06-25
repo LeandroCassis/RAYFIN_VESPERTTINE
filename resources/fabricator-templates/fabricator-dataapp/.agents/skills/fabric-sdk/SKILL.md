@@ -16,6 +16,11 @@ parsing, caching, and error handling. Transport and authentication are
 delegated to an `IFabricApiProxy` implementation, keeping the SDK
 environment-agnostic (browser, Node.js, Fabric extensions).
 
+For a typical **Phase 1 — Hero slice (time to wow)** build, the template already
+wires the `FabricClient` via the `use-semantic-model-query` hook and `src/lib/fabric-client.ts`.
+Query through that hook and rarely construct the client directly; keep this page
+as reference for SDK details like result handling, caching, error categories, and types.
+
 ## Quick Start
 
 ```typescript

@@ -8,6 +8,16 @@ description: >
 
 # Schema Discovery
 
+## Fast path
+
+Phase 1 — Hero slice (time to wow): do the minimum viable discovery needed to put one compelling, real visual on screen.
+Run the scope-estimation probe once, then fetch only the one or two tables and measure(s) behind the single hero metric.
+Do not enumerate all tables, columns, measures, relationships, calc groups, calendars, or full inventories before the first deploy.
+Use discovered metadata immediately to wire the hero visual to live data, then deploy and review the running app.
+Phase 2 — Breadth adds remaining visuals/KPIs with deploy + review every 1–2 additions.
+Phase 3 — Polish covers relationships, calc groups, calendars, edge cases, and final audits on demand.
+Read deep references only when a specific problem demands it; never block the first deploy on exhaustive discovery.
+
 ## Table of Contents
 
 | Task | Reference | Notes |
