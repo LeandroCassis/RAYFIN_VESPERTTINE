@@ -2,16 +2,26 @@
 
 A React component from the `@microsoft/fabric-datagrid` package for rendering data-grid / table visuals.
 
+> **Prefer the kit's `DataTableCard`.** It wraps `DataGrid` in the card shell,
+> wires up theming, loading/empty/error states, and paging for you — pass it a
+> `DataTable` and you're done (see the `visuals` catalog). Drop to a raw
+> `<DataGrid>` only for custom layouts the card can't express. The
+> `cellRenderer` recipes below apply to `DataTableCard`'s `columnMetadata` too.
+
 ### Props
 
 Refer to the package README.md for detailed information about the component api including exported types, functions, and properties.
 
 ### Theming
 
-Pass the `theme` prop to render correctly in both light and dark modes. Use the `useCssTheme()` hook from `@microsoft/fabric-visuals` — it derives the theme from `--color-*` CSS variables on the page and updates automatically when the theme changes:
+`DataTableCard` themes the grid automatically. If you render a raw `<DataGrid>`
+yourself, pass the `theme` prop so it renders correctly in light and dark modes.
+Use the kit's `useCssTheme()` hook (`@/lib/use-css-theme`) — it derives the theme
+from the `--color-*` CSS variables on the page and updates automatically when the
+theme changes:
 
 ```tsx
-import { useCssTheme } from "@microsoft/fabric-visuals";
+import { useCssTheme } from "@/lib/use-css-theme";
 
 const theme = useCssTheme();
 

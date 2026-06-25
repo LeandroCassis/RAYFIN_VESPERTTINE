@@ -1,123 +1,126 @@
-# Multi-Table Input for VegaVisual
+# Multiple Series & Overlays
 
-`VegaVisual`'s `data` prop accepts two shapes:
+Most multi-value visuals are just **multiple `series` on one chart card** — no
+special data plumbing. Map the DAX result into one array of row objects (each
+row carries every measure for that x value) and declare a `series` entry per
+measure. The kit never joins tables for you: shape one array, then declare
+series.
 
-- A single `DataTable` — injected as the spec's anonymous root `data`.
-- A `Record<string, DataTable>` — each entry is emitted under `spec.datasets[name]`. Layers reference each dataset by name.
+## Multiple series from one query
+
+One query returning several measures per x → one row object per x, several
+series:
 
 ```tsx
-<VegaVisual
-  spec={spec}
-  data={{ sales: salesTable, target: targetTable }}
-  theme={theme}
+const rows = toChartData(result); // [{ Month: "Jan", Revenue: 84200, Cost: 51000 }, …]
+
+<LineChartCard
+  title="Revenue vs cost"
+  data={rows}
+  xKey="Month"
+  series={[
+    { key: "Revenue", color: "chart-1" },
+    { key: "Cost",    color: "chart-3" },
+  ]}
+  valueFormat="currency"
 />
 ```
 
-```json
-{
-  "layer": [
-    { "data": { "name": "sales" },  "mark": "bar",  "encoding": { /* ... */ } },
-    { "data": { "name": "target" }, "mark": "rule", "encoding": { /* ... */ } }
-  ]
-}
-```
+## Merging two queries
 
-## What a named map does
-
-Each key becomes a named entry in `spec.datasets`, and any layer binds to one with `"data": { "name": "<key>" }`. This lets a single spec draw marks from more than one table — a layered chart where each layer reads a different dataset.
-
-Prefer a single `DataTable` for the common case: one table feeding one set of marks. Slicer filtering, hover highlighting within the same visual, and per-row coloring are all single-`DataTable` scenarios. A named map is the mechanism whenever the spec needs to bind separate layers to separate tables.
-
-## How layers align
-
-When two layers share an axis, Vega-Lite registers their marks by the encoded field. The component does not reshape, join, or pad the tables — each is emitted as-is under `spec.datasets`, and the spec is compiled as written. For marks to line up, the datasets must expose **compatible field names and types** on the shared encoding channels.
-
-Mechanical consequences:
-
-- A field a layer encodes (`"y": { "field": "Sales" }`) must exist with the same name and type in whatever dataset that layer binds to.
-- Marks only meet at axis positions present in both datasets. A member present in one dataset but not the other renders in that layer alone.
-
-## Common layered shapes
-
-These describe what the named-map mechanism renders. Producing the underlying tables is a data concern, not a component concern.
-
-**Secondary overlay at a different grain** — bars from one table, a reference rule or band from a single-value table:
+When measures come from separate queries (different grain or source), merge them
+into one row array in TypeScript keyed by the shared x, then declare series as
+above. Do the join in TS, not DAX, when the two results have different grains.
 
 ```tsx
-<VegaVisual spec={vegaLiteSpec} data={{ sales: salesTable, target: targetTable }} theme={theme} />
-```
-
-```json
-{
-  "layer": [
-    { "data": { "name": "sales" }, "mark": "bar",
-      "encoding": { "x": { "field": "Category" }, "y": { "field": "Sales", "type": "quantitative" } } },
-    { "data": { "name": "target" }, "mark": { "type": "rule", "strokeDash": [4, 4] },
-      "encoding": { "y": { "field": "Target", "type": "quantitative" } } }
-  ]
+const byMonth = new Map<string, Record<string, string | number>>();
+for (const r of toChartData(salesResult)) byMonth.set(String(r.Month), { ...r });
+for (const r of toChartData(targetResult)) {
+  const key = String(r.Month);
+  byMonth.set(key, { ...(byMonth.get(key) ?? { Month: r.Month }), Target: r.Target });
 }
-```
+const rows = [...byMonth.values()];
 
-**Subset overlay on a dimmed baseline** — a full dataset drawn dim, a second dataset drawn bright on the same axis. Both layers encode the same fields; the bright layer's marks appear only at the axis keys its rows supply:
-
-```json
-{
-  "layer": [
-    { "data": { "name": "all" }, "mark": { "type": "bar", "opacity": 0.3 },
-      "encoding": { "x": { "field": "Category" }, "y": { "field": "Sales", "type": "quantitative" } } },
-    { "data": { "name": "highlighted" }, "mark": "bar",
-      "encoding": { "x": { "field": "Category" }, "y": { "field": "Sales", "type": "quantitative" } } }
-  ]
-}
-```
-
-Swap the second table to change what the bright layer shows; pass only `{ all }` to render the baseline alone.
-
-```tsx
-<VegaVisual
-  spec={vegaLiteSpec}
-  data={highlighted ? { all, highlighted } : { all }}
-  theme={theme}
+<LineChartCard
+  data={rows}
+  xKey="Month"
+  series={[
+    { key: "Revenue", color: "chart-1" },
+    { key: "Target",  color: "neutral" },
+  ]}
 />
 ```
 
-**Axis spine** — an invisible point mark over a table listing every member pins the axis domain so a sparse measure layer doesn't drop categories:
+## Stacked series
+
+Bars and areas stack with `stacked` (or share a `stackId`):
 
 ```tsx
-<VegaVisual spec={vegaLiteSpec} data={{ allCategories: dimList, sales: sparseSales }} theme={theme} />
+<BarChartCard
+  data={rows}
+  xKey="Quarter"
+  stacked
+  series={[{ key: "New" }, { key: "Expansion" }, { key: "Renewal" }]}
+/>
 ```
 
-```json
-{
-  "layer": [
-    { "data": { "name": "allCategories" }, "mark": { "type": "point", "opacity": 0 },
-      "encoding": { "x": { "field": "Category", "type": "nominal" } } },
-    { "data": { "name": "sales" }, "mark": "bar",
-      "encoding": { "x": { "field": "Category" }, "y": { "field": "Sales", "type": "quantitative" } } }
-  ]
-}
+## Reference / target lines
+
+A single-value target or average is a `referenceLines` entry — not a second
+dataset:
+
+```tsx
+<LineChartCard
+  data={rows}
+  xKey="Month"
+  series={[{ key: "Revenue", color: "chart-1" }]}
+  referenceLines={[{ y: 1_000_000, label: "Goal" }]}
+/>
 ```
 
-## Native selection — no named map needed
+## Subset overlay on a dimmed baseline (highlight)
 
-When an interaction stays within a single visual (clicking a bar to dim the others, hovering a point to emphasize matches), Vega-Lite's native selection with a conditional encoding handles it from one table — no named map, no second dataset.
+To emphasize a subset against the whole, keep the baseline as one series and add
+the subset as a **second series drawn on top**. Both come from aligned
+aggregations sharing the x key; leave the subset value `null` where it doesn't
+apply. The subset is a separate aligned DAX aggregation — see `query-design`'s
+`highlight-queries` reference.
 
-```json
-{
-  "params": [{ "name": "sel", "select": { "type": "point", "fields": ["Category"] } }],
-  "mark": "bar",
-  "encoding": {
-    "x": { "field": "Category", "type": "nominal" },
-    "y": { "field": "Sales", "type": "quantitative" },
-    "opacity": {
-      "condition": { "param": "sel", "value": 1, "empty": false },
-      "value": 0.3
-    }
-  }
-}
+```tsx
+// rows: [{ Category: "A", All: 120, Selected: 120 },
+//        { Category: "B", All: 90,  Selected: null }, …]
+<BarChartCard
+  data={rows}
+  xKey="Category"
+  series={[
+    { key: "All",      color: "neutral" }, // dim baseline
+    { key: "Selected", color: "chart-1" }, // bright subset
+  ]}
+/>
 ```
 
-## Caveats
+Swap what fills `Selected` to change the highlight; drop the second series to
+show the baseline alone.
 
-- Auto-injected transforms (stacked data labels, crosshair tooltips) run only on the single-`DataTable` path. With a named map, the spec is compiled as written.
-- Each named dataset resolves its own column metadata, so the same column name can carry different formats across tables.
+## Keeping every category on the axis
+
+Bars/lines only plot the x values present in the rows. If a sparse measure would
+drop categories, left-join the full dimension list onto the measure rows in TS
+(fill missing measures with `0`/`null`) before mapping — so every category keeps
+its slot.
+
+## Pies / donuts
+
+A donut/pie is one `nameKey` + one `valueKey` over a categorical array — not
+multi-series:
+
+```tsx
+<DonutChartCard data={rows} nameKey="Channel" valueKey="Sales" valueFormat="currency" />
+```
+
+## When you truly need a custom multi-layer chart
+
+For marks the cards don't cover (e.g. a combo bar+line on dual axes), use the
+Recharts **escape hatch** inside a `ChartCard` (see the visuals catalog). You
+still pass plain arrays and the kit's theme helpers — there is no spec or
+dataset registry to manage.

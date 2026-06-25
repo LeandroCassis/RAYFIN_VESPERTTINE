@@ -74,33 +74,48 @@ export function useSemanticModelQuery(
 
     const canExecute = Boolean(connection && query);
 
-    const execute = useCallback(async () => {
-        if (!canExecute) return;
-        setIsLoading(true);
-        setError(undefined);
+    const execute = useCallback(
+        async (token?: { cancelled: boolean }) => {
+            if (!canExecute) return;
+            setIsLoading(true);
+            setError(undefined);
 
-        try {
-            const result = await getFabricClient()
-                .semanticModel(connection)
-                .query(query, { bypassCache });
+            try {
+                const result = await getFabricClient()
+                    .semanticModel(connection)
+                    .query(query, { bypassCache });
 
-            setData(result);
+                if (token?.cancelled) return;
+                setData(result);
 
-            if (result.status === "error") {
-                setError(new Error(result.error.message));
+                if (result.status === "error") {
+                    setError(new Error(result.error.message));
+                }
+            } catch (err) {
+                if (token?.cancelled) return;
+                setError(err instanceof Error ? err : new Error(String(err)));
+            } finally {
+                if (!token?.cancelled) setIsLoading(false);
             }
-        } catch (err) {
-            setError(err instanceof Error ? err : new Error(String(err)));
-        } finally {
-            setIsLoading(false);
-        }
-    }, [connection, query, bypassCache, canExecute]);
+        },
+        [connection, query, bypassCache, canExecute],
+    );
 
     useEffect(() => {
-        execute();
+        // Run through a local closure so the effect body performs no
+        // synchronous setState, and cancel stale results when the params
+        // change or the component unmounts (avoids out-of-order updates).
+        const token = { cancelled: false };
+        const run = () => execute(token);
+        run();
+        return () => {
+            token.cancelled = true;
+        };
     }, [execute]);
 
-    return { data, isLoading, error, refetch: execute };
+    const refetch = useCallback(() => execute(), [execute]);
+
+    return { data, isLoading, error, refetch };
 }
 
 /**

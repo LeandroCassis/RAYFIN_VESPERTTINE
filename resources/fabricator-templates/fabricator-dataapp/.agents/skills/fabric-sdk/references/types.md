@@ -51,7 +51,7 @@ interface QueryError {
 }
 
 type QueryResult =
-  | { status: "success"; tables: QueryTable[]; requestId: string }
+  | { status: "success"; table: QueryTable; requestId: string }
   | { status: "error"; error: QueryError; requestId: string };
 
 type CachedQueryResult = QueryResult & {

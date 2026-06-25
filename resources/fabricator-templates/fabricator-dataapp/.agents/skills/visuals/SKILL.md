@@ -1,117 +1,349 @@
 ---
 name: visuals
 description: >
-  Use when user wants to incorporate charts, graphs, data grid, 
-  or other visual representations of data into their project.
-  Use VegaVisual and DataGrid components to create these visuals, 
-  utilizing the shared DataTable input, formatting, theme, and interactivity.
-  Covers the onInteraction selection/click events host apps consume, named
-  multi-table data input for layered overlays and reference lines, and
-  Vega-Lite native selections.
+  Use when adding charts, KPIs, tables, or any visual to a dashboard. This is
+  the dashboard KIT catalog: a curated set of pre-built, themed components you
+  COMPOSE by passing data — you should rarely hand-write Recharts or raw JSX.
+  Covers KpiCard, the chart cards (line/area/bar/donut), DataTableCard,
+  layout (PageShell/grids), controls, state tiles, the data-mapping helpers
+  (toChartData / toDataTable), value formatting, color tokens, and the
+  Recharts escape hatch.
 ---
 
-# Visuals
+# Visuals — the dashboard kit (compose, don't hand-code)
+
+**Pick a component from the kit and pass it data.** The kit lives in
+`src/components/dashboard/` and is exported from a single barrel
+(`@/components/dashboard`). Each card owns its theme, axes, gridlines,
+tooltip, legend, number/date formatting, dark mode, and loading/empty/error
+states — so you write *data*, not chart code. Writing a Recharts spec or a
+bespoke `<div>` grid by hand is the slow, expensive, error-prone path; reach
+for it only when nothing in the kit fits (see [Escape hatch](#escape-hatch)).
+
+Charts are **Recharts**. Tables are the Fabric **DataGrid**. There is no
+Vega-Lite.
 
 ## Fast path
 
-Optimize *time to wow*: ship a working vertical slice fast, then iterate via deploy + review.
-**Phase 1 — Hero slice (time to wow):** render ONE compelling, real visual the simplest way — a single `VegaVisual` (or `DataGrid`) fed a `DataTable` built from your hero query, plus the theme via `useCssTheme()`.
-That is enough to deploy and review the running app.
-Use the minimal `<VegaVisual spec={...} data={dataTable} theme={theme} />` shape shown in Packages & Imports rather than building a full visual system up front.
-**Phase 2 — Breadth:** add remaining visuals/KPIs, deploying + reviewing every 1–2.
-**Phase 3 — Polish:** add interactivity, edge cases, and final audits driven by the deployed result.
-Multi-table/layered data input, `onInteraction` selection events, cross-highlight overlays, custom visuals, and the references below are Phase 2/3 — open them only when you actually add interactivity or coordinated visuals.
+Optimize *time to wow*: ship one real tile, deploy, review, iterate.
 
-## Types of visuals
-There are 2 different types of visuals that can be used in a project:
-1. Charts and Graphs: These are used to represent data in a visual format, such as bar charts, line charts, pie charts, etc. These are built using vega-lite, see [references/vega-lite-visual.md](references/vega-lite-visual.md) for more details.
-2. Data Grids: These are used to display tabular data in a structured format, allowing for sorting, filtering, and pagination. See [references/data-grid-visual.md](references/data-grid-visual.md) for more details.
-
-## Packages & Imports
-
-The visual components are provided by three packages. **Always use these package imports when creating visuals.**
-
-| Package | Primary exports | Example import |
-|---|---|---|
-| `@microsoft/fabric-visuals` | `VegaVisual`, types: `VisualizationSpec`, `VegaLiteConfig`, `VegaVisualProps` | `import { VegaVisual } from "@microsoft/fabric-visuals"` |
-| `@microsoft/fabric-datagrid` | `DataGrid`, types: `GridColumnDef`, `Row`, `CellValue`, `DataGridProps`, `DataGridTheme`, `SortConfig` | `import { DataGrid } from "@microsoft/fabric-datagrid"` |
-| `@microsoft/fabric-visuals-core` | `isDataTable`, `convertDataTableToRows`, design tokens | `import { isDataTable } from "@microsoft/fabric-visuals-core"` |
-
-The `DataTable` type (used by both components) is defined in `@microsoft/fabric-visuals-core` and re-exported by the visual packages' type definitions.
-
-## Data Format
-The chart and data grid components share a unified `data` prop of type `DataTable` (from `@microsoft/fabric-visuals-core`). This structured format carries column metadata (`displayName`, `format`, `semanticType`) that the components use for axis titles, grid headers, number formatting, and tooltips.
-
-**Using `DataTable`**: Pass a `DataTable` via the `data` prop. The visual uses its column metadata for formatting, axis titles, and tooltips.
-
-**Static/inline data**: For static data, transformed data, or plain arrays, put `data: { values: [...] }` directly in the Vega-Lite spec and omit the `data` prop.
-
-**Multiple tables in one visual**: the `data` prop also accepts a `Record<string, DataTable>` for specs that bind separate layers to more than one dataset by name such as layered overlays, reference lines, and axis spines. See [references/multi-data-input.md](references/multi-data-input.md).
+**Phase 1 — Hero slice:** render ONE compelling, real visual the simplest
+way — a single `KpiCard` or `LineChartCard`/`BarChartCard` fed your hero
+query. Map the DAX result with `toChartData(...)`, pass `loading`/`error`
+straight from the query hook, and you're done. That is enough to deploy.
 
 ```tsx
-import { VegaVisual, useCssTheme } from "@microsoft/fabric-visuals";
-import { DataGrid } from "@microsoft/fabric-datagrid";
-import type { DataTable } from "@microsoft/fabric-visuals-core";
+import { LineChartCard, toChartData } from "@/components/dashboard";
+import { useSemanticModelQuery } from "@/hooks/use-semantic-model-query";
 
-// useCssTheme() reads --color-* vars from the page and updates automatically
-// when the theme changes (e.g. dark-mode toggle adds/removes the .dark class).
-const theme = useCssTheme();
+const { data, isLoading, error } = useSemanticModelQuery({ connection, query });
+const rows = toChartData(data); // pass the query result straight in
 
-// Charts — pass a DataTable and Vega-Lite spec
-<VegaVisual spec={vegaLiteSpec} data={dataTable} theme={theme} />
-
-// Grids — displayName becomes column headers, format applies to cells
-<DataGrid data={dataTable} theme={theme} />
-
-// Static/inline data — no data prop needed
-const inlineSpec = {
-  data: { values: [{ x: 1, y: 2 }, { x: 3, y: 4 }] },
-  mark: "point",
-  encoding: { ... },
-};
-
-<VegaVisual spec={inlineSpec} theme={theme} />
+<LineChartCard
+  title="Revenue"
+  loading={isLoading}
+  error={error}
+  data={rows}
+  xKey="Month"
+  series={[{ key: "Revenue", color: "chart-1" }]}
+  valueFormat="currency"
+/>
 ```
 
-For the `DataTable` schema and `ColumnDef` fields, see [references/data-table.md](references/data-table.md).
+**Phase 2 — Breadth:** add the remaining KPIs/charts/table, wrapping them in
+`PageShell` + `KpiGrid`/`ChartGrid`. Deploy + review every 1–2 additions.
 
-## Formatting & Theme
-- **Formatting rules**: Number formatting, color palettes, chart-specific encoding rules, highlighting guidelines, and a default theme. See [references/formatting.md](references/formatting.md).
+**Phase 3 — Polish:** filters (`SegmentedControl`/`FilterChips`), reference
+lines, sparklines in KPI cards, donut breakdowns, and final formatting.
 
-## Custom visuals
-Always use the above mentioned ways to create visual when possible. If the user's request doesn't allow creation using the above methods, ask the user if they are ok with using another library for creating the visual. If they are ok with it, use the library to create the visual. If they are not ok with it, then build that visual from scratch using HTML, CSS, and JS/TS. Make sure to ask the user for any specific requirements they have for the visual, such as colors, labels, etc.
+Read the per-component props below only when you reach for that component.
+Every component also carries a JSDoc usage snippet — hover it or open the file.
 
-## Container Layout
+## The two-step data flow
 
-- **`DataGrid`** — the direct parent must apply `overflow-auto` so content remains scrollable when it exceeds the container bounds (many rows).
+Every tile follows the same shape. **Map once, pass to the card.**
 
-## Interactivity
-
-Both `VegaVisual` and `DataGrid` expose an `onInteraction` prop that emits structured, predicate-based events when the user clicks a data point or row.
-
-**Always use the `onInteraction` prop** on `VegaVisual` and `DataGrid` to surface user selections. The component only emits the selection; the host app decides what it does — e.g. coordinating other visuals or queries on the page.
-
-> A visual renders a layered subset by binding two named datasets to two layers (`data={{ all, highlighted }}`) — see [references/multi-data-input.md](references/multi-data-input.md). The component renders whatever tables it is handed.
+1. **Fetch** with `useSemanticModelQuery({ connection, query })` →
+   `{ data, isLoading, error }` (see the `query-design` + `fabric-sdk` skills).
+2. **Map** the DAX result into the shape the card wants. Both helpers accept the
+   query result, a raw `QueryTable`, or `undefined` — no `status` check needed:
+   - **Charts** want an array of row objects → `toChartData(result, options?)`.
+   - **DataGrid** wants a `DataTable` → `toDataTable(result, columnMetadata)`.
+3. **Pass** `data` + `loading` + `error` to the card. Don't pre-render
+   skeletons/empty states yourself — the cards do it.
 
 ```tsx
-import type { InteractionEvent } from "@microsoft/fabric-visuals-core";
+// DAX rows are positional (unknown[][]); toChartData keys them by column
+// (short) name and coerces numeric columns to numbers.
+const rows = toChartData(data);
+// rows → [{ Month: "Jan", Revenue: 84200 }, …]
 
-function handleInteraction(source: string, events: InteractionEvent[]) {
-    for (const event of events) {
-        if (event.action === "select") {
-            // event.selections describes the clicked data as predicates
-        } else if (event.action === "clear") {
-            // user deselected (re-clicked same item or clicked empty space)
-        }
-    }
+// Prefer explicit aliases — stable lowercase keys, and the only safe option
+// when two columns share a short name (e.g. Date[Month] + Ship[Month]):
+const rows2 = toChartData(data, {
+  columns: { month: "Date[Month]", revenue: "Total Revenue" },
+});
+// rows2 → [{ month: "Jan", revenue: 84200 }, …]
+```
+
+## Import surface
+
+```tsx
+import {
+  // layout
+  PageShell, KpiGrid, ChartGrid, Section, ThemeToggle,
+  // controls
+  SegmentedControl, FilterChips,
+  // cards
+  KpiCard, ChartCard, DataTableCard,
+  // charts
+  LineChartCard, AreaChartCard, BarChartCard, DonutChartCard, PieChartCard,
+  Sparkline, ChartTooltip,
+  // state tiles
+  EmptyTile, ErrorTile, ChartSkeleton, KpiSkeleton, TileBody,
+  // helpers
+  toChartData, toDataTable,
+  formatNumber, formatCompact, formatCurrency, formatPercent, formatDate,
+  seriesColor, roleColor, useChartTheme,
+} from "@/components/dashboard";
+```
+
+## Shared conventions
+
+- **`valueFormat`** (charts + KPI): `"number" | "compact" | "currency" |
+  "percent" | "ratio"` or a `(n: number) => string` function. `"percent"`
+  expects a 0–100 value; `"ratio"` expects 0–1.
+- **Colors** accept a chart token (`"chart-1"`…`"chart-6"`), a semantic role
+  (`"success" | "danger" | "warning" | "info" | "brand" | "neutral"`),
+  a `var(--…)`, or a hex string. Prefer tokens so charts re-theme with dark
+  mode. Series default to the palette in order.
+- **State props** (`loading`, `error`, `emptyMessage`, `onRetry`) are shared
+  by every chart/table card. Pass the query hook's `isLoading`/`error`
+  directly; the card renders skeleton → error → empty → content.
+- **Never ship mock/fake data.** A tile with no data shows the empty state.
+
+---
+
+## Layout
+
+### `PageShell`
+The page frame: sticky blurred header (title / subtitle / actions) over a
+centered, max-width column. Put `<ThemeToggle />` (and filters) in `actions`.
+
+```tsx
+<PageShell title="Sales overview" subtitle="FY24" actions={<ThemeToggle />}>
+  <KpiGrid>{/* KpiCards */}</KpiGrid>
+  <ChartGrid>{/* ChartCards */}</ChartGrid>
+</PageShell>
+```
+
+- **`KpiGrid`** — responsive 1→2→4 column grid for KPI cards.
+- **`ChartGrid`** — responsive 1→2 column grid for chart cards.
+- **`Section`** — titled grouping (`title`, `subtitle`, `action`) for a band
+  of tiles.
+- **`ThemeToggle`** — light/dark button wired to the app theme context.
+
+## Controls (filters)
+
+Controlled — own the value in `useState`, then filter your mapped rows (or
+re-query; see `query-design`).
+
+```tsx
+const [range, setRange] = useState("30d");
+<SegmentedControl
+  value={range} onChange={setRange}
+  options={[{ label: "7D", value: "7d" }, { label: "30D", value: "30d" }]}
+/>
+
+const [regions, setRegions] = useState<string[]>([]);
+<FilterChips value={regions} onChange={setRegions} options={regionOptions} />
+```
+
+- **`SegmentedControl<T>`** — single-select pill group (`size?: "sm" | "md"`).
+- **`FilterChips<T>`** — multi-select chip row (`value` is an array).
+
+---
+
+## Cards
+
+### `KpiCard`
+Hero metric tile: big formatted value, colored delta pill, optional accent
+dot / badge / icon, and an optional sparkline slot (`children`).
+
+```tsx
+<KpiCard
+  label="Revenue"
+  data={rows}             // derive the value from the first row…
+  valueKey="revenue"      // …reading this column
+  valueFormat="currency"
+  secondary="vs $1.1M last month"   // optional muted sub-value
+  delta={12.4}            // signed % vs baseline → green/red pill
+  deltaLabel="vs last month"
+  accent="chart-1"
+  loading={isLoading}
+  error={error}
+  invertDelta={false}     // set true when down-is-good (cost, churn, latency)
+>
+  <Sparkline data={trend} color="chart-1" />
+</KpiCard>
+```
+
+Pass either a literal `value` **or** `data` + `valueKey` (reads the first row).
+With no value and no rows it renders the empty state — never a fake `0`.
+
+Props: `label`, `value` (number→formatted, or string) **or** `data` + `valueKey`,
+`valueFormat`, `secondary`, `delta`, `deltaLabel`, `invertDelta`, `accent`,
+`icon`, `badge`, `loading`, `error`, `emptyMessage`, `onRetry`, `children`.
+
+### `ChartCard`
+Titled card shell (rounded-2xl, hairline border, no shadow) wrapping any
+chart or content. The chart cards below use it internally; use it directly
+only for custom content or the [escape hatch](#escape-hatch).
+
+```tsx
+<ChartCard title="Revenue" subtitle="Last 12 months" action={<FilterChips … />}>
+  {/* any chart or content */}
+</ChartCard>
+```
+
+Props: `title`, `subtitle`, `action`, `footer`, `bodyClassName`, `children`.
+
+### `DataTableCard`
+Fabric `DataGrid` inside the card shell — sortable, filterable, resizable,
+themed for light/dark. See [data-grid-visual.md](references/data-grid-visual.md)
+for custom cell rendering and [data-table.md](references/data-table.md) for
+the `DataTable` shape.
+
+```tsx
+const table = toDataTable(data, columnMetadata); // result → DataTable
+
+<DataTableCard title="Top accounts" loading={isLoading} error={error}
+  data={table} pageSize={10} />
+```
+
+Props: `data` (a `DataTable`), `height`, `rowHeight`, `pageSize`, plus the
+shared state props.
+
+---
+
+## Charts
+
+All chart cards share `ChartCardCommonProps` (`title`, `subtitle`, `action`,
+`className`, `loading`, `error`, `emptyMessage`, `onRetry`) and render the
+right state automatically.
+
+### `LineChartCard` / `AreaChartCard`
+Time series, single or multi-series. `AreaChartCard` fills under the line and
+supports `stacked`.
+
+```tsx
+<LineChartCard
+  title="Revenue" subtitle="Last 12 months"
+  loading={isLoading} error={error}
+  data={rows}
+  xKey="Month"
+  xFormat={(m) => formatDate(m, "short")}
+  series={[
+    { key: "Revenue", label: "Revenue", color: "chart-1" },
+    { key: "Target",  label: "Target",  color: "neutral" },
+  ]}
+  valueFormat="currency"
+  referenceLines={[{ y: 1_000_000, label: "Goal" }]}
+/>
+```
+
+### `BarChartCard`
+Grouped or stacked bars (`stacked`), vertical by default. Set `horizontal`
+for ranked horizontal bars (category on the Y axis) — ideal for "top N"
+breakdowns. Bars plot in row order, so sort `rows` by value first.
+
+```tsx
+<BarChartCard title="Revenue by region" data={rows} xKey="Region"
+  series={[{ key: "Revenue" }]} valueFormat="currency" />
+
+// Ranked horizontal bars — categories down the Y axis, sorted by value:
+<BarChartCard title="Top regions" horizontal data={rows} xKey="region"
+  series={[{ key: "revenue", label: "Revenue" }]} valueFormat="currency" />
+```
+
+Cartesian chart props: `data` (mapped rows), `xKey`, `series`
+(`{ key, label?, color?, stackId? }[]`), `height`, `valueFormat`, `xFormat`,
+`showGrid`, `showLegend`, `stacked`, `layout`/`horizontal` (bar),
+`curve` (line/area), `referenceLines`.
+
+### `DonutChartCard` / `PieChartCard`
+Categorical share with a value + % legend. The donut center shows the total
+by default.
+
+```tsx
+<DonutChartCard title="Sales by channel" data={rows}
+  nameKey="Channel" valueKey="Sales" valueFormat="currency" />
+```
+
+Props: `data`, `nameKey`, `valueKey`, `colors?`, `height`, `valueFormat`,
+`donut`, `centerLabel`, `showLegend`, plus shared state props.
+
+### `Sparkline`
+Compact, axis-less trend for KPI cards / inline cells. Accepts a raw
+`number[]` (or objects + `dataKey`).
+
+```tsx
+<Sparkline data={[12, 18, 9, 22, 17, 25]} color="chart-1" />
+```
+
+### `ChartTooltip`
+The themed tooltip the chart cards wire up automatically. You only touch it
+in the escape hatch (`<Tooltip content={<ChartTooltip valueFormat="currency" />} />`).
+
+## State tiles
+
+Used internally by the cards; use directly only in the escape hatch or for
+custom content. `TileBody` is the switchboard (error → loading → empty →
+children).
+
+- **`EmptyTile`** (`message`, `icon`, `height`) — friendly no-data state.
+- **`ErrorTile`** (`error`, `title`, `onRetry`, `height`).
+- **`ChartSkeleton`** / **`KpiSkeleton`** — shimmer placeholders.
+
+---
+
+## Escape hatch
+
+If a visualization genuinely isn't in the kit (e.g. scatter, radar, treemap,
+a combo chart), compose it inside a `ChartCard` using Recharts directly **plus
+the kit's helpers** so it still matches the theme:
+
+```tsx
+import { ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { ChartCard, ChartTooltip, useChartTheme, seriesColor } from "@/components/dashboard";
+import { axisProps, gridProps } from "@/lib/chartTokens";
+
+function CorrelationCard({ data }: { data: Array<Record<string, number>> }) {
+  const theme = useChartTheme();
+  return (
+    <ChartCard title="Spend vs. revenue">
+      <ResponsiveContainer width="100%" height={280}>
+        <ScatterChart>
+          <XAxis dataKey="spend" {...axisProps(theme)} />
+          <YAxis dataKey="revenue" {...axisProps(theme)} />
+          <Tooltip content={<ChartTooltip valueFormat="currency" />} />
+          <Scatter data={data} fill={seriesColor(0)} />
+        </ScatterChart>
+      </ResponsiveContainer>
+    </ChartCard>
+  );
 }
-
-<VegaVisual spec={spec} data={dataTable} theme={theme}
-    onInteraction={(events) => handleInteraction("salesChart", events)} />
-<DataGrid data={dataTable} theme={theme}
-    onInteraction={(events) => handleInteraction("detailTable", events)} />
 ```
-**Key concepts**:
-- Clicking a different data point emits a new `select` (replaces the prior selection — no preceding `clear`).
-- Re-clicking the same item or background space in a vega-lite visual emits `clear`.
-- Predicates include all fields from the datum; consumers filter to the ones that are relevant to them.
+
+Rules for the escape hatch:
+- Wrap in `ChartCard`; keep the `ResponsiveContainer`.
+- Use `axisProps`/`gridProps` + `useChartTheme()` and `seriesColor`/`roleColor`
+  (or `var(--color-chart-n)`) — never hardcode hex, so dark mode keeps working.
+- Pass `content={<ChartTooltip … />}` for a themed tooltip.
+- If you find yourself writing the same custom chart twice, add it to the kit
+  instead.
+
+For deeper details: [formatting & colors](references/formatting.md),
+[multiple series & overlays](references/multi-data-input.md),
+[DataGrid cell rendering](references/data-grid-visual.md),
+[the `DataTable` shape](references/data-table.md).

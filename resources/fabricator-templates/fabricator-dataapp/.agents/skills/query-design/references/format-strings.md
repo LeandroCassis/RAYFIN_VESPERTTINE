@@ -4,7 +4,7 @@ Power BI semantic models store format strings on columns and measures (`FormatSt
 
 ## Static Format Strings
 
-Most model format strings are static (e.g., `"$#,##0.00"`, `"0.0%"`, `"yyyy-MM-dd"`). The `ColumnDef.format` field in `@microsoft/fabric-visuals-core` accepts VBA/ECMA-376 format strings — the same syntax used in Power BI semantic models. **No translation is needed**: copy the model's `FormatString` value directly into `columnMetadata.format`.
+Most model format strings are static (e.g., `"$#,##0.00"`, `"0.0%"`, `"yyyy-MM-dd"`). The `ColumnDef.format` field in `@microsoft/fabric-visuals-core` accepts VBA/ECMA-376 format strings — the same syntax used in Power BI semantic models. **No translation is needed for DataGrid**: copy the model's `FormatString` value directly into `columnMetadata.format`.
 
 ```dax
 // Discovery: fetch measure format strings
@@ -26,7 +26,7 @@ export const columnMetadata: ColumnMetadataMap = {
 };
 ```
 
-VegaVisual and DataGrid each handle their own VBA→d3 conversion internally at ingestion time, so authors only ever work in VBA format.
+DataGrid consumes `columnMetadata.format` at render time. Chart cards use `valueFormat` (`"number" | "compact" | "currency" | "percent" | "ratio"` or a function) for Y values/tooltips and `xFormat` (for example `formatDate`) for axis ticks; choose the matching card prop rather than converting DAX output to text.
 
 ## Dynamic Format Strings
 
@@ -45,7 +45,7 @@ EVALUATE
 ORDER BY 'Region'[Name]
 ```
 
-The resolved format string arrives as a per-row VBA/ECMA-376 string. Because the visual components expect VBA format strings, the per-row value can be passed through directly — no translation needed. Components that don't natively accept per-row formats (e.g., when injecting into a Vega-Lite axis spec) may require converting to d3 syntax at render time using helpers from `@microsoft/fabric-visuals-core`.
+The resolved format string arrives as a per-row VBA/ECMA-376 string. For DataGrid, pass VBA formats through as metadata or per-row render data where the grid renderer uses them. For charts, keep the measure raw and resolve display in TypeScript with a `valueFormat` function or derived display field when a single card-level formatter is not enough.
 
 ## Pipeline Summary
 
@@ -56,7 +56,7 @@ Semantic Model (FormatString)
         ↓
 Factory file (columnMetadata.format) — or per-row format values for dynamic
         ↓
-TypeScript / Vega-Lite spec — render formatted output
+TypeScript mapping → chart card props / DataGrid rendering
 ```
 
 > **Key principle:** DAX returns raw typed values. Format strings travel separately — either as static metadata in `columnMetadata` or as per-row data values for dynamic formats. Never use the `FORMAT()` DAX function to pre-render formatted strings in query results.

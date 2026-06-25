@@ -1,9 +1,9 @@
 ---
 name: app-design
 description: >
-  Use when building or modifying the app layout, 
-  creating UI components, or making any visual design decisions. 
-  Ensures consistency, accessibility, and a polished, unique app.
+  Use when building or modifying the app layout, dashboard kit visuals,
+  UI components, or making any visual design decisions. Ensures consistency,
+  accessibility, and a polished, unique app.
 ---
 
 # App Design
@@ -14,7 +14,7 @@ Your job is to build cohesive, distinctive apps — not just correct ones. Add c
 
 Optimize **time to wow**: ship a working vertical slice fast, then iterate via deploy + review. In **Phase 1 — Hero slice (time to wow)**, use a clean default look quickly and move on: get ONE compelling, real visual wired to live data on screen and deployed.
 
-For that first slice, pick one characterful `--font-heading` plus a complementary `--font-base`, loaded via Google Fonts in `index.html`; set `--color-primary` and `--radius` in `src/global.css`; then get back to the hero visual. Do NOT perfect theming in Phase 1.
+For that first slice, pick one characterful `--font-display` plus a complementary `--font-sans`, loaded via Google Fonts in `index.html`; set `--color-primary` and `--radius` in `src/global.css`; then get back to the hero visual. Do NOT perfect theming in Phase 1.
 
 After the hero slice is running, continue with **Phase 2 — Breadth** by adding remaining visuals/KPIs, deploying and reviewing every 1–2. Use **Phase 3 — Polish** for theme/typography refinement, loading/empty/error states, edge-case correctness, and final audits.
 
@@ -30,7 +30,7 @@ Then match your execution to your direction — a maximalist direction needs lay
 
 ### Typography
 
-Pick fonts that set the app's character — this is one of the strongest signals of intentional design. At minimum choose a characterful `--font-heading` paired with a complementary `--font-base`, ideally from the same foundry or design family. Update `--font-monospace` and `--font-numeric` if necessary. Avoid generic defaults like Arial, Inter, or Roboto.
+Pick fonts that set the app's character — this is one of the strongest signals of intentional design. At minimum choose a characterful `--font-display` paired with a complementary `--font-sans`, ideally from the same foundry or design family. Update `--font-mono` and `--font-numeric` if necessary. Avoid generic defaults like Arial, Inter, or Roboto.
 
 Load fonts via Google Fonts (or another CDN) as `<link>` tags in `index.html`, then update the font family tokens in the `@theme` block of `global.css`.
 
@@ -38,8 +38,8 @@ Load fonts via Google Fonts (or another CDN) as `<link>` tags in `index.html`, t
 
 Start by customizing `src/global.css` — this is the single source of truth for the app's visual identity. Every component uses these tokens, so setting them first means the entire UI shifts together.
 
-1. **Colors**: Update the semantic color tokens (`--color-primary`, `--color-background`, `--color-card`, `--color-border`, etc.) in both the `@theme` block and the `.dark` override to match the aesthetic direction. The defaults are neutral blue/grey — make them yours.
-2. **Radius**: Adjust `--radius` (the base radius) and the radius scale to match the tone — sharp/geometric (lower values), soft/rounded (higher values), or pill-shaped (`--radius-circular`).
+1. **Colors**: Update the semantic color tokens (`--color-primary`, `--color-background`, `--color-card`, `--color-border`, etc.) in both the `@theme` block and the `.dark` override to match the aesthetic direction. The defaults are neutral lime/chartreuse — make them yours.
+2. **Radius**: Adjust `--radius` (the base radius) and the radius scale to match the tone — sharp/geometric (lower values), soft/rounded (higher values), or pill-shaped (`--radius-full`).
 3. **Fonts**: Update the font family tokens as described in the Typography section above.
 4. **Then build components.** Focus component-level styling on layout, spacing, and element-specific details — not re-specifying colors and radii that the tokens already handle.
 5. **Selective overrides last.** After the base theme is in place, inspect and adjust individual components that need to deviate — an accent-colored card border, a button with a unique hover effect, etc.
@@ -55,7 +55,7 @@ Keep these principles in mind:
 
 Read these reference files on demand during Phase 2–3 iteration, when refining a specific element — they include "Make it yours" prompts that tie back to the aesthetic direction above:
 - [UI Style Recipes](references/ui-style-recipes.md) — per-element styling guidance for buttons, cards, inputs, dialogs, tabs, tooltips, tables, and more.
-- [Visual Style Recipes](references/visual-style-recipes.md) — chart theming, Vega-Lite config, dark mode chart support, and mark-specific styling.
+- [Visual Style Recipes](references/visual-style-recipes.md) — dashboard kit theming, chart/table recipes, dark mode support, and token-driven styling.
 
 ---
 
@@ -74,7 +74,7 @@ The header/toolbar is part of the design language — not every app needs a trad
 
 ### Container Sizing
 
-`VegaVisual` and other content components fill their container — the **container controls their dimensions**. Without constraints, charts and content stretch to the full viewport width, which produces squished, unreadable visuals on wide screens.
+Dashboard kit chart and table cards fill their container — the **container controls their dimensions**. Without constraints, charts, tables, and content stretch to the full viewport width, which produces squished, unreadable visuals on wide screens.
 
 - **Constrain the dashboard wrapper, not individual charts.** Apply a max-width to the outermost content wrapper that holds the dashboard. This single constraint keeps the entire layout proportional on wide monitors. If the app lacks an outer wrapper, create one.
 - **Do not constrain individual chart containers.** Let the wrapper width plus grid columns determine each chart's size naturally.
@@ -99,7 +99,7 @@ Every component that depends on async data should handle all three states:
 
 ### Dark Mode
 
-Include a light/dark mode toggle in the app header or toolbar. Use the `useAppTheme` hook from `@/hooks/use-theme` to read and toggle the theme.
+Include a light/dark mode toggle in the app header or toolbar. Prefer the kit's `ThemeToggle` from `@/components/dashboard`; use `useAppTheme` from `@/hooks/use-theme` only for a custom control.
 
 ---
 

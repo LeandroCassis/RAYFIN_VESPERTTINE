@@ -1,15 +1,21 @@
-# DataTable — Shared `data` Prop
+# DataTable — the `DataGrid` data shape
 
-Both `VegaVisual` and `DataGrid` accept an optional `data` prop of type `DataTable`. This is a row-major tabular JSON format.
+The Fabric `DataGrid` (and the kit's `DataTableCard`, which wraps it) takes a
+`data` prop of type `DataTable` — a row-major tabular JSON format. Build one from
+a DAX result with the kit helper `toDataTable(table, columnMetadata)`; only hand-
+author a `DataTable` for static/derived rows.
 
 ```tsx
-import { VegaVisual, useCssTheme } from "@microsoft/fabric-visuals";
-import { DataGrid } from "@microsoft/fabric-datagrid";
-import { isDataTable } from "@microsoft/fabric-visuals-core";
+import { DataTableCard, toDataTable } from "@/components/dashboard";
 
-const theme = useCssTheme();
+// From a query result (preferred):
+const data = toDataTable(result, [
+  { name: "month", displayName: "Month" },
+  { name: "revenue", displayName: "Revenue", format: "$#,0.00" },
+]);
 
-const data = {
+// …or a literal DataTable:
+const literal = {
   columns: [
     { name: "month", displayName: "Month" },
     { name: "revenue", displayName: "Revenue", format: "$#,0.00" },
@@ -21,9 +27,11 @@ const data = {
   ],
 };
 
-<VegaVisual spec={spec} data={data} theme={theme} />
-<DataGrid columns={gridColumns} data={data} theme={theme} />
+<DataTableCard title="Revenue by month" data={data} />
 ```
+
+> Charts do **not** use `DataTable` — they take a plain array of row objects from
+> `toChartData(table)`. `DataTable` is the table/grid shape only.
 
 ## Props
 
@@ -35,9 +43,9 @@ Refer to the package README.md for detailed information about the component api 
 {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "$id": "data-table.schema.json",
-    "$comment": "JSON Schema for the DataTable interface defined in types.ts. Enforces the row-major tabular format shared between VegaVisual and DataGrid.",
+    "$comment": "JSON Schema for the DataTable interface defined in types.ts. Enforces the row-major tabular format consumed by DataGrid / DataTableCard.",
     "title": "DataTable",
-    "description": "Structured tabular data input shared between VegaVisual and DataGrid. This is a JSON format, not an Arrow format. If Arrow format is used, it is the consumer's responsibility to convert it to this format.",
+    "description": "Structured tabular data input consumed by DataGrid / DataTableCard. This is a JSON format, not an Arrow format. If Arrow format is used, it is the consumer's responsibility to convert it to this format.",
     "type": "object",
     "required": [
         "columns",
@@ -78,7 +86,7 @@ Refer to the package README.md for detailed information about the component api 
             "additionalProperties": false,
             "properties": {
                 "name": {
-                    "description": "Slug identifier for column name, e.g. to name column values in Vega row-major data.",
+                    "description": "Slug identifier for the column, used to reference the field (e.g. as a DataGrid column id).",
                     "type": "string"
                 },
                 "displayName": {

@@ -2,13 +2,13 @@
 
 A cross-highlight overlay layers a bright "selected subset" on a dimmed baseline. The subset comes from a fresh DAX query scoped by the selection — not from filtering the baseline result client-side.
 
-For how the spec binds the two tables to two layers, see the visuals skill's [multi-data input](../../visuals/references/multi-data-input.md) reference. This page covers producing the subset table.
+For how chart cards render multiple aligned series, see the visuals skill's [multi-data input](../../visuals/references/multi-data-input.md) reference. This page covers producing the subset table.
 
 ## When you need this
 
-A chart layers two datasets at the same axis grain (dimmed baseline + bright subset), and the bright layer reflects a selection made elsewhere on the page.
+A chart renders two aligned series at the same axis grain (dimmed baseline + bright subset), and the bright series reflects React selection state from elsewhere on the page.
 
-If the selection column is one of the chart's own encoding fields and you only need to dim non-matching rows, use Vega-Lite native selection in the spec — no query needed.
+If the selection column is already projected in the chart rows and you only need to dim non-matching rows, derive that display state in TypeScript — no query needed.
 
 ## Re-aggregate, don't filter
 
@@ -83,32 +83,43 @@ Assemble the query string in TypeScript and pass it to `useSemanticModelQuery`. 
 
 ## Wiring it in the component
 
-The host component holds the selection (from another visual's `onInteraction`), fetches the aligned subset, and swaps the second named dataset on each change. Pass `{ all }` alone when there's no selection, `{ all, highlighted }` once a subset is fetched.
+The host component holds React selection state, fetches the aligned subset, and maps the subset into a second series on each change. Render baseline alone when there is no selection, or baseline + highlighted series once a subset is fetched.
 
 ```tsx
-function SalesByCategoryChart({ selections }: { selections: DataPointSelection[] | null }) {
-  const theme = useCssTheme();
+function SalesByCategoryChart({ selectedRatings }: { selectedRatings: string[] }) {
   const all = useBaselineTable();
-  const highlighted = useHighlightedTable(selections); // scoped CALCULATETABLE query; null when no selection
+  const highlighted = useHighlightedTable(selectedRatings); // scoped CALCULATETABLE query; null when no selection
+
+  const allRows = toChartData(all);
+  const highlightedRows = toChartData(highlighted ?? undefined);
+  const highlightedByCategory = new Map(highlightedRows.map(r => [r.Category, r.Sales]));
+  const rows = allRows.map(row => ({
+    ...row,
+    HighlightedSales: highlightedByCategory.get(row.Category) ?? 0,
+  }));
 
   return (
-    <VegaVisual
-      spec={vegaLiteSpec}
-      data={highlighted ? { all, highlighted } : { all }}
-      theme={theme}
+    <BarChartCard
+      data={rows}
+      xKey="Category"
+      series={[
+        { key: "Sales", label: "All", color: "neutral" },
+        { key: "HighlightedSales", label: "Selected", color: "chart-1" },
+      ]}
+      valueFormat="currency"
     />
   );
 }
 ```
 
-`useHighlightedTable` builds the scoped query from the selection's predicates (above) and runs it through `useSemanticModelQuery` — it does **not** filter `all` client-side. See the visuals [multi-data input](../../visuals/references/multi-data-input.md) reference for how the spec layers `all` and `highlighted`.
+`useHighlightedTable` builds the scoped query from React state (above) and runs it through `useSemanticModelQuery` — it does **not** filter `all` client-side. See the visuals [multi-data input](../../visuals/references/multi-data-input.md) reference for overlay patterns.
 
 ## Keep baseline and subset in sync
 
 When the baseline query changes, keep the subset query in sync with it:
 
 - Same grouping columns, same order.
-- Same measure name and expression — the spec's field reference (`y: { field: "Sales" }`) is shared by both layers.
+- Same measure name and expression — the baseline and highlighted `series` keys must align.
 - Same outer time / scope filters; the selection adds to them, it doesn't replace them.
 
 Derive both from the same factory: the baseline query is the source; the subset query is `CALCULATETABLE(<baseline aggregation>, <selection predicates>)`.
@@ -118,5 +129,5 @@ Derive both from the same factory: the baseline query is the source; the subset 
 - ❌ **Filtering the baseline DataTable client-side.** Cannot re-aggregate measures, apply RLS, or resolve selections on unprojected columns. Wrong subtotals for any non-SUM measure (DISTINCTCOUNT, ratios, AVERAGEX, complex measures).
 - ❌ **`FILTER('FactTable', …)` instead of `TREATAS` on the dimension column.** Targets the wrong table, ignores relationships, slower.
 - ❌ **Letting `SUMMARIZECOLUMNS` drop empty groups.** Causes axis-key gaps. Use `COALESCE` or a left-join.
-- ❌ **Changing grain or column shape in the subset query.** The layers no longer share an axis.
-- ❌ **`FORMAT()` in the subset query.** Stringified measures break the shared field encoding. Return raw types.
+- ❌ **Changing grain or column shape in the subset query.** The series no longer share an axis.
+- ❌ **`FORMAT()` in the subset query.** Stringified measures break shared series keys and numeric formatting. Return raw types.

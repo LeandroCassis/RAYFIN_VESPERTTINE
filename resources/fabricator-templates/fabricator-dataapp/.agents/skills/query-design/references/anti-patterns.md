@@ -37,7 +37,7 @@ ORDER BY 'Region'[Name]
 
 ```typescript
 // ✅ TypeScript: derive total, render in DataGrid with cellRenderer
-const detailTable = toDataTable(detail.data.table, columnMetadata);
+const detailTable = toDataTable(detail.data, columnMetadata);
 const revenueIdx = detailTable.columns.findIndex(c => c.name === "Revenue");
 const total = detailTable.rows.reduce((sum, row) => sum + (row[revenueIdx] as number), 0);
 
@@ -59,23 +59,21 @@ const rows: Row[] = [
 <DataGrid columns={columns} data={rows} theme={theme} />
 ```
 
-For VegaVisual, pass detail + computed total as separate named datasets:
+For chart cards, map detail rows with `toChartData` and pass computed totals through card props such as `referenceLines`:
 
 ```tsx
-<VegaVisual
-  spec={vegaLiteSpec}
-  data={{ detail: detailTable, summary: summaryTable }}
-  theme={theme}
-/>
-```
+const rows = toChartData(detail.data, {
+  columns: { Region: "Region[Name]", Revenue: "Revenue" },
+});
 
-```json
-{
-  "layer": [
-    { "data": { "name": "detail" }, "mark": "bar", "encoding": { "x": { "field": "RegionName" }, "y": { "field": "Revenue" } } },
-    { "data": { "name": "summary" }, "mark": "rule", "encoding": { "y": { "field": "Revenue" } } }
-  ]
-}
+<BarChartCard
+  title="Revenue by region"
+  data={rows}
+  xKey="Region"
+  series={[{ key: "Revenue", color: "chart-1" }]}
+  valueFormat="currency"
+  referenceLines={[{ y: total, label: "All regions" }]}
+/>
 ```
 
 **Fix — total NOT derivable from detail (DISTINCTCOUNT, ratios, AVERAGEX, complex measures):** Use a separate DAX query at the summary grain.
@@ -97,10 +95,10 @@ EVALUATE
 // ✅ Two hook calls, two DataTables
 const detail = useSemanticModelQuery({ connection, query: detailQuery });
 const summary = useSemanticModelQuery({ connection, query: totalQuery });
-const detailTable = toDataTable(detail.data.table, detailMeta);
-const summaryTable = toDataTable(summary.data.table, summaryMeta);
+const detailTable = toDataTable(detail.data, detailMeta);
+const summaryTable = toDataTable(summary.data, summaryMeta);
 
-// VegaVisual: pass { detail: detailTable, summary: summaryTable }
+// Chart cards: pass multiple `series` or merge result sets in TypeScript before mapping
 // DataGrid: append summary row with cellRenderer (same pattern as the derivable case)
 ```
 
@@ -116,7 +114,7 @@ EVALUATE
   SUMMARIZECOLUMNS('Calendar'[Month], "Revenue", FORMAT([Total Revenue], "$#,##0"))
 ```
 
-**Fix:** Return raw values. Format via `columnMetadata` or Vega-Lite spec.
+**Fix:** Return raw values. Format via DataGrid `columnMetadata` or chart card `valueFormat` / `xFormat`.
 
 ```dax
 // ✅ DAX: raw numeric value
@@ -143,7 +141,7 @@ EVALUATE
   SUMMARIZECOLUMNS("Month Label", FORMAT('Calendar'[Date], "MMM YYYY"), "Sales", [Total Sales])
 ```
 
-**Fix:** Return sortable date. Let Vega-Lite format it.
+**Fix:** Return sortable date. Let the chart card `xFormat` format it.
 
 ```dax
 // ✅ DAX: return the date
@@ -152,12 +150,18 @@ EVALUATE
 ORDER BY 'Calendar'[Date]
 ```
 
-```json
-{
-  "encoding": {
-    "x": { "field": "CalendarDate", "type": "temporal", "axis": { "format": "%b %Y", "title": "Month" } }
-  }
-}
+```tsx
+const rows = toChartData(table, {
+  columns: { Date: "Calendar[Date]", Sales: "Sales" },
+});
+
+<LineChartCard
+  data={rows}
+  xKey="Date"
+  xFormat={(value) => formatDate(value, "short")}
+  series={[{ key: "Sales", color: "chart-1" }]}
+  valueFormat="currency"
+/>
 ```
 
 ## Anti-Pattern 4: Complex DAX for dimension completeness
@@ -188,29 +192,23 @@ ORDER BY 'Region'[Name]
 
 ```typescript
 // ✅ TypeScript: merge into a DataTable
-const detailTable = toDataTable(detail.data.table, detailMeta);
-const dimsTable = toDataTable(dims.data.table, dimsMeta);
+const detailTable = toDataTable(detail.data, detailMeta);
+const dimsTable = toDataTable(dims.data, dimsMeta);
 const salesMap = new Map(detailTable.rows.map(r => [r[0], r[1]]));
 const filledRows = dimsTable.rows.map(r => [r[0], salesMap.get(r[0] as string) ?? 0]);
 const filledTable: DataTable = { columns: detailTable.columns, rows: filledRows };
 ```
 
-**Alternative — Vega-Lite lookup transform:** Pass both tables to VegaVisual and join in the spec:
+**Chart mapping:** Merge the two result sets in TypeScript before passing rows to a chart card:
 
 ```tsx
-<VegaVisual spec={vegaLiteSpec} data={{ regions: dimsTable, sales: detailTable }} theme={theme} />
-```
+const salesByRegion = new Map(detailTable.rows.map(r => [r[0], r[1]]));
+const rows = dimsTable.rows.map(r => ({
+  Region: r[0],
+  Sales: salesByRegion.get(r[0] as string) ?? 0,
+}));
 
-```json
-{
-  "data": { "name": "regions" },
-  "transform": [
-    { "lookup": "RegionName", "from": { "data": { "name": "sales" }, "key": "RegionName", "fields": ["Sales"] } },
-    { "calculate": "datum.Sales ?? 0", "as": "Sales" }
-  ],
-  "mark": "bar",
-  "encoding": { "x": { "field": "RegionName" }, "y": { "field": "Sales", "type": "quantitative" } }
-}
+<BarChartCard data={rows} xKey="Region" series={[{ key: "Sales" }]} valueFormat="currency" />
 ```
 
 > **Cardinality guardrail:** This pattern is for bounded axis dimensions (categories, regions, statuses) — not high-cardinality dimensions like customers or transaction IDs.
@@ -279,7 +277,7 @@ export const columnMetadata: ColumnMetadataMap = {
 };
 ```
 
-The `columnMetadata` provides: `name` (cleaned identifier for Vega-Lite field references), `displayName` (human-readable caption for headers/axes), `format` (VBA/ECMA-376 format string for rendering — same syntax as the model's `FormatString`).
+The `columnMetadata` provides: `name` (cleaned identifier for DataGrid columns and chart keys), `displayName` (human-readable caption for headers/labels), `format` (VBA/ECMA-376 format string for DataGrid rendering — same syntax as the model's `FormatString`).
 
 > **When SELECTCOLUMNS is appropriate:** Use it to project a subset of columns, compute derived columns (`RELATED(...)`), or reshape table structure — not as a cosmetic renaming layer.
 
@@ -331,6 +329,6 @@ const columns: GridColumnDef[] = [
 ];
 ```
 
-VegaVisual handles nulls natively — missing values become gaps in line charts or absent bars. No special handling needed unless you want custom tooltip/label behavior via Vega-Lite `condition` or `calculate` transforms.
+Chart cards handle nulls as missing values — gaps in line charts or absent bars. Use `cellRenderer` for table placeholders or derive chart display fields during `toChartData` mapping only when custom tooltip/label behavior needs it.
 
 > **Key insight:** `SUMMARIZECOLUMNS` skips rows where all measures are BLANK but not where they are `0` or `""`. Every BLANK-to-value conversion is a potential row-count multiplier. Use `DIVIDE(num, den)` without a third argument (defaults to BLANK).

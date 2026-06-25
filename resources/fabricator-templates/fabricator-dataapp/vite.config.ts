@@ -26,7 +26,7 @@ export default defineConfig({
         }
     },
     optimizeDeps: {
-        include: ['@microsoft/fabric-visuals', '@microsoft/fabric-datagrid', '@microsoft/fabric-visuals-core'],
+        include: ['recharts', '@microsoft/fabric-datagrid', '@microsoft/fabric-visuals-core'],
     },
     build: {
         commonjsOptions: {

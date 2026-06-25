@@ -5,7 +5,7 @@ description: Use when generating chart and data grid visuals. Provides guidance 
 ---
 # Visual Style Recipes
 
-Styling guidance for chart and data grid visuals — theming, dark mode, layout, and chart-specific patterns.
+Styling guidance for dashboard kit chart and data grid visuals — theming, dark mode, layout, and chart-specific patterns.
 
 ---
 
@@ -13,45 +13,64 @@ Styling guidance for chart and data grid visuals — theming, dark mode, layout,
 
 ### How theming works
 
-All visual styling flows from CSS custom properties defined in `src/global.css`. Visual components read these variables at runtime — edit `global.css` to theme everything.
+All visual styling flows from CSS custom properties defined in `src/global.css`. Kit components read these variables at runtime — edit `global.css` to theme everything.
 
 - **Light mode** values go in the `@theme` block
 - **Dark mode** overrides go in the `.dark` block
 - Changes cascade automatically to all charts and grids
 
-See the `formatting.md` reference for the full list of CSS variables and how to change them.
+The important tokens are `--color-primary`, `--color-primary-soft`, `--color-background`, `--color-card`, `--color-border`, `--color-ring`, `--color-brand`, `--color-chart-1` through `--color-chart-6`, `--font-display`, `--font-sans`, `--font-mono`, and the radius scale (`--radius-sm` through `--radius-3xl`, plus `--radius-full`).
 
 ### Custom theme colors
 
-The `theme` prop on `VegaVisual` and `DataGrid` controls axis colors, text fills, grid lines, and background. Use the `useCssTheme()` hook to derive it from the `--color-*` variables in `global.css` — the hook updates automatically when the theme changes (e.g. dark-mode toggle adds/removes the `.dark` class):
+Chart cards auto-theme from the design tokens. Compose the kit and pass mapped data; do not pass a separate chart theme object.
 
 ```tsx
-import { VegaVisual, useCssTheme } from "@microsoft/fabric-visuals";
+import { LineChartCard, toChartData } from "@/components/dashboard";
 
-const theme = useCssTheme();
+const rows = toChartData(data);
 
-<VegaVisual spec={spec} data={dataTable} theme={theme} />
+<LineChartCard
+  title="Revenue trend"
+  loading={isLoading}
+  error={error}
+  data={rows}
+  xKey="Month"
+  series={[{ key: "Revenue", color: "chart-1" }]}
+  valueFormat="currency"
+/>;
 ```
 
-Edit `--color-*` values in `global.css` (and the `.dark` block) to change chart colors — the hook bridges them into the JS theme object the visuals consume. Other CSS variables (spacing, fonts, radii, app-level colors) are picked up directly via the cascade.
-
-Validate that chart data colors (series palettes and categorical hues) fit the app's current visual theme and design direction. If default data colors feel out of place, adjust the palette so it better supports the intended mood, contrast, and hierarchy.
+Edit `--color-chart-1` through `--color-chart-6` in `global.css` (and the `.dark` block) to change series and categorical colors. The accent is a single swappable family: recolor `--color-primary`, `--color-primary-soft`, `--color-primary-strong`, `--color-chart-1`, `--color-ring`, and `--color-brand` together.
 
 ### Data color alignment
 
-Validate that chart data colors (series palettes and categorical hues) fit the app's current visual theme and design direction. If default data colors feel out of place, adjust the palette so it better supports the intended mood, contrast, and hierarchy.
+Validate that chart data colors fit the app's current visual theme and design direction. Prefer kit color names in series configs: chart tokens (`"chart-1"`…`"chart-6"`) for ordered series and semantic roles (`"success"`, `"warning"`, `"info"`, `"brand"`, `"neutral"`) when the color carries meaning.
+
+```tsx
+<BarChartCard
+  title="Revenue by region"
+  data={rows}
+  xKey="Region"
+  series={[
+    { key: "Actual", color: "chart-1" },
+    { key: "Target", color: "neutral" },
+  ]}
+  valueFormat="currency"
+/>;
+```
 
 ### Chart typography alignment
 
-Validate that chart text styling fits the app's current theme and typography direction. If chart labels, titles, legends, or axis text feel disconnected from the rest of the UI, update chart font family, weight, and size settings so they align with the app's token-driven type system.
+Validate that chart text styling fits the app's current theme and typography direction. Kit chart axes, legends, tooltips, and cards inherit from `--font-sans`, `--font-display`, and `--font-mono`; update those tokens rather than styling each chart independently.
 
 - Keep chart font family aligned with the primary app font choice.
-- Adjust axis labels, legend labels, and chart titles to match the visual density of the layout.
+- Adjust card titles and surrounding layout density to match the type hierarchy.
 - Re-check label legibility after changing theme colors, since typography and color contrast must work together.
 
 ### Axis and label color consistency
 
-Axis labels and titles follow `foregroundSecondary` and `foreground` from the theme object. Data-label text can also derive from `foregroundSecondary`. Keep those token mappings consistent across all charts to avoid mismatched label colors.
+Axis labels, gridlines, cursors, and tooltip surfaces come from chart tokens such as `--color-chart-axis`, `--color-chart-grid`, `--color-chart-cursor`, `--color-card`, and `--color-foreground-secondary`. Keep those token mappings consistent across all charts to avoid mismatched label colors.
 
 ---
 
@@ -59,45 +78,70 @@ Axis labels and titles follow `foregroundSecondary` and `foreground` from the th
 
 ### Chart container sizing
 
-Every Vega-Lite spec should set `width: "container"` and `height: "container"` — including pie/donut charts.
+Use `PageShell`, `KpiGrid`, and `ChartGrid` for dashboard structure. Chart cards own their responsive chart container; set the card `height` prop only when a specific visual needs more or less vertical space.
+
+```tsx
+import {
+  PageShell,
+  ThemeToggle,
+  KpiGrid,
+  ChartGrid,
+  KpiCard,
+  LineChartCard,
+  DonutChartCard,
+  DataTableCard,
+  toChartData,
+  toDataTable,
+} from "@/components/dashboard";
+
+const chartRows = toChartData(data);
+const table = toDataTable(data, columnMetadata);
+
+<PageShell title="Sales overview" actions={<ThemeToggle />}>
+  <KpiGrid>
+    <KpiCard label="Revenue" value={revenue} valueFormat="currency" accent="chart-1" />
+    <KpiCard label="Margin" value={margin} valueFormat="percent" accent="success" />
+  </KpiGrid>
+  <ChartGrid>
+    <LineChartCard title="Revenue trend" data={chartRows} xKey="Month" series={[{ key: "Revenue", color: "chart-1" }]} valueFormat="currency" />
+    <DonutChartCard title="Sales mix" data={chartRows} nameKey="Channel" valueKey="Sales" valueFormat="currency" colors={["chart-1", "chart-2", "chart-3"]} />
+    <DataTableCard title="Details" data={table} pageSize={10} />
+  </ChartGrid>
+</PageShell>;
+```
 
 ### Chart container height chain
 
-Charts must fill their card's visible height — no dead space, no cropping. This requires a **complete height chain** from the grid/flex cell down to the chart:
+Charts must fill their card's visible height — no dead space, no cropping. With kit cards, the height chain is mostly handled for you:
 
-1. **Grid/flex cell** → provides the height
-2. **Card wrapper** → `h-full` so the cell's height becomes definite
-3. **Card content area** → `flex-1 min-h-0`
-4. **Chart wrapper** → `flex flex-col flex-1 min-h-0`
-5. **VegaVisual** → fills its parent
+1. **Grid/flex cell** → provides the width and placement
+2. **Card wrapper** → `ChartCard`/chart card owns the rounded card shell
+3. **Tile body** → state handling reserves the requested height
+4. **Chart renderer** → responsive chart fills that body
 
-If a chart appears squished, trace the height chain upward — typically a missing `h-full` on an intermediate wrapper.
+If a chart appears squished, first check the surrounding grid or flex parent, then adjust the card `height` prop. Do not wrap chart cards in fixed-height containers unless the whole dashboard section needs that constraint.
 
-Do not wrap `<VegaVisual>` in a fixed-height container.
-
-The direct parent of `<DataGrid>` should use `overflow-auto flex-1 min-h-0` for row scrolling.
+The kit's `DataTableCard` already wraps the Fabric DataGrid in a rounded, scrollable, themed container.
 
 ### `minHeight` vs `height` for chart containers
 
-Validate that containers in the height chain provide a definite height when charts rely on `h-full`.
+Validate that containers provide a definite height when a section relies on full-height cards.
 
-- `height` creates a definite height and allows `h-full` chart wrappers to resolve correctly.
+- `height` creates a definite height and allows full-height wrappers to resolve correctly.
 - `minHeight` alone does not create a definite height for flex/grid children and can lead to squished charts in standalone sections.
 
 Use layout-aware checks:
 
 - Grid layouts: `minHeight` on the grid container is generally acceptable because grid tracks provide definite row heights.
-- Standalone full-width chart sections: prefer explicit `height` on the section/container when using `h-full` card/chart wrappers.
+- Standalone full-width chart sections: prefer explicit `height` on the section/container when using full-height card wrappers.
 
 ### Chart titles in cards
 
-Do NOT put titles in the Vega-Lite spec `title` property for dashboard cards. Render as a heading element in the card header instead. Scale the heading size to match the app's type hierarchy.
+Use the kit card `title` and `subtitle` props for dashboard cards. Scale the surrounding page headings to match the app's type hierarchy.
 
 - The title should summarize what the chart shows in plain language (e.g., "Monthly Revenue by Region", "Top 10 Products by Units Sold").
 - Derive the title from the data fields and the intent of the visualization — do not use generic titles like "Chart" or "Bar Chart".
 - If the user provides a title, use it as-is. Otherwise, infer a good title from the query and encodings.
-
-For standalone charts (no card wrapper), use the spec `title` with anchor `start`, semibold weight, and primary text color.
 
 > **Layout creativity**: Consider mixed card spans, a full-width hero row, asymmetric column ratios, or generous negative space between sections. The layout should reinforce the aesthetic direction.
 
@@ -105,19 +149,25 @@ For standalone charts (no card wrapper), use the spec `title` with anchor `start
 
 ## Named Styles
 
-The base theme includes named styles that marks can opt into via the `style` property in the spec. See `formatting.md` for the label styles (`labelCallout`, `labelSubtitle`, `labelVertical`, `labelHorizontal`).
+The kit exposes named color conventions through component props. Use these instead of raw hex values.
 
-Additional mark-type styles:
-
-| Style | Use case | Effect |
+| Convention | Use case | Effect |
 |---|---|---|
-| `scatter` | Scatter plot points | `opacity: 0.7` — reveals overlapping points |
-| `bubble` | Bubble chart points | `opacity: 0.6` — softer fill for sized circles |
-| `densityArea` | Density/distribution areas | `fillOpacity: 0.35` — more transparent than standard area |
+| `color: "chart-1"`…`"chart-6"` | Ordered series / categories | Uses the tokenized chart palette and dark-mode overrides |
+| `color: "success"` | Positive state, healthy KPI, increase | Maps to semantic success colors |
+| `color: "warning"` / `"info"` | Attention or informational series | Keeps meaning consistent across cards |
+| `valueFormat="currency"` / `"percent"` / `"compact"` | Numbers in KPIs, axes, legends, tooltips | Centralized formatting with no per-chart formatter boilerplate |
 
-Usage in a spec:
-```json
-{ "mark": { "type": "point", "style": "scatter" } }
+Usage in a chart card:
+
+```tsx
+<AreaChartCard
+  title="Pipeline coverage"
+  data={rows}
+  xKey="Month"
+  series={[{ key: "Coverage", color: "success" }]}
+  valueFormat="ratio"
+/>;
 ```
 
 ---
@@ -128,62 +178,103 @@ These produce good results. Deviate when the design calls for it.
 
 ### Card content spacing
 
-Content areas inside a card should use consistent horizontal padding that matches the card header. Don't let content sit flush against card edges while the header has padding.
+Content areas inside a card should use consistent horizontal padding that matches the card header. The kit cards already do this; keep custom `ChartCard` children aligned with the same rhythm.
 
 ### Bar corner radius
 
-The default `cornerRadiusEnd` is `4` (from `--radius-md`). Use `0` for sharp aesthetics or higher for rounder feels. Whatever value you pick, use it consistently across **all** bar charts.
+The kit uses a consistent rounded bar treatment that follows the app's flat, modern radius system. If you use the Recharts escape hatch for a bespoke bar shape, choose sharp or rounded corners deliberately and apply that choice consistently across all bar charts.
 
 ### Grouped bar charts
 
-- Set `paddingInner: 0` on the `xOffset` scale so sub-bars sit flush. The stroke already provides visual separation between bars in a group.
+Use multiple `series` entries for grouped bars. Use `stacked` when the analytic intent is contribution-to-total rather than side-by-side comparison.
 
-### Heatmaps
+```tsx
+<BarChartCard
+  title="Actual vs target"
+  data={rows}
+  xKey="Region"
+  series={[{ key: "Actual", color: "chart-1" }, { key: "Target", color: "chart-2" }]}
+  valueFormat="currency"
+/>;
+```
 
-- Set `paddingInner: 0.02` on the x and y band scales so cells have a thin gap between them for accessibility.
+### Trend cards
 
-### Bubble charts
+Use `LineChartCard` for precise trend comparison and `AreaChartCard` when the filled shape helps emphasize volume. Add `referenceLines` for goals or thresholds.
 
-- **Always hide the size legend** — set `legend: null` on the `size` encoding.
+```tsx
+<LineChartCard
+  title="Monthly recurring revenue"
+  data={rows}
+  xKey="Month"
+  series={[{ key: "MRR", color: "chart-1" }]}
+  valueFormat="currency"
+  referenceLines={[{ y: target, label: "Target" }]}
+/>;
+```
 
 ### Pie / Donut
 
-- For donuts, set `innerRadius` to ~65% of `outerRadius` for a balanced hole.
-- Single series: hide the legend.
+Use `DonutChartCard` for categorical share with a value + percent legend. Use `colors` only when the default palette needs tighter alignment with the app's direction.
 
-### Waterfall charts
+```tsx
+<DonutChartCard
+  title="Sales by channel"
+  data={rows}
+  nameKey="Channel"
+  valueKey="Sales"
+  valueFormat="currency"
+  colors={["chart-1", "chart-2", "chart-3", "chart-4"]}
+/>;
+```
 
-- Color-encode by type with a fixed domain/range: increase (green), decrease (red), subtotal (primary).
+### KPI rows
+
+Use `KpiGrid` with `KpiCard` for a compact metric row. Use `accent` to connect each KPI to the chart palette or a semantic role; use `invertDelta` for down-is-good measures such as churn, cost, or latency.
+
+```tsx
+<KpiGrid>
+  <KpiCard label="Revenue" value={revenue} valueFormat="currency" delta={revenueDelta} deltaLabel="vs prior period" accent="chart-1" />
+  <KpiCard label="Churn" value={churn} valueFormat="percent" delta={churnDelta} deltaLabel="vs prior period" accent="warning" invertDelta />
+</KpiGrid>;
+```
+
+### Tables
+
+Use `DataTableCard` for Fabric DataGrid output. Map query tables with `toDataTable(table, columnMetadata)`; the card handles theming, scrolling, sorting, filtering, resizing, loading, empty, and error states.
+
+```tsx
+const table = toDataTable(data, columnMetadata);
+
+<DataTableCard
+  title="Top accounts"
+  loading={isLoading}
+  error={error}
+  data={table}
+  pageSize={10}
+/>;
+```
 
 ---
 
 ## Workarounds
 
-Known VegaVisual limitations that require spec-level fixes.
+Most dashboard visuals should be composed from `KpiCard`, `LineChartCard`, `AreaChartCard`, `BarChartCard`, `DonutChartCard`, `DataTableCard`, `PageShell`, `KpiGrid`, and `ChartGrid`.
 
-### Mixed positive/negative bar corner radius
-
-A single `cornerRadiusEnd` rounds corners on the wrong side for negative values. Use a two-layer approach:
-
-1. Reset `cornerRadiusEnd` to `0` in spec-level config.
-2. **Layer 1**: filter to `datum.value >= 0`, apply top corner radii (vertical) or right (horizontal).
-3. **Layer 2**: filter to `datum.value < 0`, apply bottom corner radii (vertical) or left (horizontal).
+If a visualization genuinely is not in the kit (scatter, radar, treemap, waterfall, heatmap, or a combo chart), use the `visuals` skill escape hatch: wrap a Recharts implementation in `ChartCard`, use `ChartTooltip`, `useChartTheme`, `seriesColor`/`roleColor`, and token colors such as `var(--color-chart-1)`. Do not hardcode hex colors.
 
 ---
 
 ## DataGrid
 
-Pass theme colors to the DataGrid via the `theme` prop. Use `useCssTheme()` to bridge `--color-*` variables in `global.css` to the JS theme object:
+Use the kit wrapper instead of wiring Fabric DataGrid directly. `DataTableCard` reads the CSS theme internally and passes it to the underlying grid.
 
 ```tsx
-import { useCssTheme } from "@microsoft/fabric-visuals";
+import { DataTableCard, toDataTable } from "@/components/dashboard";
 
-const theme = useCssTheme();
+const table = toDataTable(data, columnMetadata);
 
-<DataGrid
-  data={dataTable}
-  theme={theme}
-/>
+<DataTableCard title="Accounts" data={table} loading={isLoading} error={error} />;
 ```
 
-Font, spacing, and border styles are controlled by CSS variables in `global.css` and cascade automatically.
+Font, spacing, border, focus, scrollbar, and dark-mode styles are controlled by CSS variables in `global.css` and cascade automatically.

@@ -16,6 +16,9 @@ import { AuthProvider } from './hooks/use-auth';
 import { bootstrapAuth } from './services/rayfin-auth.service';
 import { AuthGate } from './components/auth-gate.component';
 
+import "@fontsource-variable/inter";
+import "@fontsource-variable/space-grotesk";
+import "@fontsource-variable/jetbrains-mono";
 import "./global.css"
 
 const rayfinAuthService = bootstrapAuth();

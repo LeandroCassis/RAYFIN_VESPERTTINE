@@ -25,19 +25,22 @@ ORDER BY 'Region'[Name], 'Product'[Category]
 ```
 
 ```typescript
-// TypeScript: instant client-side filtering, producing a filtered DataTable
-const dataTable = toDataTable(data.table, columnMetadata);
-const regionIdx = dataTable.columns.findIndex(c => c.name === "RegionName");
-const filteredTable: DataTable = {
-  columns: dataTable.columns,
-  rows: dataTable.rows.filter(row => row[regionIdx] === selectedRegion),
-};
+// TypeScript: instant client-side filtering, producing mapped chart rows
+const rows = toChartData(data, {
+  columns: { Region: "Region[Name]", Category: "Product[Category]", Revenue: "Revenue" },
+});
+const filteredRows = rows.filter(row => row.Region === selectedRegion);
 
-// Pass the filtered DataTable directly to VegaVisual or DataGrid
-<VegaVisual spec={vegaLiteSpec} data={filteredTable} theme={theme} />
+<BarChartCard
+  title="Revenue by category"
+  data={filteredRows}
+  xKey="Category"
+  series={[{ key: "Revenue", color: "chart-1" }]}
+  valueFormat="currency"
+/>
 ```
 
-**Alternative — Vega-Lite signal filtering:** Pass the full DataTable to VegaVisual and use a `transform.filter` or `selection` parameter for interactive filtering within the chart. This enables Vega-Lite's built-in features (click-to-select, linked highlighting across layers) without TypeScript involvement.
+For tables, filter the `DataTable.rows` array and pass the result to `DataTableCard`. Kit controls (`SegmentedControl` / `FilterChips`) own the selected value in React state; they do not change the DAX query unless you choose the server-side path.
 
 ## Push Filter to DAX (server-side filtering)
 

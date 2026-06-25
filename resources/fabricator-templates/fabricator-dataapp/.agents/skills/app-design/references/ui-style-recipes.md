@@ -23,7 +23,7 @@ All form and input elements must have focus, disabled, and error/invalid states.
 
 ### Dark mode
 
-- Use the `.dark` class variant via `@custom-variant dark (&:is(.dark *))`.
+- Use the `.dark` class variant from `@custom-variant dark (&:where(.dark, .dark *))`.
 - Opacity adjustments for dark mode are common: `dark:bg-input/30`, `dark:hover:bg-input/50`.
 
 ### `cn()` for class merging
@@ -56,7 +56,7 @@ Use fill color to communicate depth — lighter surfaces sit higher:
 - **Cards** → float above with lighter fill
 - **Popovers/dialogs** → highest elevation, lightest fill
 
-Reinforce with shadows from the shadow scale (`shadow-2` through `shadow-64`). Higher elevation = larger shadow.
+Reinforce with hairline borders, surface contrast, and spacing. The dashboard kit defaults to a flat, modern look with no shadows; add shadows only if the app's aesthetic direction explicitly calls for elevation.
 
 > **Make it yours:** Flat `bg-background` is the safe default, but consider what sits behind the content — a subtle dot grid, gradient mesh, noise texture, or contrasting panel. This one choice defines the app's atmosphere.
 
@@ -134,7 +134,7 @@ Any cluster of related interactive elements — form fields, filter panels, tool
 ### Cards
 
 - **Background**: `bg-card text-card-foreground`
-- **Elevation**: choose shadow, border, or both to separate cards from the page. `shadow-4` + `border` is the baseline default; shadow-only, border-only, or borderless designs are all valid depending on the aesthetic direction.
+- **Elevation**: choose border, surface contrast, or a deliberate shadow to separate cards from the page. `border border-border` with no shadow is the baseline kit default; shadow-only, border-only, or borderless designs are all valid depending on the aesthetic direction.
 - **Internal spacing**: use `px-*` / `py-*` on content areas, `gap-*` between sections
 - **Structure**: compose from header, content, footer sections — don't enforce rigid slots
 
@@ -157,7 +157,7 @@ These are often left unstyled — don't. They should match the aesthetic directi
 ### Dropdowns / Selects / Menus
 
 - **Surface**: `bg-popover text-popover-foreground`
-- **Shadow**: `shadow-8`
+- **Elevation**: use a border or a deliberate shadow treatment that matches the app's depth model
 - **Item focus**: `focus:bg-accent focus:text-accent-foreground`
 - **Item spacing**: keep compact — `py-s-nudge px-s` range
 - **Item typography**: `text-300`
@@ -166,14 +166,14 @@ These are often left unstyled — don't. They should match the aesthetic directi
 ### Tabs
 
 - **Variants**: filled (items against `bg-muted`) or line (underline indicator) — pick what fits the design
-- **Active indicator**: filled uses `bg-background shadow-sm`; line uses a pseudo-element underline
-- **Typography**: `text-sm font-medium`, inactive color at reduced opacity (`text-foreground/60`)
+- **Active indicator**: filled uses `bg-background border border-border`; line uses a pseudo-element underline
+- **Typography**: `text-300 font-medium`, inactive color at reduced opacity (`text-foreground/60`)
 - **Orientation**: support both horizontal and vertical when using Radix Tabs
 
 ### Dialogs / Modals
 
-- **Overlay**: `bg-black/50` with fade animation is the baseline; tint or adjust opacity to match the aesthetic
-- **Surface**: `bg-background` with `shadow-64` (highest elevation)
+- **Overlay**: `bg-foreground/50` with fade animation is the baseline; tint or adjust opacity to match the aesthetic
+- **Surface**: `bg-background` or `bg-popover`; use the strongest elevation treatment in the app's depth model
 - **Radius**: match the app's radius scale (baseline: `rounded-xl`)
 - **Width**: responsive — full width on mobile with max-width on larger screens
 - **Close button**: positioned `absolute top-4 right-4`, subtle opacity treatment
@@ -190,19 +190,19 @@ These are often left unstyled — don't. They should match the aesthetic directi
 
 - **Surface**: inverted (`bg-foreground text-background`) by default; adapt to match your aesthetic
 - **Radius**: match the app's radius scale
-- **Typography**: `text-xs`, use `text-balance` for wrapping
+- **Typography**: `text-200`, use `text-balance` for wrapping
 - **Arrow**: small rotated square matching tooltip background
 - **Delay**: 0ms default for immediate feedback
 
 ### Badges
 
 - **Shape**: `rounded-full` for pill shape by default; use the app's radius scale for angular aesthetics
-- **Typography**: `text-xs font-medium`
+- **Typography**: `text-200 font-medium`
 - **Spacing**: tight — `px-2 py-0.5`
 
 ### Skeletons / Loading
 
-- **Animation**: `animate-pulse`
+- **Animation**: `animate-shimmer`
 - **Background**: `bg-accent` (matches muted surfaces)
 - **Radius**: match the shape of the element being loaded
 

@@ -5,8 +5,8 @@ When a component needs data at multiple grains (e.g., region detail + grand tota
 ## Contents
 
 - [File Organization](#file-organization) — `.dax` + `.ts` layout per visualization
-- [Component Wiring](#component-wiring) — two hook calls → two `DataTable`s
-- [Rendering in VegaVisual (multi-DataTable)](#rendering-in-vegavisual-multi-datatable) — pass named datasets, layer in spec
+- [Component Wiring](#component-wiring) — two hook calls → mapped chart rows or `DataTable`s
+- [Rendering in chart cards](#rendering-in-chart-cards) — pass multiple `series` or `referenceLines`
 - [Rendering in DataGrid (total row via cellRenderer)](#rendering-in-datagrid-total-row-via-cellrenderer) — styled grand total row
 - [Consistency Rule](#consistency-rule) — shared filters, measures, scope across split-grain queries
 
@@ -15,8 +15,7 @@ When a component needs data at multiple grains (e.g., region detail + grand tota
 ```
 src/queries/sales/
 ├── revenue-by-region.dax          # Detail grain
-├── revenue-by-region.json         # Vega-Lite spec (layers both datasets)
-├── revenue-by-region.ts           # Factory: returns detailQuery + vegaLiteSpec
+├── revenue-by-region.ts           # Factory: returns detailQuery + columnMetadata
 ├── revenue-total.dax              # Summary grain (single-row total)
 ├── revenue-total.ts               # Factory: returns totalQuery (no spec needed)
 └── index.ts
@@ -25,56 +24,44 @@ src/queries/sales/
 ## Component Wiring
 
 ```typescript
-// Two hook calls, two DataTables. Both factories target the same model,
-// so the two connection objects are equivalent — we destructure both
-// (factory signature requires it) but use one for both hooks.
-const { connection, query: detailQuery, columnMetadata: detailMeta, vegaLiteSpec } = revenueByRegion();
+// Two hook calls. Both factories target the same model, so the two
+// connection objects are equivalent — we destructure both (factory signature
+// requires it) but use one for both hooks.
+const { connection, query: detailQuery, columnMetadata: detailMeta } = revenueByRegion();
 const { connection: _summaryConn, query: totalQuery, columnMetadata: totalMeta } = revenueTotal();
 
 const detail = useSemanticModelQuery({ connection, query: detailQuery });
 const summary = useSemanticModelQuery({ connection, query: totalQuery });
 
-const detailTable = toDataTable(detail.data.table, detailMeta);
-const summaryTable = toDataTable(summary.data.table, totalMeta);
+const detailRows = toChartData(detail.data, {
+  columns: { Region: "Region[Name]", Revenue: "Revenue" },
+});
+const summaryRows = toChartData(summary.data, {
+  columns: { Revenue: "Revenue" },
+});
+
+// For DataGrid rendering instead, use toDataTable(detail.data, detailMeta)
+// and toDataTable(summary.data, totalMeta).
 ```
 
-## Rendering in VegaVisual (multi-DataTable)
+## Rendering in chart cards
 
-Pass both tables as named datasets. The spec references each by name — no TypeScript stitching needed:
+Pass mapped rows to a chart card. Use `referenceLines` for summary values such as average, target, or grand total; use multiple `series` when the second query is aligned to the same x-axis grain.
 
 ```tsx
-<VegaVisual
-  spec={vegaLiteSpec}
-  data={{ detail: detailTable, summary: summaryTable }}
-  theme={theme}
+const grandTotal = summaryRows[0]?.Revenue as number | undefined;
+
+<BarChartCard
+  title="Revenue by region"
+  data={detailRows}
+  xKey="Region"
+  series={[{ key: "Revenue", label: "Revenue", color: "chart-1" }]}
+  valueFormat="currency"
+  referenceLines={grandTotal == null ? undefined : [{ y: grandTotal, label: "Grand total" }]}
 />
 ```
 
-The Vega-Lite spec (in the `.json` file) layers the two datasets:
-
-```json
-{
-  "layer": [
-    {
-      "data": { "name": "detail" },
-      "mark": "bar",
-      "encoding": {
-        "x": { "field": "RegionName", "type": "nominal" },
-        "y": { "field": "Revenue", "type": "quantitative" }
-      }
-    },
-    {
-      "data": { "name": "summary" },
-      "mark": { "type": "rule", "color": "firebrick", "strokeDash": [4, 4] },
-      "encoding": {
-        "y": { "field": "Revenue", "type": "quantitative" }
-      }
-    }
-  ]
-}
-```
-
-This pattern works for: reference lines (average, target), cross-highlighting between datasets, annotations on top of detail data.
+For overlays such as cross-highlighting, merge the aligned result sets in TypeScript into one row array, then pass baseline and subset as two `series` to one `LineChartCard` / `AreaChartCard` / `BarChartCard`. See the visuals skill's [multi-data input](../../visuals/references/multi-data-input.md) reference.
 
 ## Rendering in DataGrid (total row via cellRenderer)
 
