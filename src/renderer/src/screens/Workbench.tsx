@@ -23,6 +23,8 @@ import {
   type StudioProject
 } from '@shared/ipc'
 import CreateProjectScreen from '../components/CreateProjectScreen'
+import HomeView from '../components/HomeView'
+import DeleteProjectModal from '../components/DeleteProjectModal'
 import NewThreadModal from '../components/NewThreadModal'
 import ConfirmModal from '../components/ConfirmModal'
 import SettingsModal from '../components/SettingsModal'
@@ -36,7 +38,7 @@ import RayfinVersionControl from '../components/RayfinVersionControl'
 import AdvisorView, { categoryMeta } from '../components/AdvisorView'
 import ModelView from '../components/ModelView'
 import { useToast } from '../toast'
-import { InfoIcon, GearIcon, SignOutIcon } from '../components/icons'
+import { InfoIcon, GearIcon, SignOutIcon, CompareIcon } from '../components/icons'
 import logo from '../assets/logo.png'
 
 // Monaco is heavy (~7 MB); only load the code viewer when the Code tab is opened.
@@ -48,6 +50,16 @@ const MERGE_COUNTDOWN_SECONDS = 8
 /** Composite key for per-thread chat/shot state (main collapses to the project id). */
 function chatKey(projectId: string, threadId: string): string {
   return threadId === MAIN_THREAD_ID ? projectId : `${projectId}\u0000${threadId}`
+}
+
+/** Up-to-two-letter initials for the signed-in user's avatar, derived from their
+ * email (e.g. "first.last@…" → "FL", "sapatney@…" → "SA"). */
+function avatarInitials(email: string | null | undefined): string {
+  if (!email) return '?'
+  const local = email.split('@')[0] ?? email
+  const parts = local.split(/[.\-_]+/).filter(Boolean)
+  const letters = parts.length >= 2 ? `${parts[0][0]}${parts[1][0]}` : local.slice(0, 2)
+  return letters.toUpperCase() || '?'
 }
 
 /** Split a composite chat key back into its project + thread ids. */
@@ -149,31 +161,20 @@ export default function Workbench({
   const [createMode, setCreateMode] = useState<'create' | 'deploy' | null>(null)
   const [opening, setOpening] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
-  /** Left projects sidebar collapsed state (persisted across sessions). */
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem('rf.sidebarCollapsed') === '1'
-  )
-  const toggleSidebar = useCallback((): void => {
-    setSidebarCollapsed((c) => {
-      const next = !c
-      try {
-        localStorage.setItem('rf.sidebarCollapsed', next ? '1' : '0')
-      } catch {
-        /* ignore persistence errors */
-      }
-      return next
-    })
-  }, [])
+  /** Lazy-mount the Advisor view on first visit, then keep it mounted (hidden when
+   * inactive) so an in-flight review's live feed/timer/results survive tab switches. */
+  const [advisorMounted, setAdvisorMounted] = useState(false)
+  /** When true, the projects launcher (HomeView) is shown ON TOP of the still-active
+   * project — the project stays mounted in the background so any in-flight chat turn
+   * or Advisor review keeps running. Cleared when the launcher is dismissed or a
+   * different project is opened. Going to the launcher never deactivates a project;
+   * only opening a *different* one closes the current. */
+  const [showHome, setShowHome] = useState(false)
   /** Sidebar per-project actions menu / inline-rename / delete-confirm state. */
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [renamingId, setRenamingId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const [confirmDelete, setConfirmDelete] = useState<StudioProject | null>(null)
-  const [deleting, setDeleting] = useState(false)
-  /** Whether to also delete the project's deployed app(s) from Fabric. */
-  const [alsoDeleteFabric, setAlsoDeleteFabric] = useState(false)
-  /** Friendly message when deleting the Fabric app fails (keeps the modal open). */
-  const [deleteError, setDeleteError] = useState<string | null>(null)
   /** Bumped whenever the working tree likely changed (deploy / chat turn). */
   const [gitRefresh, setGitRefresh] = useState(0)
   /** A user-initiated deploy paused by the "you have unpulled changes" warning. */
@@ -373,7 +374,13 @@ export default function Workbench({
       deployingIdRef.current = projectId
       setDeploys((all) => ({ ...all, [projectId]: { running: true, log: [] } }))
       try {
-        const result = await window.api.deploy.run(projectId, workspace, force)
+        let result = await window.api.deploy.run(projectId, workspace, force)
+        // A deploy that failed only because the Fabric/Rayfin login expired: re-sign-in
+        // once and retry, so an expired token doesn't force a manual sign out / back in.
+        if (!result.ok && result.outcome === 'not-signed-in') {
+          const login = await window.api.auth.loginRayfin()
+          if (login.ok) result = await window.api.deploy.run(projectId, workspace, force)
+        }
         setDeploys((all) => {
           const cur = all[projectId] ?? { running: false, log: [] }
           return { ...all, [projectId]: { ...cur, running: false, result } }
@@ -827,9 +834,38 @@ export default function Workbench({
     })
   }, [refreshProjects])
 
+  // Lazy-mount the Advisor view the first time it's opened. After that it stays
+  // mounted (hidden when another tab is active) so an in-flight review keeps its
+  // live feed/timer/results instead of resetting on every tab switch.
+  useEffect(() => {
+    if (viewMode === 'advisor') setAdvisorMounted(true)
+  }, [viewMode])
+
+  // Re-gate per project: opening a *different* project unmounts Advisor until its
+  // tab is opened again (so the opt-in stale auto-run never fires for a project
+  // whose Advisor tab the user hasn't visited) and dismisses the launcher overlay.
+  useEffect(() => {
+    setAdvisorMounted(false)
+    setShowHome(false)
+  }, [active?.id])
+
   async function selectProject(p: StudioProject): Promise<void> {
     setNotice(null)
+    // Re-opening the project that's already active just closes the launcher and
+    // returns to it exactly as it was left — nothing is torn down or reloaded.
+    if (p.id === active?.id) {
+      setShowHome(false)
+      return
+    }
     setProjects(await window.api.projects.setActive(p.id))
+  }
+
+  // Show the projects launcher over the current project WITHOUT closing it, so any
+  // background work (a running chat turn, an Advisor review) keeps going. The active
+  // project is only closed when a different one is opened from the launcher.
+  function goHome(): void {
+    setNotice(null)
+    setShowHome(true)
   }
 
   // Fork a new side thread and immediately hand it its first task.
@@ -933,38 +969,6 @@ export default function Workbench({
     await refreshProjects()
   }
 
-  // Default "also delete from Fabric" on when the project has been deployed.
-  useEffect(() => {
-    setDeleteError(null)
-    setAlsoDeleteFabric(Boolean(confirmDelete?.lastDeploy?.url))
-  }, [confirmDelete])
-
-  async function deleteFromDisk(): Promise<void> {
-    if (!confirmDelete) return
-    setDeleting(true)
-    setDeleteError(null)
-    try {
-      // Delete the deployed app(s) from Fabric first (needs the project on disk
-      // to enumerate). On failure, stay in the modal so the user can retry or
-      // untick the option and remove locally only.
-      if (alsoDeleteFabric) {
-        const res = await window.api.fabric.deleteApps(confirmDelete.id)
-        if (!res.ok) {
-          setDeleteError(
-            res.needsLogin
-              ? 'You need to be signed in to Fabric to delete the app there. Sign in and try again, or untick the option to remove it from this app only.'
-              : (res.failures[0]?.error ?? res.error ?? 'Could not delete the app from Fabric.')
-          )
-          return
-        }
-      }
-      setProjects(await window.api.projects.remove(confirmDelete.id, true))
-      setConfirmDelete(null)
-    } finally {
-      setDeleting(false)
-    }
-  }
-
   async function signOut(): Promise<void> {
     setSigningOut(true)
     try {
@@ -1035,41 +1039,18 @@ export default function Workbench({
     <div className="app-shell">
       <header className="titlebar">
         <div className="brand">
-          <button
-            className="sidebar-toggle"
-            onClick={toggleSidebar}
-            title={sidebarCollapsed ? 'Show projects panel' : 'Hide projects panel'}
-            aria-label={sidebarCollapsed ? 'Show projects panel' : 'Hide projects panel'}
-            aria-pressed={!sidebarCollapsed}
-          >
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <rect
-                x="3"
-                y="4.5"
-                width="18"
-                height="15"
-                rx="2.5"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-              />
-              <line x1="9.5" y1="4.5" x2="9.5" y2="19.5" stroke="currentColor" strokeWidth="1.8" />
-            </svg>
-          </button>
           <img className="brand-mark" src={logo} alt="" />
           <span className="brand-name">Rayfin Fabricator</span>
         </div>
         <div className="titlebar-status">
-          <span className="who">{auth.rayfin.user ?? 'Signed in'}</span>
+          <div
+            className="who-avatar"
+            title={auth.rayfin.user ?? 'Signed in'}
+            aria-label={auth.rayfin.user ? `Signed in as ${auth.rayfin.user}` : 'Signed in'}
+          >
+            {avatarInitials(auth.rayfin.user)}
+          </div>
           <div className="seg seg--toolbar">
-            <button
-              className="seg-btn"
-              onClick={reportIssue}
-              title="Report an issue on GitHub — opens a prefilled bug report with app & system info"
-            >
-              <InfoIcon />
-              Report an issue
-            </button>
             <button className="seg-btn" onClick={() => setShowSettings(true)} title="Settings">
               <GearIcon />
               Settings
@@ -1109,121 +1090,25 @@ export default function Workbench({
           onContinueWithoutDeploy={() => setCreateMode(null)}
         />
       ) : (
-      <div className={`workbench${sidebarCollapsed ? ' workbench--sidebar-collapsed' : ''}`}>
-        <aside className="sidebar">
-          <div className="sidebar-actions">
-            <button className="btn btn--primary btn--block" onClick={() => setCreateMode('create')}>
-              + New project
-            </button>
-            <button className="btn btn--ghost btn--block" disabled={opening} onClick={openExisting}>
-              {opening ? 'Opening…' : 'Open existing…'}
-            </button>
-          </div>
-
-          <div className="sidebar-section-title">Projects</div>
-          <div className="project-list">
-            {projects && projects.projects.length === 0 && (
-              <div className="sidebar-empty">
-                No projects yet.
-                <br />
-                Create one to get started.
-              </div>
-            )}
-            {projects?.projects.map((p) => (
-              <div
-                key={p.id}
-                className={`project-item${p.id === projects.activeProjectId ? ' project-item--active' : ''}${menuOpenId === p.id ? ' project-item--menu-open' : ''}`}
-                onClick={() => {
-                  if (renamingId !== p.id) void selectProject(p)
-                }}
-                role="button"
-                tabIndex={0}
-              >
-                <div className="project-item-main">
-                  {renamingId === p.id ? (
-                    <input
-                      className="project-rename-input"
-                      value={renameValue}
-                      autoFocus
-                      spellCheck={false}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => setRenameValue(e.target.value)}
-                      onBlur={() => void submitRename(p)}
-                      onKeyDown={(e) => {
-                        e.stopPropagation()
-                        if (e.key === 'Enter') void submitRename(p)
-                        else if (e.key === 'Escape') setRenamingId(null)
-                      }}
-                    />
-                  ) : (
-                    <>
-                      <span className="project-item-name">
-                        {p.name}
-                        {p.missing && <span className="badge badge--warn">missing</span>}
-                      </span>
-                      <span className="project-item-path" title={p.path}>
-                        {p.path}
-                      </span>
-                    </>
-                  )}
-                </div>
-                <div className="project-item-actions">
-                  <button
-                    className="project-item-menu-btn"
-                    title="Project actions"
-                    aria-label="Project actions"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      setMenuOpenId((cur) => (cur === p.id ? null : p.id))
-                    }}
-                  >
-                    ⋯
-                  </button>
-                  {menuOpenId === p.id && (
-                    <div className="project-menu" onClick={(e) => e.stopPropagation()}>
-                      <button className="project-menu-item" onClick={() => startRename(p)}>
-                        Rename
-                      </button>
-                      <button className="project-menu-item" onClick={() => void removeFromList(p)}>
-                        Remove from list
-                      </button>
-                      <button
-                        className="project-menu-item project-menu-item--danger"
-                        onClick={() => {
-                          setMenuOpenId(null)
-                          setConfirmDelete(p)
-                        }}
-                      >
-                        Delete from disk…
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {projects && (
-            <div className="workspace-root">
-              <span className="workspace-root-label">Workspace</span>
-              <span className="workspace-root-path" title={projects.workspaceRoot}>
-                {projects.workspaceRoot}
-              </span>
-              <button className="btn btn--xs btn--ghost" onClick={changeWorkspaceRoot}>
-                Change…
-              </button>
-            </div>
-          )}
-        </aside>
-
+      <div className="workbench">
         <main className="content">
           {notice && <div className="alert alert--error content-alert">{notice}</div>}
           {active ? (
-            <>
+            <div className={`project-pane${showHome ? ' project-pane--hidden' : ''}`}>
               <div className="project-header">
-                <div>
-                  <h1 className="project-title">{active.name}</h1>
-                  <span className="project-subpath">{active.path}</span>
+                <div className="project-id">
+                  <button
+                    className="switch-projects-btn"
+                    onClick={goHome}
+                    title="Switch projects — open a recent project or create a new one (keeps this project running)"
+                  >
+                    <CompareIcon />
+                    Switch projects
+                  </button>
+                  <div className="project-id-text">
+                    <h1 className="project-title">{active.name}</h1>
+                    <span className="project-subpath">{active.path}</span>
+                  </div>
                 </div>
                 <div className="project-tabs" role="tablist">
                   <button
@@ -1260,11 +1145,6 @@ export default function Workbench({
                   </button>
                 </div>
                 <div className="project-meta">
-                  <GitControl
-                    projectId={active.id}
-                    refreshKey={gitRefresh}
-                    onSynced={() => setGitRefresh((n) => n + 1)}
-                  />
                   <DeploymentsControl
                     project={active}
                     running={Boolean(deploys[active.id]?.running)}
@@ -1310,15 +1190,7 @@ export default function Workbench({
                   onOpenFile={openFileInCode}
                   onSendToChat={sendModelToChat}
                 />
-              ) : viewMode === 'advisor' ? (
-                <AdvisorView
-                  project={active}
-                  onFix={fixWithCopilot}
-                  onExplain={explainFinding}
-                  onFixAll={fixAllFindings}
-                  autoRun={Boolean(settings?.experiments?.advisorAutoRun)}
-                />
-              ) : (
+              ) : viewMode === 'build' ? (
                 <div
                   className={`panes${focusPane ? ` panes--focus-${focusPane}` : ''}${
                     resizing ? ' panes--resizing' : ''
@@ -1429,30 +1301,67 @@ export default function Workbench({
                     />
                   )}
                 </div>
+              ) : null}
+              {advisorMounted && (
+                <div
+                  className={`advisor-host${viewMode === 'advisor' ? '' : ' advisor-host--hidden'}`}
+                >
+                  <AdvisorView
+                    project={active}
+                    onFix={fixWithCopilot}
+                    onExplain={explainFinding}
+                    onFixAll={fixAllFindings}
+                    autoRun={Boolean(settings?.experiments?.advisorAutoRun)}
+                  />
+                </div>
               )}
-            </>
-          ) : (
-            <div className="content-empty">
-              <img className="content-empty-mark" src={logo} alt="" />
-              <h1>Welcome to Rayfin Fabricator</h1>
-              <p>
-                Create a new Rayfin app or open an existing project to start building with chat.
-              </p>
-              <div className="content-empty-actions">
-                <button className="btn btn--primary" onClick={() => setCreateMode('create')}>
-                  + New project
-                </button>
-                <button className="btn btn--ghost" disabled={opening} onClick={openExisting}>
-                  Open existing…
-                </button>
-              </div>
             </div>
-          )}
+          ) : null}
+          {showHome || !active ? (
+            <>
+              {/* Project stays mounted underneath; hide the native preview (it paints
+                  above all HTML) while the launcher covers it. */}
+              {active && <SuppressPreview />}
+              <HomeView
+                projects={projects?.projects ?? []}
+                activeId={active?.id}
+                workspaceRoot={projects?.workspaceRoot ?? ''}
+                opening={opening}
+                menuOpenId={menuOpenId}
+                setMenuOpenId={setMenuOpenId}
+                renamingId={renamingId}
+                renameValue={renameValue}
+                setRenameValue={setRenameValue}
+                onSelect={(p) => void selectProject(p)}
+                onStartRename={startRename}
+                onSubmitRename={(p) => void submitRename(p)}
+                onCancelRename={() => setRenamingId(null)}
+                onRemoveFromList={(p) => void removeFromList(p)}
+                onDeleteFromDisk={(p) => {
+                  setMenuOpenId(null)
+                  setConfirmDelete(p)
+                }}
+                onNewProject={() => setCreateMode('create')}
+                onOpenExisting={openExisting}
+                onChangeWorkspaceRoot={changeWorkspaceRoot}
+              />
+            </>
+          ) : null}
         </main>
       </div>
       )}
 
       <footer className="statusbar">
+        {active && (
+          <>
+            <GitControl
+              projectId={active.id}
+              refreshKey={gitRefresh}
+              onSynced={() => setGitRefresh((n) => n + 1)}
+            />
+            <span className="statusbar-sep">·</span>
+          </>
+        )}
         <span className="statusbar-item">Rayfin Fabricator v{versions?.app ?? '—'}</span>
         <span className="statusbar-sep">·</span>
         <span
@@ -1465,16 +1374,21 @@ export default function Workbench({
         >
           Copilot {versions?.copilot ?? (auth.copilot.signedIn ? '✓' : '—')}
         </span>
-        <span className="statusbar-sep">·</span>
-        <span className="statusbar-item">Fabric {auth.rayfin.signedIn ? '✓' : '—'}</span>
         {active && (
           <>
             <span className="statusbar-sep">·</span>
             <RayfinVersionControl info={rayfinVer} onUpdate={requestRayfinUpdate} />
           </>
         )}
-        <span className="statusbar-sep">·</span>
-        <span className="statusbar-item">WebView2 {versions?.webview2 ?? '—'}</span>
+        <span className="statusbar-spacer" />
+        <button
+          className="statusbar-report"
+          onClick={reportIssue}
+          title="Report an issue on GitHub — opens a prefilled bug report with app & system info"
+        >
+          <InfoIcon />
+          Report an issue
+        </button>
       </footer>
 
       {showSettings && settings && (
@@ -1487,53 +1401,10 @@ export default function Workbench({
       )}
 
       {confirmDelete && (
-        <ConfirmModal
-          title="Delete project?"
-          danger
-          busy={deleting}
-          busyLabel={alsoDeleteFabric ? 'Deleting…' : 'Moving to trash…'}
-          confirmLabel={alsoDeleteFabric ? 'Delete everywhere' : 'Move to trash'}
-          onCancel={() => {
-            if (!deleting) setConfirmDelete(null)
-          }}
-          onConfirm={() => void deleteFromDisk()}
-          message={
-            <>
-              <p>
-                <strong>{confirmDelete.name}</strong> and all its files will be moved to your system
-                trash:
-              </p>
-              <p className="confirm-path">{confirmDelete.path}</p>
-              {confirmDelete.lastDeploy?.url ? (
-                <label className="confirm-check">
-                  <input
-                    type="checkbox"
-                    checked={alsoDeleteFabric}
-                    disabled={deleting}
-                    onChange={(e) => setAlsoDeleteFabric(e.target.checked)}
-                  />
-                  <span>
-                    Also delete the deployed app from Fabric
-                    {confirmDelete.workspaceName ? (
-                      <span className="confirm-check-hint">
-                        {' '}
-                        — permanently removes the app and its data in{' '}
-                        <strong>{confirmDelete.workspaceName}</strong>
-                      </span>
-                    ) : (
-                      <span className="confirm-check-hint">
-                        {' '}
-                        — permanently removes the app and its data
-                      </span>
-                    )}
-                  </span>
-                </label>
-              ) : (
-                <p>The deployed Fabric app is not affected — only the local code is removed.</p>
-              )}
-              {deleteError && <p className="confirm-error">{deleteError}</p>}
-            </>
-          }
+        <DeleteProjectModal
+          project={confirmDelete}
+          onRemoved={(next) => setProjects(next)}
+          onClose={() => setConfirmDelete(null)}
         />
       )}
 

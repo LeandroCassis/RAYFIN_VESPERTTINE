@@ -55,6 +55,7 @@ export default function DeploymentsControl({
   const [loadingDeps, setLoadingDeps] = useState(false)
   const [wsResult, setWsResult] = useState<FabricWorkspacesResult | null>(null)
   const [loadingWs, setLoadingWs] = useState(false)
+  const [reauthing, setReauthing] = useState(false)
   const [switching, setSwitching] = useState<string | null>(null)
   const [renamingKey, setRenamingKey] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -72,7 +73,20 @@ export default function DeploymentsControl({
   async function loadWorkspaces(): Promise<void> {
     setLoadingWs(true)
     try {
-      setWsResult(await window.api.fabric.listWorkspaces())
+      let res = await window.api.fabric.listWorkspaces()
+      // A missing/expired Fabric session: re-sign-in once and retry automatically,
+      // so an expired token doesn't force the user to manually sign out and back in
+      // just to list their workspaces.
+      if (!res.ok && res.needsLogin) {
+        setReauthing(true)
+        try {
+          const login = await window.api.auth.loginRayfin()
+          if (login.ok) res = await window.api.fabric.listWorkspaces()
+        } finally {
+          setReauthing(false)
+        }
+      }
+      setWsResult(res)
     } catch (err) {
       setWsResult({ ok: false, error: String(err) })
     } finally {
@@ -213,6 +227,7 @@ export default function DeploymentsControl({
             <DeploymentCreateForm
               wsResult={wsResult}
               loadingWs={loadingWs}
+              reauthing={reauthing}
               onReload={() => void loadWorkspaces()}
               running={running}
               onCancel={() => setCreating(false)}

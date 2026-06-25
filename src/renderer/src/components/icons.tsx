@@ -59,6 +59,17 @@ export function SignOutIcon(props: IconProps): JSX.Element {
   )
 }
 
+/** House — go back to the Home / projects landing. */
+export function HomeIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M3 11.5 12 4l9 7.5" />
+      <path d="M5 10v9a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-9" />
+      <path d="M9.5 20v-6h5v6" />
+    </Icon>
+  )
+}
+
 /** Cookie with chips — clear the preview's cookies / cached sign-in. */
 export function CookieIcon(props: IconProps): JSX.Element {
   return (

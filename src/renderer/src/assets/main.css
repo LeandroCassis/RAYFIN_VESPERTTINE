@@ -194,41 +194,6 @@ code {
   color: var(--accent);
 }
 
-.sidebar-toggle {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  margin-right: 1px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-
-.sidebar-toggle:hover {
-  background: var(--bg-elev-2);
-  color: var(--text);
-  border-color: var(--border);
-}
-
-.sidebar-toggle:active {
-  transform: translateY(0.5px);
-}
-
-.sidebar-toggle svg {
-  width: 17px;
-  height: 17px;
-  display: block;
-}
-
 .pill {
   font-size: 12px;
   padding: 3px 10px;
@@ -249,54 +214,30 @@ code {
 
 /* Workbench */
 .workbench {
-  display: grid;
-  grid-template-columns: 260px 1fr;
+  display: flex;
   min-height: 0;
-  transition: grid-template-columns 0.24s cubic-bezier(0.22, 0.61, 0.36, 1);
-}
-
-.workbench--sidebar-collapsed {
-  grid-template-columns: 0 1fr;
-}
-
-.sidebar {
-  border-right: 1px solid var(--border);
-  background: var(--bg-elev);
-  padding: 14px;
-  overflow-y: auto;
-  min-width: 0;
-  transition:
-    padding 0.24s cubic-bezier(0.22, 0.61, 0.36, 1),
-    border-right-color 0.24s ease;
-}
-
-.workbench--sidebar-collapsed .sidebar {
-  padding-left: 0;
-  padding-right: 0;
-  overflow: hidden;
-  border-right-color: transparent;
-  pointer-events: none;
-}
-
-.sidebar-section-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.8px;
-  color: var(--text-dim);
-  margin-bottom: 10px;
-}
-
-.sidebar-empty {
-  color: var(--text-dim);
-  font-size: 13px;
-  line-height: 1.5;
 }
 
 .content {
+  flex: 1;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
+}
+
+/* The active project's pane stays mounted (so a running chat turn or Advisor
+   review keeps going) but is hidden while the projects launcher is shown over it. */
+.project-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.project-pane--hidden {
+  display: none;
 }
 
 .panes {
@@ -429,6 +370,99 @@ code {
   opacity: 0.4;
 }
 
+.statusbar-spacer {
+  flex: 1;
+}
+
+/* "Report an issue" moved here from the titlebar — sits on the far right, styled
+   to blend with the bar's 12px dim type (a quiet link, not a heavy button). */
+.statusbar-report {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 6px;
+  /* Cancel the padding from layout so the separators stay evenly spaced; the
+     padding still gives the hover backdrop room around the text. */
+  margin: -3px -6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.statusbar-report:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+.statusbar-report svg {
+  width: 13px;
+  height: 13px;
+  opacity: 0.85;
+}
+
+/* Git lives in the footer status bar now (leading item). Blend it with the bar's
+   12px dim type — no pill/border, just a quiet hover — and flip its popover to open
+   upward (the bar is pinned to the window's bottom edge) so it never clips. */
+.statusbar .git-control {
+  margin-right: 0;
+}
+
+.statusbar .git-chip {
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border: none;
+  border-radius: 6px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.statusbar .git-branch-ico {
+  width: 13px;
+  height: 13px;
+  opacity: 0.75;
+}
+
+.statusbar .git-chip--actionable:hover,
+.statusbar .git-chip:hover.git-chip--dirty {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+/* Interactive footer items (git, the Rayfin version chip, Report an issue) share
+   one quiet affordance: brighten on hover with a subtly filled rounded backdrop.
+   Static readouts (app / Copilot version) stay as plain dim text. */
+.statusbar .ver-btn {
+  padding: 3px 6px;
+  margin: -3px -6px;
+  border-radius: 6px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.statusbar .ver-btn:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+.statusbar .git-popover {
+  top: auto;
+  bottom: 28px;
+  left: 0;
+  right: auto;
+}
+
 /* --- Rayfin version chip + upgrade popover (status bar) --- */
 .ver-control {
   position: relative;
@@ -454,13 +488,13 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 3px;
-  font-size: 10.5px;
+  font-size: 10px;
   font-weight: 600;
   line-height: 1;
   color: var(--on-accent);
   background: var(--accent);
-  border-radius: 999px;
-  padding: 2px 7px;
+  border-radius: 5px;
+  padding: 2px 5px;
 }
 .ver-pop {
   position: absolute;
@@ -545,9 +579,20 @@ code {
   color: var(--text-dim);
 }
 
-.who {
-  font-size: 12px;
-  color: var(--text-dim);
+.who-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.3px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--bg-elev-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  cursor: default;
+  user-select: none;
 }
 
 .titlebar-status {
@@ -1205,34 +1250,14 @@ code {
  * Projects: sidebar, list, active project header, empty state
  * ------------------------------------------------------------------ */
 
-.sidebar {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.sidebar-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.project-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
 .project-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid transparent;
+  gap: 11px;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
   cursor: pointer;
   transition:
     background 0.12s ease,
@@ -1241,11 +1266,28 @@ code {
 
 .project-item:hover {
   background: var(--bg-elev-2);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 .project-item--active {
   background: color-mix(in srgb, var(--accent) 12%, var(--bg-elev-2));
   border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+
+.project-item-mark {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--bg-elev-2));
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
+  text-transform: uppercase;
+  user-select: none;
 }
 
 .project-item-main {
@@ -1260,7 +1302,8 @@ code {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 13px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1372,6 +1415,12 @@ code {
   border-color: color-mix(in srgb, var(--pending) 40%, var(--border));
 }
 
+.badge--accent {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
 .workspace-root {
   display: flex;
   flex-direction: column;
@@ -1410,6 +1459,54 @@ code {
   padding: 8px 16px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elev);
+}
+
+.project-id {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
+.project-id-text {
+  min-width: 0;
+  padding-left: 14px;
+  border-left: 1px solid var(--border);
+}
+
+.switch-projects-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev-2);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.switch-projects-btn:hover {
+  background: var(--bg-elev-3);
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.switch-projects-btn:active {
+  transform: translateY(0.5px);
+}
+
+.switch-projects-btn svg {
+  width: 15px;
+  height: 15px;
 }
 
 .project-title {
@@ -5135,40 +5232,94 @@ code {
   background: var(--bg-elev-2);
 }
 
-/* Empty content state */
-.content-empty {
+/* Home / projects landing (replaces the old left sidebar) */
+.home {
   flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  text-align: center;
-  gap: 10px;
-  padding: 40px;
+  padding: 40px 24px 18px;
 }
 
-.content-empty-mark {
-  width: 60px;
-  height: 60px;
+.home-inner {
+  width: 100%;
+  max-width: 660px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 24px;
+  flex: 1;
+}
+
+.home-head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+}
+
+.home-mark {
+  width: 56px;
+  height: 56px;
   object-fit: contain;
 }
 
-.content-empty h1 {
+.home-title {
   margin: 0;
   font-size: 22px;
 }
 
-.content-empty p {
-  color: var(--text-dim);
-  max-width: 420px;
+.home-sub {
   margin: 0;
+  max-width: 440px;
+  color: var(--text-dim);
   line-height: 1.5;
 }
 
-.content-empty-actions {
+.home-actions {
   display: flex;
   gap: 10px;
-  margin-top: 10px;
+  margin-top: 6px;
+}
+
+.home-recents {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 10px;
+  flex: 1;
+}
+
+.home-section-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+}
+
+.home-empty {
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  text-align: center;
+}
+
+.home-project-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 2px 6px 2px 0;
+}
+
+.home-workspace {
+  margin-top: 4px;
 }
 
 .content-alert {
@@ -5277,6 +5428,150 @@ code {
 
 .confirm-check-hint {
   color: var(--text-dim);
+}
+
+.confirm-note {
+  margin: 12px 0 0;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+/* --- Delete-project stepped flow --- */
+.delete-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.delete-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-elev);
+  transition:
+    border-color 0.16s ease,
+    background 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.delete-step--pending {
+  opacity: 0.55;
+}
+
+.delete-step--active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: color-mix(in srgb, var(--accent) 9%, var(--bg-elev));
+}
+
+.delete-step--done {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.delete-step--error {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+  background: color-mix(in srgb, var(--danger) 9%, var(--bg-elev));
+}
+
+.delete-step-icon {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--text-dim);
+  background: var(--bg-elev-2);
+}
+
+.delete-step--active .delete-step-icon {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.delete-step--done .delete-step-icon {
+  color: #fff;
+  background: var(--accent);
+}
+
+.delete-step--error .delete-step-icon {
+  color: #fff;
+  background: var(--danger);
+}
+
+.delete-step-spin {
+  width: 14px;
+  height: 14px;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: ws-spin 0.7s linear infinite;
+}
+
+.delete-step-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.delete-step-label {
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.35;
+}
+
+.delete-step-hint {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  line-height: 1.35;
+}
+
+.delete-step-error {
+  list-style: none;
+  margin-top: 2px;
+  padding: 9px 11px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  border-radius: 8px;
+}
+
+.delete-running-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.delete-running-note--done {
+  color: var(--text);
+}
+
+.delete-done-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: #fff;
+  background: var(--accent);
 }
 
 .modal-header {
@@ -5728,13 +6023,6 @@ code {
   padding: 6px 12px;
   border-bottom: 1px solid var(--border);
   background: var(--bg-elev);
-}
-
-.chat-toolbar-title {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.6px;
-  color: var(--text-dim);
 }
 
 .chat-toolbar-spacer {
@@ -6270,28 +6558,86 @@ code {
 .turn-summary {
   align-self: flex-start;
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  align-items: flex-start;
+  gap: 7px;
   margin-top: 2px;
-  padding: 3px 9px 3px 7px;
+  padding: 6px 11px 6px 9px;
   font-size: 11.5px;
   font-weight: 500;
   color: var(--text-dim);
   background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: 10px;
 }
 
 .turn-summary-ico {
   width: 12px;
   height: 12px;
+  margin-top: 2px;
+  flex: none;
   color: var(--accent);
 }
 
-.turn-summary-text {
+.turn-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.turn-summary-item {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Collapsible variant: a one-line "Took N actions" header that expands to the
+   full per-kind breakdown. The container keeps the chip frame; its children pad
+   themselves so the header reads as a single quiet line. */
+.turn-summary--collapsible {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.turn-summary-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 11px 6px 9px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: color 0.12s ease;
+}
+
+.turn-summary-toggle:hover {
+  color: var(--text);
+}
+
+.turn-summary-caret {
+  width: 12px;
+  height: 12px;
+  margin-left: 1px;
+  opacity: 0.7;
+  transition: transform 0.15s ease;
+}
+
+.turn-summary--collapsible.is-open .turn-summary-caret {
+  transform: rotate(90deg);
+}
+
+.turn-summary--collapsible .turn-summary-list {
+  padding: 0 12px 8px 28px;
 }
 
 /* Live "working" bar — keeps visible motion on screen while a turn streams, so
@@ -6677,6 +7023,19 @@ span.thread-pill {
 }
 
 .thread-host--hidden {
+  display: none;
+}
+
+/* Advisor tab kept mounted across tab switches so an in-flight review keeps its
+   live feed/timer/results; hidden (not unmounted) when another tab is active. */
+.advisor-host {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.advisor-host--hidden {
   display: none;
 }
 

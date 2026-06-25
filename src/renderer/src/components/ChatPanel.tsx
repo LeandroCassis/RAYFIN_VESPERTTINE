@@ -34,7 +34,8 @@ import {
   CollapseIcon,
   CloseIcon,
   StopIcon,
-  ImageIcon
+  ImageIcon,
+  ChevronRightIcon
 } from './icons'
 import logo from '../assets/logo.png'
 
@@ -333,14 +334,29 @@ function useGeneratedSuggestions(
 }
 
 /** Coarse classification of a Copilot tool call, used for both labels and icons. */
-type ToolKind = 'read' | 'edit' | 'create' | 'search' | 'run' | 'delete' | 'other'
+type ToolKind =
+  | 'read'
+  | 'edit'
+  | 'create'
+  | 'search'
+  | 'run'
+  | 'delete'
+  | 'deploy'
+  | 'navigate'
+  | 'screenshot'
+  | 'other'
 
 function toolKind(name: string): ToolKind {
   const n = name.toLowerCase()
+  // Fabricator's own tools first — their names ("fabricator_…") contain the
+  // substring "cat", which would otherwise be misread as a file "cat"/read.
+  if (n.includes('screenshot')) return 'screenshot'
+  if (n.includes('navigate')) return 'navigate'
+  if (n.includes('deploy')) return 'deploy'
   if (n.includes('powershell') || n.includes('bash') || n.includes('shell')) return 'run'
   if (n.includes('create')) return 'create'
   if (n.includes('edit') || n.includes('replace') || n.includes('str_replace')) return 'edit'
-  if (n.includes('view') || n.includes('read') || n.includes('cat')) return 'read'
+  if (n.includes('view') || n.includes('read') || /\bcat\b/.test(n)) return 'read'
   if (n.includes('grep') || n.includes('search') || n.includes('glob') || n.includes('find'))
     return 'search'
   if (n.includes('delete') || n.includes('remove')) return 'delete'
@@ -354,6 +370,9 @@ const KIND_LABEL: Record<ToolKind, string> = {
   read: 'Reading a file',
   search: 'Searching the project',
   delete: 'Removing a file',
+  deploy: 'Deploying the app',
+  navigate: 'Opening the preview',
+  screenshot: 'Taking a screenshot',
   other: 'Working'
 }
 
@@ -367,7 +386,7 @@ function friendlyTool(name: string): string {
  * tool calls (e.g. "Edited 3 files · ran 2 commands · read 5 files"). Returns an
  * empty string when there is nothing meaningful to summarise.
  */
-function summarizeTools(tools: ChatToolCall[]): string {
+function summarizeToolParts(tools: ChatToolCall[]): { parts: string[]; total: number } {
   const c: Record<ToolKind, number> = {
     read: 0,
     edit: 0,
@@ -375,21 +394,29 @@ function summarizeTools(tools: ChatToolCall[]): string {
     search: 0,
     run: 0,
     delete: 0,
+    deploy: 0,
+    navigate: 0,
+    screenshot: 0,
     other: 0
   }
   for (const t of tools) c[toolKind(t.name)]++
   const n = (count: number, one: string, many: string): string =>
     `${count} ${count === 1 ? one : many}`
   const parts: string[] = []
-  if (c.edit) parts.push(`edited ${n(c.edit, 'file', 'files')}`)
-  if (c.create) parts.push(`created ${n(c.create, 'file', 'files')}`)
-  if (c.run) parts.push(`ran ${n(c.run, 'command', 'commands')}`)
-  if (c.read) parts.push(`read ${n(c.read, 'file', 'files')}`)
-  if (c.search) parts.push(`ran ${n(c.search, 'search', 'searches')}`)
-  if (c.delete) parts.push(`removed ${n(c.delete, 'file', 'files')}`)
-  if (parts.length === 0) return ''
-  const s = parts.join(' · ')
-  return s.charAt(0).toUpperCase() + s.slice(1)
+  if (c.edit) parts.push(`Edited ${n(c.edit, 'file', 'files')}`)
+  if (c.create) parts.push(`Created ${n(c.create, 'file', 'files')}`)
+  if (c.run) parts.push(`Ran ${n(c.run, 'command', 'commands')}`)
+  if (c.read) parts.push(`Read ${n(c.read, 'file', 'files')}`)
+  if (c.search) parts.push(`Ran ${n(c.search, 'search', 'searches')}`)
+  if (c.delete) parts.push(`Removed ${n(c.delete, 'file', 'files')}`)
+  if (c.deploy) parts.push(`Deployed ${n(c.deploy, 'time', 'times')}`)
+  if (c.screenshot) parts.push(`Took ${n(c.screenshot, 'screenshot', 'screenshots')}`)
+  if (c.navigate) parts.push(`Opened ${n(c.navigate, 'page', 'pages')}`)
+  // Total actions accounted for by the breakdown above (excludes uncategorized
+  // "other" calls, which aren't shown as their own line).
+  const total =
+    c.edit + c.create + c.run + c.read + c.search + c.delete + c.deploy + c.screenshot + c.navigate
+  return { parts, total }
 }
 
 /** Cap a tool target for the single-line working bar (keep the filename for paths). */
@@ -457,6 +484,28 @@ function ToolKindIcon({ kind, className }: { kind: ToolKind; className?: string 
           <path d="M5 7h14" />
           <path d="M9 7V4.5h6V7" />
           <path d="M6.5 7l1 12.5h9l1-12.5" />
+        </svg>
+      )
+    case 'deploy':
+      return (
+        <svg {...p}>
+          <path d="M6 16.5A3.5 3.5 0 0 1 6.5 9.6 5 5 0 0 1 16 8.8a3.6 3.6 0 0 1 2 6.7" />
+          <path d="M12 12v7" />
+          <path d="M9.5 14.5 12 12l2.5 2.5" />
+        </svg>
+      )
+    case 'navigate':
+      return (
+        <svg {...p}>
+          <circle cx="12" cy="12" r="8.5" />
+          <path d="M15.5 8.5 13 13l-4.5 2.5L11 11z" />
+        </svg>
+      )
+    case 'screenshot':
+      return (
+        <svg {...p}>
+          <path d="M4 8.5h3l1.5-2h7L17 8.5h3v10H4z" />
+          <circle cx="12" cy="13" r="3" />
         </svg>
       )
     default:
@@ -772,12 +821,46 @@ function ToolActivity({
 
 /** Compact roll-up chip shown under a completed assistant turn. */
 function TurnSummary({ tools }: { tools: ChatToolCall[] }): JSX.Element | null {
-  const summary = useMemo(() => summarizeTools(tools), [tools])
-  if (!summary) return null
+  const { parts, total } = useMemo(() => summarizeToolParts(tools), [tools])
+  const [expanded, setExpanded] = useState(false)
+  if (parts.length === 0) return null
+
+  // A single line is short enough to show inline — no toggle needed.
+  if (parts.length === 1) {
+    return (
+      <div className="turn-summary" title="What this turn did">
+        <CheckIcon className="turn-summary-ico" />
+        <span className="turn-summary-item">{parts[0]}</span>
+      </div>
+    )
+  }
+
+  // Multiple lines would stack tall and dominate the transcript, so collapse them
+  // behind a one-line "Took N actions" toggle that expands to the full breakdown.
   return (
-    <div className="turn-summary" title="What this turn did">
-      <CheckIcon className="turn-summary-ico" />
-      <span className="turn-summary-text">{summary}</span>
+    <div className={`turn-summary turn-summary--collapsible${expanded ? ' is-open' : ''}`}>
+      <button
+        type="button"
+        className="turn-summary-toggle"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        title="What this turn did"
+      >
+        <CheckIcon className="turn-summary-ico" />
+        <span>
+          Took {total} {total === 1 ? 'action' : 'actions'}
+        </span>
+        <ChevronRightIcon className="turn-summary-caret" />
+      </button>
+      {expanded && (
+        <ul className="turn-summary-list">
+          {parts.map((p, i) => (
+            <li key={i} className="turn-summary-item">
+              {p}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }
@@ -1962,8 +2045,31 @@ export default function ChatPanel({
   return (
     <div className="chat">
       <div className="chat-toolbar">
-        <span className="chat-toolbar-title">Chat</span>
-        <span className="chat-toolbar-spacer" />
+        <div className="seg seg--toolbar">
+          {onToggleFocus && (
+            <button
+              className={`seg-btn seg-btn--icon${focused ? ' seg-btn--on' : ''}`}
+              onClick={onToggleFocus}
+              title={
+                focused
+                  ? 'Exit focus — show the preview again'
+                  : 'Focus the chat — hide the preview'
+              }
+              aria-label={focused ? 'Exit focus' : 'Focus the chat'}
+            >
+              {focused ? <CollapseIcon /> : <ExpandIcon />}
+            </button>
+          )}
+          <button
+            className="seg-btn"
+            onClick={newChat}
+            disabled={sending || messages.length === 0}
+            title="Clear this conversation and start fresh"
+          >
+            <EraserIcon />
+            Clear chat
+          </button>
+        </div>
         <div className="chat-model-menu" onClick={(e) => e.stopPropagation()}>
           <button
             className="chat-model-btn"
@@ -2023,31 +2129,7 @@ export default function ChatPanel({
             </div>
           )}
         </div>
-        <div className="seg seg--toolbar">
-          <button
-            className="seg-btn"
-            onClick={newChat}
-            disabled={sending || messages.length === 0}
-            title="Clear this conversation and start fresh"
-          >
-            <EraserIcon />
-            Clear chat
-          </button>
-          {onToggleFocus && (
-            <button
-              className={`seg-btn seg-btn--icon${focused ? ' seg-btn--on' : ''}`}
-              onClick={onToggleFocus}
-              title={
-                focused
-                  ? 'Exit focus — show the preview again'
-                  : 'Focus the chat — hide the preview'
-              }
-              aria-label={focused ? 'Exit focus' : 'Focus the chat'}
-            >
-              {focused ? <CollapseIcon /> : <ExpandIcon />}
-            </button>
-          )}
-        </div>
+        <span className="chat-toolbar-spacer" />
       </div>
 
       <div className="chat-scroll" ref={scrollRef} onScroll={onScrollChat}>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { RayfinVersionInfo } from '@shared/ipc'
+import { useSuppressPreview } from '../overlay'
 
 interface Props {
   /** Local Rayfin version report for the active project (null while loading). */
@@ -43,6 +44,10 @@ function summarize(info: RayfinVersionInfo): SummaryRow[] {
  */
 export default function RayfinVersionControl({ info, onUpdate }: Props): JSX.Element {
   const [open, setOpen] = useState(false)
+
+  // The popover is plain HTML, but the live preview is a native webview that paints
+  // above all HTML — hide it while the popover is open so it isn't clipped behind it.
+  useSuppressPreview(open)
 
   useEffect(() => {
     if (!open) return

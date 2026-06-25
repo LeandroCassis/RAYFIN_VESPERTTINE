@@ -40,6 +40,8 @@ interface Props {
   wsResult: FabricWorkspacesResult | null
   /** True while the workspace list is loading. */
   loadingWs: boolean
+  /** True while re-signing-in after an expired session (shown during the reload). */
+  reauthing?: boolean
   /** Re-fetch the workspace list (the error-state "Retry"). */
   onReload: () => void
   /** True while a `rayfin up` is streaming (disables submit). */
@@ -69,6 +71,7 @@ interface Props {
 export default function DeploymentCreateForm({
   wsResult,
   loadingWs,
+  reauthing = false,
   onReload,
   running = false,
   submitLabel = 'Create & deploy',
@@ -123,7 +126,7 @@ export default function DeploymentCreateForm({
         {loadingWs ? (
           <div className="ws-loading">
             <span className="ws-spinner" />
-            Loading your workspaces…
+            {reauthing ? 'Re-authenticating…' : 'Loading your workspaces…'}
           </div>
         ) : all.length > 0 ? (
           <>

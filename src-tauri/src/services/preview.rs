@@ -99,6 +99,12 @@ struct Inner {
   /// [`navigate_and_wait`] so the validation tools can block until the new
   /// document has loaded before capturing a screenshot.
   load_waiters: Vec<oneshot::Sender<()>>,
+  /// Whether the child webview is currently shown (`true` after `show()`,
+  /// `false` after `hide()`). WebView2's `CapturePreview` never completes on a
+  /// hidden surface — it pumps the UI-thread message loop forever and freezes
+  /// the whole app — so [`capture_preview_bytes`] refuses to capture unless this
+  /// is `true`.
+  visible: bool,
 }
 
 impl Inner {
@@ -253,6 +259,7 @@ pub async fn preview_show_url(
     if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
       let _ = wv.set_bounds(bounds.to_rect());
       let _ = wv.show();
+      state.inner.lock().unwrap().visible = true;
     }
     return Ok(());
   }
@@ -273,6 +280,7 @@ pub async fn preview_show_url(
       state.inner.lock().unwrap().reset_to(&url);
     }
     let _ = wv.show();
+    state.inner.lock().unwrap().visible = true;
   }
   Ok(())
 }
@@ -322,6 +330,7 @@ pub fn preview_set_bounds(app: AppHandle, bounds: PreviewBounds) -> AppResult<()
 pub fn preview_hide(app: AppHandle) -> AppResult<()> {
   if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
     wv.hide().map_err(|e| AppError::Msg(e.to_string()))?;
+    app.state::<PreviewState>().inner.lock().unwrap().visible = false;
   }
   Ok(())
 }
@@ -424,6 +433,14 @@ pub(crate) async fn capture_preview_bytes(app: &AppHandle) -> AppResult<Vec<u8>>
   let wv = app
     .get_webview(PREVIEW_LABEL)
     .ok_or_else(|| AppError::Msg("preview is not open".into()))?;
+
+  // CapturePreview pumps the UI-thread message loop until WebView2 signals
+  // completion — but on a hidden surface that signal never comes, hanging the
+  // entire app (you can't even close the window). Refuse to capture unless the
+  // webview is currently shown; callers treat this as a soft failure.
+  if !app.state::<PreviewState>().inner.lock().unwrap().visible {
+    return Err(AppError::Msg("preview is not visible".into()));
+  }
 
   let (tx, rx) = oneshot::channel::<Result<Vec<u8>, String>>();
   wv.with_webview(move |platform| {

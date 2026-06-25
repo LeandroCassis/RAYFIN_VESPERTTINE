@@ -156,7 +156,15 @@ pub fn set_workspace_root(path: String) -> ProjectsState {
 pub fn set_active(id: Option<String>) -> ProjectsState {
   with_cache(|c| {
     if let Some(ref want) = id {
-      if !c.state.projects.iter().any(|p| &p.id == want) {
+      // Bump the selected project to the front so Home shows true
+      // most-recently-used order (matches how upsert_project front-loads
+      // newly created / opened projects).
+      if let Some(pos) = c.state.projects.iter().position(|p| &p.id == want) {
+        if pos != 0 {
+          let p = c.state.projects.remove(pos);
+          c.state.projects.insert(0, p);
+        }
+      } else {
         return c.state.clone();
       }
     }

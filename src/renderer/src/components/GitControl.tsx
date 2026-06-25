@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { GitRemoteStatus, GitStatus } from '../../../shared/ipc'
 import { useSuppressPreview } from '../overlay'
+import { BranchIcon } from './icons'
 
 interface Props {
   projectId: string
@@ -157,6 +158,7 @@ export default function GitControl({ projectId, refreshKey, onSynced }: Props): 
           if (actionable) setOpen((o) => !o)
         }}
       >
+        <BranchIcon className="git-branch-ico" />
         <span className="git-branch">{status.branch ?? 'git'}</span>
         <span className="git-dot">·</span>
         <span className="git-count">{countLabel}</span>
