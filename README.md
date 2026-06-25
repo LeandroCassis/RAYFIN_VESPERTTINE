@@ -76,13 +76,13 @@ Want to build from source instead? Jump to [Build from source](#build-from-sourc
 
 ## What's inside
 
-**Author.** Chat with a built-in GitHub Copilot agent (threads and history included), inspect and edit any generated file in a built-in Monaco editor, browse the agent's reusable Skills, and lean on a git timeline you can diff and restore.
+**Author.** Chat with a built-in GitHub Copilot agent in **Agent**, **Plan**, or **Autopilot** mode — pick the model and reasoning effort, steer it mid-turn, and keep separate threads (plus optional parallel side threads) with full history. Inspect and edit any generated file in a built-in Monaco editor, see your data model as an entity diagram, browse the agent's reusable Skills, and lean on a git timeline you can diff and restore.
 
 **Ship.** One-click `rayfin up` deploys to Microsoft Fabric. A deployments panel handles create, switch, and redeploy across workspaces.
 
 **Preview.** A native inline preview loads your running app — navigation, reload, sign-out / clear-cookies, focus mode, a Fabric portal shell toggle, and annotate-a-screenshot-straight-into-chat.
 
-**Validate.** The Advisor runs AI security and policy checks, saves the results, and tells you when they've gone stale.
+**Validate.** The Advisor runs AI security and policy checks, saves the results, and tells you when they've gone stale. The Model tab flags loose access on any entity and hands a one-click *harden* prompt to the agent.
 
 **Stay current.** Fabricator tracks each project's pinned Rayfin version and can hand an upgrade straight to the agent, keeping the app building as it goes.
 
@@ -96,6 +96,7 @@ flowchart TD
     Renderer["React 18 + TypeScript renderer<br/>Vite UI"]
     Core["Tauri v2 Rust core<br/>IPC commands + services"]
     Editor["Monaco code editor"]
+    Model["Data model view<br/>entities + access"]
     Preview["Native WebView2 preview<br/>deployed app or Fabric portal shell"]
     Advisor["Advisor<br/>Copilot-driven checks"]
   end
@@ -117,6 +118,7 @@ flowchart TD
   User --> Renderer
   Renderer <--> Core
   Renderer --> Editor
+  Renderer --> Model
   Renderer --> Preview
   Renderer --> Advisor
 
@@ -133,7 +135,7 @@ flowchart TD
   Portal --> Runtime
 ```
 
-A React renderer drives the workbench, chat, editor, preview, deployments, advisor, settings, skills, and history. A Tauri v2 Rust core owns the IPC handlers in `src-tauri/src/commands/` and the services in `src-tauri/src/services/` for running external tools, persistence, preview hosting, telemetry, history, crash logs, and path management.
+A React renderer drives the workbench, chat, editor, data model view, preview, deployments, advisor, settings, skills, and history. A Tauri v2 Rust core owns the IPC handlers in `src-tauri/src/commands/` and the services in `src-tauri/src/services/` for running external tools, persistence, preview hosting, telemetry, history, crash logs, auto-updates, and path management.
 
 The idea: Fabricator wraps the tools you'd otherwise run by hand. It shells out to the GitHub Copilot CLI to author and to the Rayfin CLI to deploy, tracks your project with git, and loads the running app — deployed to Microsoft Fabric — into the embedded preview. The Advisor closes the loop with AI validation that flags issues like unauthenticated routes or loose database policies and goes stale when the project moves on. You get the whole build-and-ship loop without leaving the window.
 

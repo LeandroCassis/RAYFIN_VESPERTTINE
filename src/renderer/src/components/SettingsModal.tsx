@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import type { AppSettings, AppVersions, ThemePreference } from '@shared/ipc'
 import { applyTheme } from '../theme'
 import { useSuppressPreview } from '../overlay'
 import { useUpdates } from '../update'
+import ConfirmModal from './ConfirmModal'
 
 interface Props {
   settings: AppSettings
@@ -18,6 +19,31 @@ const THEMES: Array<{ value: ThemePreference; label: string }> = [
   { value: 'light', label: 'Light' }
 ]
 
+function ToggleRow({
+  label,
+  hint,
+  checked,
+  onChange
+}: {
+  label: string
+  hint: string
+  checked: boolean
+  onChange: (value: boolean) => void
+}): JSX.Element {
+  return (
+    <label className="set-row">
+      <span className="set-row-text">
+        <span className="set-row-label">{label}</span>
+        <span className="field-hint">{hint}</span>
+      </span>
+      <span className={`switch${checked ? ' switch--on' : ''}`}>
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span className="switch-knob" />
+      </span>
+    </label>
+  )
+}
+
 export default function SettingsModal({
   settings,
   versions,
@@ -29,11 +55,19 @@ export default function SettingsModal({
   const [checkedUpdates, setCheckedUpdates] = useState(false)
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
   const titleId = useId()
-  // Compatibility rendering is applied at startup, so toggling it only takes
-  // effect after a relaunch. Remember its value on open to detect a pending change.
-  const initialCompatRendering = useRef(Boolean(settings.experiments?.compatibilityRendering))
-  const compatRenderingChanged =
-    Boolean(settings.experiments?.compatibilityRendering) !== initialCompatRendering.current
+  // Compatibility rendering is applied at startup, so any change only takes effect
+  // after a relaunch. Toggling it opens a mandatory restart prompt; `restartPrompt`
+  // holds the value to revert to if the user declines, keeping the setting from
+  // being left half-applied.
+  const [restartPrompt, setRestartPrompt] = useState<{ revertTo: boolean } | null>(null)
+
+  // Toggling compatibility rendering forces a restart: persist the new value, then
+  // require the user to relaunch (or cancel, which reverts the change).
+  function toggleCompatRendering(value: boolean): void {
+    const revertTo = Boolean(settings.experiments?.compatibilityRendering)
+    onChange({ experiments: { compatibilityRendering: value } })
+    setRestartPrompt({ revertTo })
+  }
 
   useEffect(() => {
     void window.api.projects.state().then((s) => setWorkspaceRoot(s.workspaceRoot))
@@ -59,9 +93,7 @@ export default function SettingsModal({
   }
 
   const updateBusy =
-    updateStatus === 'checking' ||
-    updateStatus === 'downloading' ||
-    updateStatus === 'installing'
+    updateStatus === 'checking' || updateStatus === 'downloading' || updateStatus === 'installing'
   let updateMsg: string
   if (updateStatus === 'checking') updateMsg = 'Checking for updates…'
   else if (updateStatus === 'downloading') updateMsg = 'Downloading the latest update…'
@@ -76,171 +108,149 @@ export default function SettingsModal({
   else updateMsg = versions ? `You’re on version ${versions.app}.` : ''
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div
-        className="modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h2 id={titleId}>Settings</h2>
-          <button className="btn btn--sm btn--ghost" onClick={onClose} aria-label="Close settings">
-            ✕
-          </button>
-        </div>
+    <>
+      <div className="modal-backdrop" onClick={onClose}>
+        <div
+          className="modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="modal-header">
+            <h2 id={titleId}>Settings</h2>
+            <button
+              className="btn btn--sm btn--ghost"
+              onClick={onClose}
+              aria-label="Close settings"
+            >
+              ✕
+            </button>
+          </div>
 
-        <div className="modal-body">
-          <div className="field">
-            <span className="field-label">Theme</span>
-            <div className="seg">
-              {THEMES.map((t) => (
-                <button
-                  key={t.value}
-                  type="button"
-                  className={`seg-btn${settings.theme === t.value ? ' seg-btn--active' : ''}`}
-                  onClick={() => pickTheme(t.value)}
-                >
-                  {t.label}
-                </button>
-              ))}
+          <div className="modal-body">
+            <div className="field">
+              <span className="field-label">Theme</span>
+              <div className="seg">
+                {THEMES.map((t) => (
+                  <button
+                    key={t.value}
+                    type="button"
+                    className={`seg-btn${settings.theme === t.value ? ' seg-btn--active' : ''}`}
+                    onClick={() => pickTheme(t.value)}
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
 
-          <label className="field">
-            <span className="field-label">Workspace folder</span>
-            <div className="settings-row">
-              <code className="settings-path" title={workspaceRoot ?? ''}>
-                {workspaceRoot ?? '…'}
-              </code>
-              <button className="btn btn--sm btn--ghost" onClick={() => void changeRoot()}>
-                Change…
-              </button>
-            </div>
-            <span className="field-hint">New projects are created under this folder.</span>
-          </label>
-
-          <div className="settings-note">
-            <span className="settings-check-label">Anonymous usage stats</span>
-            <span className="field-hint">
-              Rayfin Fabricator sends minimal usage stats — your sign-in domain (e.g.
-              company.com) and a one-way hash of your email — so we can see how the
-              product is used. Your email address, code, and app contents never leave
-              your machine.
-            </span>
-          </div>
-
-          <div className="field">
-            <span className="field-label">
-              Experiments <span className="settings-beta">Beta</span>
-            </span>
-            <label className="settings-check">
-              <input
-                type="checkbox"
-                checked={Boolean(settings.experiments?.sideThreads)}
-                onChange={(e) =>
-                  onChange({ experiments: { sideThreads: e.target.checked } })
-                }
-              />
-              <span>
-                <span className="settings-check-label">Side threads</span>
-                <span className="field-hint">
-                  Fork a project into parallel background agents. Each side thread works in
-                  isolation, then auto-merges into your main thread and redeploys when it’s
-                  done.
-                </span>
-              </span>
-            </label>
-            <label className="settings-check">
-              <input
-                type="checkbox"
-                checked={Boolean(settings.experiments?.advisorAutoRun)}
-                onChange={(e) =>
-                  onChange({ experiments: { advisorAutoRun: e.target.checked } })
-                }
-              />
-              <span>
-                <span className="settings-check-label">Auto-refresh the Advisor</span>
-                <span className="field-hint">
-                  When you open the Advisor and its last review is out of date (your code
-                  changed since), re-run it automatically instead of just flagging it as stale.
-                </span>
-              </span>
-            </label>
-          </div>
-
-          <div className="field">
-            <span className="field-label">Performance</span>
-            <label className="settings-check">
-              <input
-                type="checkbox"
-                checked={Boolean(settings.experiments?.compatibilityRendering)}
-                onChange={(e) =>
-                  onChange({ experiments: { compatibilityRendering: e.target.checked } })
-                }
-              />
-              <span>
-                <span className="settings-check-label">Compatibility rendering</span>
-                <span className="field-hint">
-                  Turn off GPU acceleration and draw in software instead. Fixes freezing and
-                  hangs in virtual machines such as Parallels, where the emulated GPU can
-                  misbehave. Leave this off on normal hardware.
-                </span>
-              </span>
-            </label>
-            {compatRenderingChanged && (
+            <label className="field">
+              <span className="field-label">Workspace folder</span>
               <div className="settings-row">
-                <span className="field-hint">Restart Rayfin Fabricator to apply this change.</span>
-                <button
-                  className="btn btn--sm btn--ghost"
-                  onClick={() => void window.api.relaunch()}
-                >
-                  Restart now
+                <code className="settings-path" title={workspaceRoot ?? ''}>
+                  {workspaceRoot ?? '…'}
+                </code>
+                <button className="btn btn--sm btn--ghost" onClick={() => void changeRoot()}>
+                  Change…
                 </button>
               </div>
-            )}
-          </div>
+              <span className="field-hint">New projects are created here.</span>
+            </label>
 
-          <div className="field">
-            <span className="field-label">Updates</span>
-            <div className="settings-row">
-              <span className="field-hint">{updateMsg}</span>
-              <button
-                className="btn btn--sm btn--ghost"
-                disabled={updateBusy}
-                onClick={() => {
-                  setCheckedUpdates(true)
-                  void checkNow()
-                }}
-              >
-                {updateBusy ? 'Checking…' : 'Check for updates'}
-              </button>
+            <div className="field">
+              <span className="field-label">Usage stats</span>
+              <span className="field-hint">
+                We send your sign-in domain and a hashed email so we can see how the product is
+                used. Your email, code, and apps stay on this device.
+              </span>
+            </div>
+
+            <div className="field">
+              <span className="field-label">
+                Experiments <span className="settings-beta">Beta</span>
+              </span>
+              <ToggleRow
+                label="Side threads"
+                hint="Run parallel background agents that auto-merge into your main thread."
+                checked={Boolean(settings.experiments?.sideThreads)}
+                onChange={(v) => onChange({ experiments: { sideThreads: v } })}
+              />
+              <ToggleRow
+                label="Auto-refresh the Advisor"
+                hint="Re-run a stale review automatically when you open the Advisor."
+                checked={Boolean(settings.experiments?.advisorAutoRun)}
+                onChange={(v) => onChange({ experiments: { advisorAutoRun: v } })}
+              />
+            </div>
+
+            <div className="field">
+              <span className="field-label">Performance</span>
+              <ToggleRow
+                label="Compatibility rendering"
+                hint="Disable GPU acceleration to fix freezing in VMs like Parallels."
+                checked={Boolean(settings.experiments?.compatibilityRendering)}
+                onChange={toggleCompatRendering}
+              />
+            </div>
+
+            <div className="field">
+              <span className="field-label">Updates</span>
+              <div className="settings-row">
+                <span className="field-hint">{updateMsg}</span>
+                <button
+                  className="btn btn--sm btn--ghost"
+                  disabled={updateBusy}
+                  onClick={() => {
+                    setCheckedUpdates(true)
+                    void checkNow()
+                  }}
+                >
+                  {updateBusy ? 'Checking…' : 'Check for updates'}
+                </button>
+              </div>
+            </div>
+
+            <div className="field">
+              <span className="field-label">Diagnostics</span>
+              <div className="settings-row">
+                <span className="field-hint">Logs are saved on this device.</span>
+                <button
+                  className="btn btn--sm btn--ghost"
+                  onClick={() => void window.api.openLogs()}
+                >
+                  Open logs folder
+                </button>
+              </div>
             </div>
           </div>
 
-          <div className="field">
-            <span className="field-label">Diagnostics</span>
-            <div className="settings-row">
-              <span className="field-hint">Crash and error logs are saved on this device.</span>
-              <button className="btn btn--sm btn--ghost" onClick={() => void window.api.openLogs()}>
-                Open logs folder
-              </button>
-            </div>
+          <div className="modal-footer settings-footer">
+            <span className="settings-version">
+              {versions
+                ? `Rayfin Fabricator ${versions.app} · Tauri ${versions.tauri} · WebView2 ${versions.webview2} · Copilot CLI ${versions.copilot ?? 'unknown'}`
+                : ''}
+            </span>
+            <button className="btn btn--primary" onClick={onClose}>
+              Done
+            </button>
           </div>
-        </div>
-
-        <div className="modal-footer settings-footer">
-          <span className="settings-version">
-            {versions
-              ? `Rayfin Fabricator ${versions.app} · Tauri ${versions.tauri} · WebView2 ${versions.webview2} · Copilot CLI ${versions.copilot ?? 'unknown'}`
-              : ''}
-          </span>
-          <button className="btn btn--primary" onClick={onClose}>
-            Done
-          </button>
         </div>
       </div>
-    </div>
+
+      {restartPrompt && (
+        <ConfirmModal
+          title="Restart required"
+          message="Compatibility rendering only changes after a restart. Rayfin Fabricator will restart now to apply it."
+          confirmLabel="Restart now"
+          cancelLabel="Cancel"
+          onConfirm={() => void window.api.relaunch()}
+          onCancel={() => {
+            onChange({ experiments: { compatibilityRendering: restartPrompt.revertTo } })
+            setRestartPrompt(null)
+          }}
+        />
+      )}
+    </>
   )
 }
