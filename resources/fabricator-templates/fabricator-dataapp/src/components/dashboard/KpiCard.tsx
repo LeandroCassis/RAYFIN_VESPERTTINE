@@ -10,8 +10,10 @@ import type { ReactNode } from "react";
 import { resolveColor } from "@/lib/chartTokens";
 import { formatDelta, resolveFormat, type ValueFormat } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { warnMissingKeys } from "@/lib/validate";
 
 import { ArrowDownRightIcon, ArrowUpRightIcon } from "./icons";
+import { Sparkline } from "./Sparkline";
 import { EmptyTile, ErrorTile, KpiSkeleton } from "./states";
 
 export interface KpiCardProps {
@@ -46,7 +48,11 @@ export interface KpiCardProps {
     /** Retry handler shown on the error tile. */
     onRetry?: () => void;
     className?: string;
-    /** Optional chart slot under the value — typically a `<Sparkline />`. */
+    /** Inline trend values — renders a `<Sparkline />` under the value and,
+     *  when `delta` is omitted, auto-derives the delta from first → last. */
+    trend?: ReadonlyArray<number>;
+    /** Optional chart slot under the value — typically a `<Sparkline />`.
+     *  Overrides `trend` when both are set. */
     children?: ReactNode;
 }
 
@@ -89,31 +95,18 @@ export function KpiCard({
     emptyMessage,
     onRetry,
     className,
+    trend,
     children,
 }: KpiCardProps) {
     const derived = data && valueKey ? data[0]?.[valueKey] : undefined;
     const metricValue = value ?? derived;
     const isEmpty = value === undefined && (data?.length === 0 || derived == null);
 
-    const firstRow = data?.[0];
-    if (
-        import.meta.env.DEV &&
-        value === undefined &&
-        !loading &&
-        error == null &&
-        valueKey &&
-        firstRow != null &&
-        typeof firstRow === "object" &&
-        !(valueKey in firstRow)
-    ) {
+    if (value === undefined && !loading && error == null) {
         // Loud, actionable hint instead of a silently empty tile — the most
         // common KpiCard mistake is a `valueKey` that doesn't match a column
         // (wrong casing, an un-aliased DAX name, or forgetting `toChartData`).
-        console.warn(
-            `[KpiCard] valueKey "${valueKey}" was not found in the first data row, ` +
-                `so this card renders its empty state. Available keys: ` +
-                `${Object.keys(firstRow).join(", ") || "(none)"}.`,
-        );
+        warnMissingKeys("KpiCard", data, [valueKey]);
     }
 
     if (loading) return <KpiSkeleton className={className} />;
@@ -149,14 +142,36 @@ export function KpiCard({
         typeof metricValue === "number"
             ? resolveFormat(valueFormat)(metricValue)
             : String(metricValue ?? "");
-    const showDelta = typeof delta === "number" && Number.isFinite(delta);
+
+    // Auto-derive the delta from the trend (first → last) when not supplied.
+    const finiteTrend = trend?.filter((n) => Number.isFinite(n)) ?? [];
+    const autoDelta =
+        delta === undefined && finiteTrend.length >= 2 && finiteTrend[0] !== 0
+            ? ((finiteTrend[finiteTrend.length - 1] - finiteTrend[0]) /
+                  Math.abs(finiteTrend[0])) *
+              100
+            : undefined;
+    const effectiveDelta = delta ?? autoDelta;
+
+    const showDelta =
+        typeof effectiveDelta === "number" && Number.isFinite(effectiveDelta);
     const direction =
-        !showDelta || delta === 0 ? "flat" : (delta as number) > 0 ? "up" : "down";
+        !showDelta || effectiveDelta === 0
+            ? "flat"
+            : (effectiveDelta as number) > 0
+              ? "up"
+              : "down";
     const good =
         direction === "flat"
             ? null
             : (direction === "up") !== Boolean(invertDelta);
     const accentColor = accent ? resolveColor(accent) : undefined;
+
+    const sparkline =
+        children ??
+        (trend && trend.length > 1 ? (
+            <Sparkline data={trend} color={accent} height={36} />
+        ) : null);
 
     return (
         <section
@@ -218,12 +233,12 @@ export function KpiCard({
                     >
                         {direction === "up" && <ArrowUpRightIcon size={12} />}
                         {direction === "down" && <ArrowDownRightIcon size={12} />}
-                        {formatDelta(delta as number)}
+                        {formatDelta(effectiveDelta as number)}
                     </span>
                 )}
             </div>
 
-            {children && <div className="mt-1 -mb-1">{children}</div>}
+            {sparkline && <div className="mt-1 -mb-1">{sparkline}</div>}
             {deltaLabel && (
                 <p className="text-xs text-muted-foreground">{deltaLabel}</p>
             )}

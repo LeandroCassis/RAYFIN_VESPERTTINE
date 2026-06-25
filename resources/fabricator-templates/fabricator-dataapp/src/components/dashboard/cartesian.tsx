@@ -16,7 +16,6 @@ import {
     Line,
     LineChart,
     ReferenceLine,
-    ResponsiveContainer,
     Tooltip,
     XAxis,
     YAxis,
@@ -31,8 +30,11 @@ import {
     resolveColor,
     useChartTheme,
 } from "@/lib/chartTokens";
+import { inferXFormat, autoAxisWidth } from "@/lib/auto-format";
 import { resolveFormat, type ValueFormat } from "@/lib/format";
+import { warnMissingKeys } from "@/lib/validate";
 
+import { ChartFrame, type LegendItem, type LegendPlacement } from "./ChartFrame";
 import { ChartTooltip } from "./ChartTooltip";
 
 /** One plotted measure. The model maps DAX rows → array and lists series. */
@@ -75,8 +77,10 @@ export interface CartesianChartProps {
     series: SeriesConfig[];
     /** Bar layout (default "vertical"). Use "horizontal" for ranked bars. */
     layout?: "vertical" | "horizontal";
-    /** Plot height in px (default 280). */
+    /** Fixed pixel height. Omit for responsive aspect-based height (the default). */
     height?: number;
+    /** Width/height ratio for responsive height (default 2.2); ignored when `height` is set. */
+    aspect?: number;
     /** Y-axis + tooltip value format (default `"number"`). */
     valueFormat?: ValueFormat;
     /** X-axis tick formatter (e.g. `formatDate`). */
@@ -85,6 +89,8 @@ export interface CartesianChartProps {
     showGrid?: boolean;
     /** Toggle the legend (default: on when >1 series). */
     showLegend?: boolean;
+    /** Legend position (default "top"). */
+    legendPlacement?: LegendPlacement;
     /** Stack bars / areas (default false). */
     stacked?: boolean;
     /** Line/area interpolation (default `"monotone"`). */
@@ -131,11 +137,13 @@ export function CartesianChart({
     xKey,
     series,
     layout = "vertical",
-    height = 280,
+    height,
+    aspect,
     valueFormat,
     xFormat,
     showGrid = true,
     showLegend,
+    legendPlacement = "top",
     stacked,
     curve = "monotone",
     referenceLines,
@@ -143,13 +151,19 @@ export function CartesianChart({
     const theme = useChartTheme();
     const uid = useId();
     const formatValue = resolveFormat(valueFormat);
+    const resolvedXFormat = xFormat ?? inferXFormat(data, xKey);
+    const yValues = data
+        .flatMap((row) => series.map((entry) => Number(row[entry.key])))
+        .filter((value) => Number.isFinite(value));
+    const yWidth = autoAxisWidth(yValues, formatValue);
     const colors = series.map((entry, index) => resolveColor(entry.color, index));
     const legend = showLegend ?? series.length > 1;
     const isHorizontalBar = type === "bar" && layout === "horizontal";
 
-    if (import.meta.env.DEV) {
-        validateChartKeys(data, xKey, series);
-    }
+    warnMissingKeys("CartesianChart", data, [
+        xKey,
+        ...series.map((entry) => entry.key),
+    ]);
 
     const common: ReactNode[] = [
         showGrid ? <CartesianGrid key="grid" {...gridProps(theme)} /> : null,
@@ -159,20 +173,25 @@ export function CartesianChart({
             {...axisProps(theme)}
             minTickGap={24}
             tickFormatter={
-                xFormat ? (value) => xFormat(value as string | number) : undefined
+                resolvedXFormat
+                    ? (value) => resolvedXFormat(value as string | number)
+                    : undefined
             }
         />,
         <YAxis
             key="y"
             {...axisProps(theme)}
-            width={48}
+            width={yWidth}
             tickFormatter={(value) => formatValue(Number(value))}
         />,
         <Tooltip
             key="tip"
             cursor={type === "bar" ? barCursor(theme) : lineCursor(theme)}
             content={
-                <ChartTooltip valueFormat={valueFormat} labelFormat={xFormat} />
+                <ChartTooltip
+                    valueFormat={valueFormat}
+                    labelFormat={resolvedXFormat}
+                />
             }
         />,
         ...(referenceLines?.map((line, index) => (
@@ -216,14 +235,19 @@ export function CartesianChart({
             {...axisProps(theme)}
             width={112}
             tickFormatter={
-                xFormat ? (value) => xFormat(value as string | number) : undefined
+                resolvedXFormat
+                    ? (value) => resolvedXFormat(value as string | number)
+                    : undefined
             }
         />,
         <Tooltip
             key="tip"
             cursor={barCursor(theme)}
             content={
-                <ChartTooltip valueFormat={valueFormat} labelFormat={xFormat} />
+                <ChartTooltip
+                    valueFormat={valueFormat}
+                    labelFormat={resolvedXFormat}
+                />
             }
         />,
     ];
@@ -317,34 +341,21 @@ export function CartesianChart({
         );
     }
 
-    return (
-        <div className="w-full">
-            {legend && <ChartLegend series={series} colors={colors} />}
-            <ResponsiveContainer width="100%" height={height}>
-                {chart}
-            </ResponsiveContainer>
-        </div>
-    );
-}
+    const legendItems: LegendItem[] | undefined = legend
+        ? series.map((entry, index) => ({
+              label: entry.label ?? entry.key,
+              color: colors[index],
+          }))
+        : undefined;
 
-function validateChartKeys(
-    data: Array<Record<string, unknown>>,
-    xKey: string,
-    series: SeriesConfig[],
-) {
-    if (!data.length) return;
-    const availableKeys = Object.keys(data[0] ?? {});
-    const available = availableKeys.length ? availableKeys.join(", ") : "(none)";
-    if (!availableKeys.includes(xKey)) {
-        console.warn(
-            `[CartesianChart] xKey="${xKey}" is missing from mapped rows. Available keys: ${available}`,
-        );
-    }
-    series.forEach((entry) => {
-        if (!availableKeys.includes(entry.key)) {
-            console.warn(
-                `[CartesianChart] series key "${entry.key}" is missing from mapped rows. Available keys: ${available}`,
-            );
-        }
-    });
+    return (
+        <ChartFrame
+            height={height}
+            aspect={aspect}
+            legend={legendItems}
+            legendPlacement={legendPlacement}
+        >
+            {chart}
+        </ChartFrame>
+    );
 }

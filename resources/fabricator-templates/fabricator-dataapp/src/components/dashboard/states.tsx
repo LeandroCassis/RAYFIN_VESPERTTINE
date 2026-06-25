@@ -5,13 +5,32 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+import {
+    DEFAULT_ASPECT,
+    MAX_CHART_HEIGHT,
+    MIN_CHART_HEIGHT,
+} from "./ChartFrame";
 import { AlertTriangleIcon, InboxIcon } from "./icons";
 
-const DEFAULT_HEIGHT = 280;
+const RESPONSIVE_CHART_STATE_STYLE: CSSProperties = {
+    aspectRatio: String(DEFAULT_ASPECT),
+    minHeight: MIN_CHART_HEIGHT,
+    maxHeight: MAX_CHART_HEIGHT,
+};
+
+/** Returns fixed or responsive sizing for chart skeleton placeholders. */
+function getChartSkeletonStyle(height?: number): CSSProperties {
+    return height != null ? { height } : RESPONSIVE_CHART_STATE_STYLE;
+}
+
+/** Returns fixed or responsive sizing for centered chart state tiles. */
+function getChartStateTileStyle(height?: number): CSSProperties {
+    return height != null ? { minHeight: height } : RESPONSIVE_CHART_STATE_STYLE;
+}
 
 /* ------------------------------- Skeletons ------------------------------- */
 
@@ -22,13 +41,15 @@ export interface ChartSkeletonProps {
 
 /** Shimmering faux-bar placeholder shown while a chart's data loads. */
 export function ChartSkeleton({
-    height = DEFAULT_HEIGHT,
+    height,
     className,
 }: ChartSkeletonProps) {
+    const sizeStyle = getChartSkeletonStyle(height);
+
     return (
         <div
             className={cn("flex items-end gap-2", className)}
-            style={{ height }}
+            style={sizeStyle}
             aria-hidden
         >
             {[62, 84, 48, 96, 70, 58, 88, 52].map((h, i) => (
@@ -72,16 +93,18 @@ export interface EmptyTileProps {
 export function EmptyTile({
     message = "No data to display",
     icon,
-    height = DEFAULT_HEIGHT,
+    height,
     className,
 }: EmptyTileProps) {
+    const sizeStyle = getChartStateTileStyle(height);
+
     return (
         <div
             className={cn(
                 "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border text-center",
                 className,
             )}
-            style={{ minHeight: height }}
+            style={sizeStyle}
         >
             <span className="text-foreground-muted">
                 {icon ?? <InboxIcon size={28} />}
@@ -104,9 +127,10 @@ export function ErrorTile({
     error,
     title = "Something went wrong",
     onRetry,
-    height = DEFAULT_HEIGHT,
+    height,
     className,
 }: ErrorTileProps) {
+    const sizeStyle = getChartStateTileStyle(height);
     const message =
         error == null
             ? null
@@ -119,7 +143,7 @@ export function ErrorTile({
                 "flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-destructive/40 text-center",
                 className,
             )}
-            style={{ minHeight: height }}
+            style={sizeStyle}
         >
             <span className="text-destructive">
                 <AlertTriangleIcon size={28} />

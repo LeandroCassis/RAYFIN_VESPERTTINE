@@ -84,7 +84,7 @@ export function PageShell({
     );
 }
 
-/** Responsive grid for a row of KPI cards (1 → 2 → 4 columns). */
+/** Fluid auto-fit grid for a row of KPI cards. */
 export function KpiGrid({
     children,
     className,
@@ -95,7 +95,7 @@ export function KpiGrid({
     return (
         <div
             className={cn(
-                "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4",
+                "grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(220px,100%),1fr))]",
                 className,
             )}
         >
@@ -104,7 +104,7 @@ export function KpiGrid({
     );
 }
 
-/** Responsive grid for chart cards (1 → 2 columns). */
+/** Fluid auto-fit grid for chart cards. */
 export function ChartGrid({
     children,
     className,
@@ -114,7 +114,10 @@ export function ChartGrid({
 }) {
     return (
         <div
-            className={cn("grid grid-cols-1 gap-4 lg:grid-cols-2", className)}
+            className={cn(
+                "grid gap-4 grid-cols-[repeat(auto-fit,minmax(min(380px,100%),1fr))]",
+                className,
+            )}
         >
             {children}
         </div>
@@ -160,5 +163,94 @@ export function Section({
             )}
             {children}
         </section>
+    );
+}
+
+/* --------------------------------- Bento -------------------------------- */
+
+// Static class maps so Tailwind's content scanner sees every span utility.
+const COL_SPAN: Record<number, string> = {
+    1: "lg:col-span-1",
+    2: "lg:col-span-2",
+    3: "lg:col-span-3",
+    4: "lg:col-span-4",
+    5: "lg:col-span-5",
+    6: "lg:col-span-6",
+    7: "lg:col-span-7",
+    8: "lg:col-span-8",
+    9: "lg:col-span-9",
+    10: "lg:col-span-10",
+    11: "lg:col-span-11",
+    12: "lg:col-span-12",
+};
+
+const ROW_SPAN: Record<number, string> = {
+    1: "lg:row-span-1",
+    2: "lg:row-span-2",
+    3: "lg:row-span-3",
+};
+
+/**
+ * Non-uniform "bento" grid for varied, editorial dashboard layouts — a wide
+ * hero chart beside a stack of KPIs, a tall trend next to short tiles. A
+ * 12-column grid on `lg` that collapses to one column on small screens. Place
+ * {@link BentoItem}s inside and set each one's `colSpan` / `rowSpan`.
+ *
+ * @example
+ * ```tsx
+ * <BentoGrid>
+ *   <BentoItem colSpan={8} rowSpan={2}>
+ *     <LineChartCard title="Revenue" className="h-full" … />
+ *   </BentoItem>
+ *   <BentoItem colSpan={4}><KpiCard label="MRR" … /></BentoItem>
+ *   <BentoItem colSpan={4}><KpiCard label="Churn" … /></BentoItem>
+ * </BentoGrid>
+ * ```
+ */
+export function BentoGrid({
+    children,
+    className,
+}: {
+    children: ReactNode;
+    className?: string;
+}) {
+    return (
+        <div
+            className={cn(
+                "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12 lg:auto-rows-[minmax(0,auto)]",
+                className,
+            )}
+        >
+            {children}
+        </div>
+    );
+}
+
+export interface BentoItemProps {
+    /** Columns to span on `lg` (1–12, default 4). Full width on small screens. */
+    colSpan?: number;
+    /** Rows to span on `lg` (1–3, default 1) for taller tiles. */
+    rowSpan?: number;
+    children: ReactNode;
+    className?: string;
+}
+
+/**
+ * A cell in a {@link BentoGrid}. Spans `colSpan` of 12 columns (and optional
+ * `rowSpan`) on `lg`; stacks full-width on small screens. Add `className="h-full"`
+ * on the card inside to fill a multi-row tile.
+ */
+export function BentoItem({
+    colSpan = 4,
+    rowSpan = 1,
+    children,
+    className,
+}: BentoItemProps) {
+    const col = COL_SPAN[Math.min(12, Math.max(1, Math.round(colSpan)))];
+    const row = ROW_SPAN[Math.min(3, Math.max(1, Math.round(rowSpan)))];
+    return (
+        <div className={cn("flex min-w-0 flex-col", col, row, className)}>
+            {children}
+        </div>
     );
 }

@@ -50,8 +50,9 @@ Power BI semantic model (Fabric)
   `toChartData(result)` for charts (array of keyed row objects), or
   `toDataTable(result, columnMetadata)` for the DataGrid. Both accept the query
   result, a raw table, or `undefined` — no `status` check needed.
-- **The kit renders.** Each card owns its theme, axes, tooltip, legend,
-  number/date formatting, dark mode, and loading/empty/error states.
+- **The kit renders.** Each card owns its theme, responsive sizing, axes,
+  tooltip, legend, number/date formatting, dark mode, and loading/empty/error
+  states.
 
 `fabric.yaml` declares the semantic-model connection; `src/fabric.generated.ts`
 is regenerated from it by `build:fabric` (`fabric-app-data generate`). Don't
@@ -145,7 +146,11 @@ Never hand-edit the generated file.
 | Decide DAX vs. TypeScript for a transform | `query-design` skill (responsibility matrix) |
 | Make it look stunning / theme it | `app-design` skill + edit `src/global.css` tokens |
 | Add a filter / segmented control | `visuals` skill (Controls) — own the value in React state |
-| Build a chart the kit lacks (scatter/radar/…) | `visuals` skill → **Escape hatch** (Recharts inside `ChartCard`) |
+| Overlay a different-unit trend (bar + line) | `visuals` skill → `ComboChartCard` (dual axis) |
+| Show a metric vs. target (gauge / progress) | `visuals` skill → `GaugeCard` / `BulletChartCard` |
+| Vary card sizes / non-uniform layout | `visuals` skill → `BentoGrid` / `BentoItem` |
+| Pivot a long result into multi-series | `visuals` skill → `pivotChartData` |
+| Build a chart the kit lacks (radar/treemap/…) | `visuals` skill → **Escape hatch** (Recharts inside `ChartCard`) |
 | Wire/connect a semantic model | `fabric-cli` + `fabric-sdk` skills; edit `fabric.yaml` |
 | Deploy to test | `npm run rayfin:up` (or let Fabricator deploy + screenshot) |
 

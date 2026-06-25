@@ -12,6 +12,24 @@ format them here so charts can scale axes and tables can sort.
 | `DataTableCard` / `DataGrid` | per-column `format` in `columnMetadata` (a VBA/ECMA-376 string) |
 | Anywhere in JSX | call a formatter from `@/components/dashboard` directly |
 
+## Formatting by default
+
+The kit fills in safe formatting so a chart reads correctly the moment you pass
+data — you only override when you want something specific:
+
+- **Date x-axis** — when the x values are real dates (ISO-like) and you didn't
+  pass `xFormat`, ticks auto-format with `formatDate`. Plain category labels
+  ("Jan", "Q1", a bare year) are deliberately left untouched.
+- **Y-axis width** — sized automatically from the widest formatted tick, so long
+  currency / compact labels never clip (no hand-tuned axis width).
+- **Compact numbers** — the `"number"` default already groups and compacts ≥ 10k
+  on axes.
+
+What the kit will **not** do is guess a value's **unit**. Bare numbers can't
+reveal whether `0.42` is a ratio, a count, or 42¢ — so currency / percent / ratio
+stay an explicit one-word `valueFormat`. An explicit `xFormat` / `valueFormat`
+always wins over the inferred default.
+
 ## `valueFormat` (charts + KPI)
 
 Accepts a preset string or a function `(n: number) => string`:

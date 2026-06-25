@@ -4,9 +4,10 @@ description: >
   Use when adding charts, KPIs, tables, or any visual to a dashboard. This is
   the dashboard KIT catalog: a curated set of pre-built, themed components you
   COMPOSE by passing data — you should rarely hand-write Recharts or raw JSX.
-  Covers KpiCard, the chart cards (line/area/bar/donut), DataTableCard,
-  layout (PageShell/grids), controls, state tiles, the data-mapping helpers
-  (toChartData / toDataTable), value formatting, color tokens, and the
+  Covers KpiCard, the chart cards (line/area/bar/combo/scatter/donut/gauge/
+  funnel/bullet), DataTableCard, layout (PageShell/grids/bento), controls,
+  state tiles, the DAX-mapping helpers (toChartData / toDataTable /
+  pivotChartData / topN / deriveKpi), value formatting, color tokens, and the
   Recharts escape hatch.
 ---
 
@@ -86,23 +87,54 @@ const rows2 = toChartData(data, {
 // rows2 → [{ month: "Jan", revenue: 84200 }, …]
 ```
 
+### Shape helpers (multi-series · ranked · KPI)
+
+Three helpers map common DAX result shapes straight into a card's props — so
+you never hand-write a pivot loop, a sort, or a delta calc. All accept the
+query result, a `QueryTable`, or `undefined`.
+
+- **`pivotChartData(result, { x, series, value, order? })`** — reshape a
+  **long** result (`x, category, value` — one row per combo) into **wide**
+  rows AND the matching `series[]` (keys + order). Spread both into a
+  multi-series line/area/bar card. Replaces the manual `Map` pivot.
+- **`topN(rows, valueKey, n, { other?, ascending? })`** — sort + slice already
+  mapped rows for ranked bars / leaderboards, with an optional `"Other"` rollup.
+- **`deriveKpi(result, { valueKey })`** → `{ value, previous, delta, trend }` —
+  one call feeds a `KpiCard`'s value + delta + sparkline from a time series.
+
+```tsx
+// Long result → stacked multi-series bars, no pivot loop:
+const { rows, series, xKey } = pivotChartData(data, {
+  x: "Date[Month]", series: "Product[Category]", value: "Revenue",
+  order: "total-desc",
+});
+<BarChartCard title="Revenue by category" data={rows} xKey={xKey}
+  series={series} stacked valueFormat="currency" />
+
+// Time series → KPI value + delta + sparkline in one call:
+const kpi = deriveKpi(data, { valueKey: "Revenue" });
+<KpiCard label="Revenue" value={kpi.value ?? undefined} valueFormat="currency"
+  delta={kpi.delta ?? undefined} trend={kpi.trend} deltaLabel="vs last month" />
+```
+
 ## Import surface
 
 ```tsx
 import {
   // layout
-  PageShell, KpiGrid, ChartGrid, Section, ThemeToggle,
+  PageShell, KpiGrid, ChartGrid, Section, BentoGrid, BentoItem, ThemeToggle,
   // controls
   SegmentedControl, FilterChips,
   // cards
   KpiCard, ChartCard, DataTableCard,
   // charts
-  LineChartCard, AreaChartCard, BarChartCard, DonutChartCard, PieChartCard,
-  Sparkline, ChartTooltip,
+  LineChartCard, AreaChartCard, BarChartCard, ComboChartCard, ScatterChartCard,
+  DonutChartCard, PieChartCard, GaugeCard, FunnelChartCard, BulletChartCard,
+  ProgressBar, Sparkline, ChartTooltip, ChartFrame,
   // state tiles
   EmptyTile, ErrorTile, ChartSkeleton, KpiSkeleton, TileBody,
-  // helpers
-  toChartData, toDataTable,
+  // DAX-mapping helpers
+  toChartData, toDataTable, pivotChartData, topN, deriveKpi,
   formatNumber, formatCompact, formatCurrency, formatPercent, formatDate,
   seriesColor, roleColor, useChartTheme,
 } from "@/components/dashboard";
@@ -122,6 +154,23 @@ import {
   directly; the card renders skeleton → error → empty → content.
 - **Never ship mock/fake data.** A tile with no data shows the empty state.
 
+### Responsive, legends & formatting — by default
+
+The kit handles these three so you rarely configure them — and never burn a
+deploy to discover a chart clipped, squished, or mis-scaled:
+
+- **Responsive height.** Every chart scales with its container (an aspect ratio,
+  clamped ~200–360px) — short on a phone, taller in a wide bento tile. You rarely
+  set `height`; pass `height={n}` only to pin a fixed pixel height, or `aspect={n}`
+  to tune the shape (lower = taller).
+- **Legends.** Multi-series charts legend automatically. Position with
+  `legendPlacement="top" | "right" | "bottom" | "none"` (default `"top"`; the
+  donut defaults to `"right"`). No prop wiring, no manual `<Legend>`.
+- **Formatting.** Date x-axes auto-format and the Y-axis width auto-sizes to the
+  widest tick, so labels never clip. You still pass `valueFormat` for *units*
+  (currency / percent / ratio) — the kit deliberately never guesses a unit from
+  bare numbers. See [Formatting by default](references/formatting.md#formatting-by-default).
+
 ---
 
 ## Layout
@@ -137,11 +186,29 @@ centered, max-width column. Put `<ThemeToggle />` (and filters) in `actions`.
 </PageShell>
 ```
 
-- **`KpiGrid`** — responsive 1→2→4 column grid for KPI cards.
-- **`ChartGrid`** — responsive 1→2 column grid for chart cards.
+- **`KpiGrid`** — fluid auto-fit grid (~220px min) — any number of KPI cards flow
+  cleanly (3 or 5 no longer leave a ragged gap).
+- **`ChartGrid`** — fluid auto-fit grid (~380px min) for chart cards.
 - **`Section`** — titled grouping (`title`, `subtitle`, `action`) for a band
   of tiles.
 - **`ThemeToggle`** — light/dark button wired to the app theme context.
+
+### `BentoGrid` / `BentoItem`
+For varied, editorial layouts — a wide hero chart beside a stack of KPIs, a
+tall trend next to short tiles. A 12-column grid on `lg` that collapses to one
+column on small screens; set each item's `colSpan` (1–12) and optional
+`rowSpan` (1–3). Reach for it over `ChartGrid` when you want non-uniform card
+sizes (the `app-design` skill asks for this — avoid a uniform spreadsheet grid).
+
+```tsx
+<BentoGrid>
+  <BentoItem colSpan={8}><ComboChartCard title="Revenue & margin" … /></BentoItem>
+  <BentoItem colSpan={4}><GaugeCard title="Quota" value={72} target={100} valueFormat="percent" /></BentoItem>
+  <BentoItem colSpan={4}><KpiCard label="MRR" … /></BentoItem>
+  <BentoItem colSpan={4}><KpiCard label="Churn" … /></BentoItem>
+  <BentoItem colSpan={4}><KpiCard label="NRR" … /></BentoItem>
+</BentoGrid>
+```
 
 ## Controls (filters)
 
@@ -273,9 +340,10 @@ breakdowns. Bars plot in row order, so sort `rows` by value first.
 ```
 
 Cartesian chart props: `data` (mapped rows), `xKey`, `series`
-(`{ key, label?, color?, stackId? }[]`), `height`, `valueFormat`, `xFormat`,
-`showGrid`, `showLegend`, `stacked`, `layout`/`horizontal` (bar),
-`curve` (line/area), `referenceLines`.
+(`{ key, label?, color?, stackId? }[]`), `height`/`aspect` (responsive by
+default), `valueFormat`, `xFormat` (auto for dates), `showGrid`, `showLegend`,
+`legendPlacement`, `stacked`, `layout`/`horizontal` (bar), `curve` (line/area),
+`referenceLines`.
 
 ### `DonutChartCard` / `PieChartCard`
 Categorical share with a value + % legend. The donut center shows the total
@@ -286,8 +354,89 @@ by default.
   nameKey="Channel" valueKey="Sales" valueFormat="currency" />
 ```
 
-Props: `data`, `nameKey`, `valueKey`, `colors?`, `height`, `valueFormat`,
-`donut`, `centerLabel`, `showLegend`, plus shared state props.
+Props: `data`, `nameKey`, `valueKey`, `colors?`, `height` (max donut size),
+`valueFormat`, `donut`, `centerLabel`, `showLegend`, `legendPlacement`
+(`"top" | "right" | "bottom"`, default `"right"`), plus shared state props.
+
+### `ComboChartCard`
+Bars **plus** line(s), with an optional **dual Y axis** so a different-unit
+trend (a margin %, a conversion rate) overlays value bars without being
+flattened. The classic "revenue bars + margin line" combo.
+
+```tsx
+<ComboChartCard
+  title="Revenue & margin" data={rows} xKey="Month"
+  bars={[{ key: "Revenue", label: "Revenue", color: "chart-1" }]}
+  lines={[{ key: "Margin", label: "Margin %", color: "chart-4" }]}
+  valueFormat="currency"        // left axis (bars)
+  rightValueFormat="percent"    // right axis (lines)
+/>
+```
+
+Props: `data`, `xKey`, `bars` / `lines` (`SeriesConfig[]`), `valueFormat`,
+`rightValueFormat`, `rightAxis?` (default on when both bars+lines present),
+`stacked`, `curve`, `referenceLines`, `xFormat`, `height`/`aspect`,
+`legendPlacement`, plus shared state props.
+
+### `ScatterChartCard`
+X/Y correlation, with optional **bubble** sizing (`sizeKey`) and categorical
+**grouping** (`series` splits points into themed, legended groups).
+
+```tsx
+<ScatterChartCard
+  title="Discount vs margin" data={rows}
+  xKey="DiscountRate" yKey="GrossMargin"
+  sizeKey="Revenue" series="Segment"
+  xFormat="ratio" valueFormat="ratio" sizeName="Revenue"
+/>
+```
+
+Props: `data`, `xKey`, `yKey`, `sizeKey?`, `series?`, `xFormat`, `valueFormat`,
+`sizeName?`, `height`/`aspect`, `showGrid`, `showLegend`, `legendPlacement`,
+plus shared state props.
+
+### `GaugeCard`
+A single metric vs a target (or max) as a radial gauge with a big centered
+value. Pass `thresholds` to color the arc by attainment.
+
+```tsx
+<GaugeCard
+  title="Quota attainment" value={72} target={100} valueFormat="percent"
+  thresholds={[{ at: 0, color: "danger" }, { at: 60, color: "warning" }, { at: 90, color: "success" }]}
+/>
+```
+
+Props: `value`, `target?` **or** `max?`, `valueFormat`, `thresholds?`
+(`{ at, color }[]`, greatest `at ≤ %` wins), `label?`, `height`/`aspect`,
+`startAngle`/`endAngle`, plus shared state props.
+
+### `FunnelChartCard`
+Ordered stage conversion (lead → opportunity → win) sized by value, with
+per-stage conversion labels (% of the first stage). Auto-sorts descending.
+
+```tsx
+<FunnelChartCard title="Pipeline" data={rows}
+  stageKey="Stage" valueKey="Accounts" valueFormat="compact" />
+```
+
+Props: `data`, `stageKey`, `valueKey`, `valueFormat`, `height`/`aspect`, `sort`
+(default true), `showConversion` (default true), plus shared state props.
+
+### `BulletChartCard` / `ProgressBar`
+Compact actual-vs-target bars for "progress to goal" lists (quota, budget
+burn, OKRs). `BulletChartCard` maps rows to a stack of bars; `ProgressBar` is
+the single-bar primitive. A `targetKey`/`target` draws a goal marker and tints
+met bars green.
+
+```tsx
+<BulletChartCard title="Quota attainment" data={rows}
+  labelKey="rep" valueKey="bookings" targetKey="quota" valueFormat="currency" />
+
+<ProgressBar label="Q3 quota" value={82_000} target={100_000} valueFormat="currency" />
+```
+
+`BulletChartCard` props: `data`, `labelKey`, `valueKey`, `targetKey?`,
+`valueFormat`, `max?`, `color?`, `barHeight?`, plus shared state props.
 
 ### `Sparkline`
 Compact, axis-less trend for KPI cards / inline cells. Accepts a raw
@@ -315,34 +464,35 @@ children).
 
 ## Escape hatch
 
-If a visualization genuinely isn't in the kit (e.g. scatter, radar, treemap,
-a combo chart), compose it inside a `ChartCard` using Recharts directly **plus
+If a visualization genuinely isn't in the kit (e.g. radar, treemap, heatmap,
+waterfall), compose it inside a `ChartCard` using Recharts directly **plus
 the kit's helpers** so it still matches the theme:
 
 ```tsx
-import { ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
-import { ChartCard, ChartTooltip, useChartTheme, seriesColor } from "@/components/dashboard";
-import { axisProps, gridProps } from "@/lib/chartTokens";
+import { RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
+import { ChartCard, ChartFrame, useChartTheme, seriesColor } from "@/components/dashboard";
 
-function CorrelationCard({ data }: { data: Array<Record<string, number>> }) {
+function SkillsRadarCard({ data }: { data: Array<Record<string, number>> }) {
   const theme = useChartTheme();
   return (
-    <ChartCard title="Spend vs. revenue">
-      <ResponsiveContainer width="100%" height={280}>
-        <ScatterChart>
-          <XAxis dataKey="spend" {...axisProps(theme)} />
-          <YAxis dataKey="revenue" {...axisProps(theme)} />
-          <Tooltip content={<ChartTooltip valueFormat="currency" />} />
-          <Scatter data={data} fill={seriesColor(0)} />
-        </ScatterChart>
-      </ResponsiveContainer>
+    <ChartCard title="Skill coverage">
+      <ChartFrame aspect={1.3}>
+        <RadarChart data={data}>
+          <PolarGrid stroke={theme.grid} />
+          <PolarAngleAxis dataKey="skill" tick={{ fill: theme.axis, fontSize: 11 }} />
+          <Radar dataKey="score" stroke={seriesColor(0)} fill={seriesColor(0)} fillOpacity={0.25} />
+        </RadarChart>
+      </ChartFrame>
     </ChartCard>
   );
 }
 ```
 
 Rules for the escape hatch:
-- Wrap in `ChartCard`; keep the `ResponsiveContainer`.
+- Wrap in `ChartCard`; size with the kit's `ChartFrame` (responsive aspect +
+  clamps, plus an optional `legend` / `legendPlacement`) instead of a bare,
+  fixed-height `ResponsiveContainer` — your custom chart then scales like the
+  built-in ones.
 - Use `axisProps`/`gridProps` + `useChartTheme()` and `seriesColor`/`roleColor`
   (or `var(--color-chart-n)`) — never hardcode hex, so dark mode keeps working.
 - Pass `content={<ChartTooltip … />}` for a themed tooltip.

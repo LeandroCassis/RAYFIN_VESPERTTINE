@@ -12,7 +12,8 @@ import { resolveColor, seriesColor } from "@/lib/chartTokens";
 import { resolveFormat, type ValueFormat } from "@/lib/format";
 
 import { ChartCard } from "./ChartCard";
-import { type ChartCardCommonProps } from "./cartesian";
+import type { ChartCardCommonProps } from "./cartesian";
+import type { LegendPlacement } from "./ChartFrame";
 import { ChartTooltip } from "./ChartTooltip";
 import { TileBody } from "./states";
 
@@ -25,7 +26,7 @@ export interface DonutChartCardProps extends ChartCardCommonProps {
     valueKey?: string;
     /** Slice colors — chart tokens / roles / hex. Defaults to the palette. */
     colors?: string[];
-    /** Chart height in px (default 280). */
+    /** Maximum donut size in px (default 280); the chart scales down responsively. */
     height?: number;
     /** Value format for the legend + tooltip (default `"number"`). */
     valueFormat?: ValueFormat;
@@ -33,7 +34,24 @@ export interface DonutChartCardProps extends ChartCardCommonProps {
     donut?: boolean;
     /** Custom node for the donut center (defaults to the total). */
     centerLabel?: ReactNode;
-    /** Show the category legend with values + share (default true). */
+    /**
+     * Category legend placement with values + share (default `"right"`).
+     *
+     * @example
+     * ```tsx
+     * <DonutChartCard title="Mix" data={rows} legendPlacement="bottom" />
+     * ```
+     */
+    legendPlacement?: LegendPlacement;
+    /**
+     * Back-compat legend visibility switch. When `false`, overrides
+     * `legendPlacement` and hides the legend.
+     *
+     * @example
+     * ```tsx
+     * <DonutChartCard title="Mix" data={rows} showLegend={false} />
+     * ```
+     */
     showLegend?: boolean;
 }
 
@@ -70,6 +88,7 @@ export function DonutChartCard({
     donut = true,
     centerLabel,
     showLegend = true,
+    legendPlacement = "right",
 }: DonutChartCardProps) {
     const format = resolveFormat(valueFormat);
     const cellColor = (index: number) =>
@@ -91,6 +110,74 @@ export function DonutChartCard({
                 <span className="text-xs text-muted-foreground">Total</span>
             </>
         ));
+    const placement = showLegend === false ? "none" : legendPlacement;
+    const layoutClass =
+        placement === "right"
+            ? "flex flex-col items-center gap-5 sm:flex-row"
+            : "flex flex-col items-center gap-5";
+    const pie = (
+        <div
+            className="relative mx-auto aspect-square w-full shrink-0"
+            style={{ maxWidth: height }}
+        >
+            <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                    <Pie
+                        data={rows}
+                        dataKey={valueKey}
+                        nameKey={nameKey}
+                        innerRadius={donut ? "62%" : 0}
+                        outerRadius="92%"
+                        paddingAngle={donut ? 2 : 0}
+                        stroke="var(--color-card)"
+                        strokeWidth={2}
+                        isAnimationActive={false}
+                    >
+                        {rows.map((_, index) => (
+                            <Cell key={index} fill={cellColor(index)} />
+                        ))}
+                    </Pie>
+                    <Tooltip
+                        content={<ChartTooltip valueFormat={valueFormat} />}
+                    />
+                </PieChart>
+            </ResponsiveContainer>
+            {resolvedCenter && (
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
+                    {resolvedCenter}
+                </div>
+            )}
+        </div>
+    );
+    const legend =
+        placement !== "none" ? (
+            <ul className="flex w-full min-w-0 flex-1 flex-col gap-2">
+                {rows.map((row, index) => {
+                    const value = Number(row[valueKey]) || 0;
+                    const pct = total > 0 ? (value / total) * 100 : 0;
+                    return (
+                        <li
+                            key={index}
+                            className="flex items-center gap-2 text-sm"
+                        >
+                            <span
+                                className="h-2.5 w-2.5 shrink-0 rounded-full"
+                                style={{ background: cellColor(index) }}
+                            />
+                            <span className="min-w-0 flex-1 truncate text-foreground-secondary">
+                                {String(row[nameKey] ?? "")}
+                            </span>
+                            <span className="font-numeric tabular-nums text-foreground">
+                                {format(value)}
+                            </span>
+                            <span className="w-10 text-right font-mono text-xs text-foreground-muted">
+                                {pct.toFixed(0)}%
+                            </span>
+                        </li>
+                    );
+                })}
+            </ul>
+        ) : null;
 
     return (
         <ChartCard
@@ -107,74 +194,15 @@ export function DonutChartCard({
                 emptyMessage={emptyMessage}
                 onRetry={onRetry}
             >
-                <div className="flex flex-col items-center gap-5 sm:flex-row">
-                    <div
-                        className="relative mx-auto shrink-0"
-                        style={{ width: height, height, maxWidth: "100%" }}
-                    >
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={rows}
-                                    dataKey={valueKey}
-                                    nameKey={nameKey}
-                                    innerRadius={donut ? "62%" : 0}
-                                    outerRadius="92%"
-                                    paddingAngle={donut ? 2 : 0}
-                                    stroke="var(--color-card)"
-                                    strokeWidth={2}
-                                    isAnimationActive={false}
-                                >
-                                    {rows.map((_, index) => (
-                                        <Cell
-                                            key={index}
-                                            fill={cellColor(index)}
-                                        />
-                                    ))}
-                                </Pie>
-                                <Tooltip
-                                    content={
-                                        <ChartTooltip valueFormat={valueFormat} />
-                                    }
-                                />
-                            </PieChart>
-                        </ResponsiveContainer>
-                        {resolvedCenter && (
-                            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
-                                {resolvedCenter}
-                            </div>
-                        )}
+                {placement === "none" ? (
+                    pie
+                ) : (
+                    <div className={layoutClass}>
+                        {placement === "top" && legend}
+                        {pie}
+                        {placement !== "top" && legend}
                     </div>
-
-                    {showLegend && (
-                        <ul className="flex w-full min-w-0 flex-1 flex-col gap-2">
-                            {rows.map((row, index) => {
-                                const value = Number(row[valueKey]) || 0;
-                                const pct = total > 0 ? (value / total) * 100 : 0;
-                                return (
-                                    <li
-                                        key={index}
-                                        className="flex items-center gap-2 text-sm"
-                                    >
-                                        <span
-                                            className="h-2.5 w-2.5 shrink-0 rounded-full"
-                                            style={{ background: cellColor(index) }}
-                                        />
-                                        <span className="min-w-0 flex-1 truncate text-foreground-secondary">
-                                            {String(row[nameKey] ?? "")}
-                                        </span>
-                                        <span className="font-numeric tabular-nums text-foreground">
-                                            {format(value)}
-                                        </span>
-                                        <span className="w-10 text-right font-mono text-xs text-foreground-muted">
-                                            {pct.toFixed(0)}%
-                                        </span>
-                                    </li>
-                                );
-                            })}
-                        </ul>
-                    )}
-                </div>
+                )}
             </TileBody>
         </ChartCard>
     );

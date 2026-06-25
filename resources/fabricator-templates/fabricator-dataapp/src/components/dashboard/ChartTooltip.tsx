@@ -25,6 +25,10 @@ export interface ChartTooltipProps {
     label?: number | string;
     /** Formats each series value (defaults to `"number"`). */
     valueFormat?: ValueFormat;
+    /** Optional per-series value formats, keyed by series `dataKey` or label.
+     *  Falls back to `valueFormat` — used by dual-axis charts (e.g. combo) so
+     *  each series formats with its own axis's units. */
+    seriesFormats?: Record<string, ValueFormat>;
     /** Formats the axis label (e.g. a date). */
     labelFormat?: (label: number | string) => ReactNode;
 }
@@ -40,12 +44,21 @@ export function ChartTooltip({
     payload,
     label,
     valueFormat,
+    seriesFormats,
     labelFormat,
 }: ChartTooltipProps) {
     if (!active || !payload || payload.length === 0) return null;
-    const format = resolveFormat(valueFormat);
-    const formatValue = (value: TooltipEntry["value"]) =>
-        typeof value === "number" ? format(value) : String(value ?? "");
+    const fallback = resolveFormat(valueFormat);
+    const formatFor = (entry: TooltipEntry) => {
+        const key = entry.dataKey ?? entry.name;
+        const spec =
+            seriesFormats && key != null ? seriesFormats[String(key)] : undefined;
+        return spec ? resolveFormat(spec) : fallback;
+    };
+    const formatValue = (entry: TooltipEntry) =>
+        typeof entry.value === "number"
+            ? formatFor(entry)(entry.value)
+            : String(entry.value ?? "");
 
     return (
         <div className="rounded-lg border border-border-strong bg-popover/95 px-3 py-2 text-xs backdrop-blur">
@@ -70,7 +83,7 @@ export function ChartTooltip({
                             </span>
                         )}
                         <span className="ml-auto pl-4 font-numeric tabular-nums text-foreground">
-                            {formatValue(entry.value)}
+                            {formatValue(entry)}
                         </span>
                     </div>
                 ))}

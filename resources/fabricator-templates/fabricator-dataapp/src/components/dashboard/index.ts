@@ -13,14 +13,22 @@
  * (and the `visuals` skill catalog) for a copy-paste snippet.
  *
  *   import {
- *     PageShell, KpiGrid, ChartGrid,
- *     KpiCard, LineChartCard, BarChartCard, DataTableCard, ThemeToggle,
+ *     PageShell, BentoGrid, BentoItem, KpiGrid, ChartGrid,
+ *     KpiCard, LineChartCard, BarChartCard, ComboChartCard, DataTableCard,
+ *     pivotChartData, deriveKpi, ThemeToggle,
  *   } from "@/components/dashboard";
  */
 
 /* ------------------------------- Layout -------------------------------- */
-export { PageShell, KpiGrid, ChartGrid, Section } from "./PageShell";
-export type { PageShellProps, SectionProps } from "./PageShell";
+export {
+    PageShell,
+    KpiGrid,
+    ChartGrid,
+    Section,
+    BentoGrid,
+    BentoItem,
+} from "./PageShell";
+export type { PageShellProps, SectionProps, BentoItemProps } from "./PageShell";
 export { ThemeToggle } from "./ThemeToggle";
 export {
     SegmentedControl,
@@ -52,6 +60,16 @@ export { BarChartCard } from "./BarChartCard";
 export type { BarChartCardProps } from "./BarChartCard";
 export { DonutChartCard, PieChartCard } from "./DonutChartCard";
 export type { DonutChartCardProps } from "./DonutChartCard";
+export { ComboChartCard } from "./ComboChartCard";
+export type { ComboChartCardProps } from "./ComboChartCard";
+export { ScatterChartCard } from "./ScatterChartCard";
+export type { ScatterChartCardProps } from "./ScatterChartCard";
+export { GaugeCard } from "./GaugeCard";
+export type { GaugeCardProps } from "./GaugeCard";
+export { FunnelChartCard } from "./FunnelChartCard";
+export type { FunnelChartCardProps } from "./FunnelChartCard";
+export { BulletChartCard, ProgressBar } from "./BulletChartCard";
+export type { BulletChartCardProps, ProgressBarProps } from "./BulletChartCard";
 export { ChartTooltip } from "./ChartTooltip";
 export type { ChartTooltipProps } from "./ChartTooltip";
 export type {
@@ -59,6 +77,19 @@ export type {
     ChartCardCommonProps,
     CartesianChartProps,
 } from "./cartesian";
+
+/* --------------------- Responsive frame + legend ----------------------- */
+export {
+    ChartFrame,
+    DEFAULT_ASPECT,
+    MIN_CHART_HEIGHT,
+    MAX_CHART_HEIGHT,
+} from "./ChartFrame";
+export type {
+    ChartFrameProps,
+    LegendItem,
+    LegendPlacement,
+} from "./ChartFrame";
 
 /* -------------------------------- States ------------------------------- */
 export {
@@ -111,3 +142,18 @@ export { toDataTable } from "@/lib/to-data-table";
 export type { ColumnMetadataMap } from "@/lib/to-data-table";
 export { toChartData } from "@/lib/to-chart-data";
 export type { ToChartDataOptions } from "@/lib/to-chart-data";
+export { isDateLike, inferXFormat, autoAxisWidth } from "@/lib/auto-format";
+export type { AutoAxisWidthOptions } from "@/lib/auto-format";
+
+/* ----------------------- Data mapping (DAX → cards) -------------------- */
+export { pivotChartData } from "@/lib/pivot-chart-data";
+export type {
+    PivotChartDataOptions,
+    PivotChartDataResult,
+    PivotSeries,
+} from "@/lib/pivot-chart-data";
+export { topN } from "@/lib/top-n";
+export type { TopNOptions } from "@/lib/top-n";
+export { deriveKpi } from "@/lib/derive-kpi";
+export type { DeriveKpiOptions, DerivedKpi } from "@/lib/derive-kpi";
+export { warnMissingKeys } from "@/lib/validate";

@@ -98,7 +98,7 @@ function App() {
                 <ChartGrid>
                     <ChartCard
                         title="Trend"
-                        subtitle="LineChartCard / AreaChartCard"
+                        subtitle="LineChartCard / AreaChartCard / ComboChartCard"
                     >
                         <EmptyTile
                             message="Map a time-series query and drop in a LineChartCard"
@@ -107,7 +107,7 @@ function App() {
                     </ChartCard>
                     <ChartCard
                         title="Breakdown"
-                        subtitle="BarChartCard / DonutChartCard"
+                        subtitle="BarChartCard / DonutChartCard / FunnelChartCard"
                     >
                         <EmptyTile
                             message="Map a categorical query and drop in a BarChartCard"
@@ -131,7 +131,7 @@ const STEPS = [
     },
     {
         title: "Compose the kit",
-        body: "Pass your data to KpiCard, LineChartCard, BarChartCard, DataTableCard, and more.",
+        body: "Pass your data to KpiCard, LineChartCard, BarChartCard, ComboChartCard, GaugeCard, FunnelChartCard, DataTableCard, and more.",
     },
 ] as const;
 
@@ -148,6 +148,10 @@ const KPI_PLACEHOLDERS = [
  * Replace the `App` above with this, then swap the connection alias, DAX, and
  * column names for your model's. This is the entire pattern — no mock data;
  * the cards own the loading / empty / error states.
+ *
+ * For multi-series, pivot a long DAX result with `pivotChartData(...)`; for a
+ * KPI value + delta + trend in one call use `deriveKpi(...)`; for ranked bars
+ * use `topN(...)`. See the `visuals` skill for the full catalog.
  * ───────────────────────────────────────────────────────────────────────────
  *
  * import { useSemanticModelQuery } from "@/hooks/use-semantic-model-query";
