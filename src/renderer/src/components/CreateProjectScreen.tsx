@@ -30,6 +30,76 @@ interface Props {
 
 const keyOf = (t: { path?: string; name: string }): string => t.path || t.name
 
+/** The coarse stages a scaffold goes through, in order. `done` is authoritative. */
+type CreatePhase = 'preparing' | 'customizing' | 'installing' | 'finalizing' | 'done'
+
+interface PhaseDef {
+  id: CreatePhase
+  label: string
+  hint?: string
+  /**
+   * Loose, lowercase fragments that signal this stage has begun. Kept broad and
+   * forgiving on purpose — see {@link markerPhase}.
+   */
+  markers: string[]
+}
+
+/**
+ * The visible create stages. `finalizing` keys off our *own* backend `say()`
+ * line ("Initializing git repository…"), which we control; `customizing` /
+ * `installing` key off the upstream `npm create @microsoft/rayfin` scaffolder.
+ * `done` is never marker-derived (see below).
+ */
+const CREATE_PHASES: PhaseDef[] = [
+  { id: 'preparing', label: 'Preparing', markers: [] },
+  { id: 'customizing', label: 'Customizing template', markers: ['customiz'] },
+  {
+    id: 'installing',
+    label: 'Installing dependencies',
+    hint: 'First run can take a minute or two.',
+    markers: ['install']
+  },
+  { id: 'finalizing', label: 'Finishing up', markers: ['initializing git', 'git repository'] }
+]
+
+const PHASE_ORDER: CreatePhase[] = ['preparing', 'customizing', 'installing', 'finalizing', 'done']
+const phaseRank = (p: CreatePhase): number => PHASE_ORDER.indexOf(p)
+
+/**
+ * Best-effort, **purely cosmetic** mapping of the cumulative create log to the
+ * furthest stage reached. Hardened so upstream output changes can never break
+ * or stall the actual create:
+ *  - It never reports `done` — completion is driven solely by the backend
+ *    result, so reworded/removed "finished" lines can't strand the wizard.
+ *  - Markers are loose substrings; missing them only softens the indicator
+ *    (the spinner + elapsed timer + {@link fallbackPhase} still convey motion).
+ *  - Wrapped so a parsing slip degrades gracefully instead of throwing.
+ */
+function markerPhase(log: string): CreatePhase {
+  try {
+    const l = log.toLowerCase()
+    let reached: CreatePhase = 'preparing'
+    for (const def of CREATE_PHASES) {
+      if (def.markers.length && def.markers.some((m) => l.includes(m))) reached = def.id
+    }
+    return reached
+  } catch {
+    return 'preparing'
+  }
+}
+
+/**
+ * Time-based floor so the indicator keeps advancing even if every upstream
+ * output marker changes. Capped at `installing` (the dominant time sink) — it
+ * never fabricates `finalizing`/`done`, which require a real signal/result.
+ */
+function fallbackPhase(elapsedSec: number, running: boolean): CreatePhase {
+  if (!running) return 'preparing'
+  if (elapsedSec >= 10) return 'installing'
+  if (elapsedSec >= 3) return 'customizing'
+  return 'preparing'
+}
+
 /**
  * The full-window create-a-project experience. In `create` mode it runs a two-step
  * wizard — Details (name + template, ported from the old New Project dialog) then
@@ -68,6 +138,10 @@ export default function CreateProjectScreen({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [log, setLog] = useState('')
+  const [showDetails, setShowDetails] = useState(false)
+  const [startedAt, setStartedAt] = useState<number | null>(null)
+  const [now, setNow] = useState(0)
+  const [done, setDone] = useState(false)
   const logRef = useRef<HTMLPreElement>(null)
 
   // ----- Deploy step -----
@@ -143,7 +217,17 @@ export default function CreateProjectScreen({
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
-  }, [log])
+  }, [log, showDetails])
+
+  // Tick a 1s elapsed clock while a create is in flight. This is the strongest
+  // "still working" cue during the output-silent npm install — and it's
+  // independent of any scaffolder/CLI log wording, so it survives upstream
+  // output changes.
+  useEffect(() => {
+    if (!busy || startedAt == null) return
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [busy, startedAt])
 
   // Fetch workspaces when the Deploy step first appears.
   useEffect(() => {
@@ -156,6 +240,10 @@ export default function CreateProjectScreen({
     setBusy(true)
     setError(null)
     setLog('')
+    setDone(false)
+    setShowDetails(false)
+    setStartedAt(Date.now())
+    setNow(Date.now())
     try {
       let tmpl: string
       let tmplName: string | undefined
@@ -175,11 +263,15 @@ export default function CreateProjectScreen({
         templateName: tmplName
       })
       if (result.ok) {
+        setDone(true)
         setCreatedName(result.project?.name ?? name.trim())
         onCreated?.(result)
         setStep('deploy')
       } else {
         setError(result.error ?? 'Project creation failed.')
+        // Surface the raw output so the real failure (not just our summary) is
+        // visible without an extra click.
+        setShowDetails(true)
       }
     } finally {
       setBusy(false)
@@ -196,6 +288,24 @@ export default function CreateProjectScreen({
   const canCreate =
     Boolean(slug) &&
     (source === 'builtin' ? Boolean(template) : customMode ? urlValid : Boolean(selectedEntry))
+
+  // ----- Create progress (cosmetic; completion is driven by `done`) -----
+  const elapsedSec = startedAt ? Math.max(0, Math.floor((now - startedAt) / 1000)) : 0
+  const elapsedLabel = `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, '0')}`
+  const detectedPhase = markerPhase(log)
+  const fallback = fallbackPhase(elapsedSec, busy)
+  // Never regress: take the furthest of the parsed marker and the time floor.
+  const phase: CreatePhase = done
+    ? 'done'
+    : phaseRank(detectedPhase) >= phaseRank(fallback)
+      ? detectedPhase
+      : fallback
+  const activeIdx =
+    phase === 'done' ? CREATE_PHASES.length : CREATE_PHASES.findIndex((p) => p.id === phase)
+  const activePhaseLabel =
+    phase === 'done' ? 'Project ready' : (CREATE_PHASES[activeIdx]?.label ?? 'Preparing')
+  const createFailed = !busy && !done && Boolean(error)
+  const showProgress = busy || Boolean(log)
 
   const heading =
     step === 'deploy'
@@ -417,10 +527,74 @@ export default function CreateProjectScreen({
                 )}
               </div>
 
-              {(busy || log) && (
-                <pre className="log-console log-console--sm" ref={logRef}>
-                  {log || 'Starting…'}
-                </pre>
+              {showProgress && (
+                <div className="create-progress" aria-busy={busy}>
+                  <span className="sr-only" role="status" aria-live="polite">
+                    {busy ? activePhaseLabel : done ? 'Project ready' : ''}
+                  </span>
+                  <ol className="create-phases">
+                    {CREATE_PHASES.map((p, i) => {
+                      const state =
+                        phase === 'done' || i < activeIdx
+                          ? 'done'
+                          : i === activeIdx
+                            ? 'active'
+                            : 'pending'
+                      return (
+                        <li
+                          key={p.id}
+                          className={`create-phase create-phase--${state}${
+                            createFailed && state === 'active' ? ' create-phase--failed' : ''
+                          }`}
+                        >
+                          <span className="create-phase-ico" aria-hidden="true">
+                            {state === 'active' ? (
+                              busy ? (
+                                <span className="ws-spinner" />
+                              ) : createFailed ? (
+                                '✕'
+                              ) : null
+                            ) : state === 'done' ? (
+                              '✓'
+                            ) : null}
+                          </span>
+                          <span className="create-phase-text">
+                            <span className="create-phase-label">{p.label}</span>
+                            {p.id === 'installing' && state === 'active' && (
+                              <span className="create-phase-hint">
+                                {elapsedSec > 75
+                                  ? 'Still working — large dependency trees take a little longer.'
+                                  : p.hint}
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ol>
+
+                  <div className="create-progress-meta">
+                    <span className="create-elapsed" aria-hidden="true">
+                      {busy ? `${elapsedLabel} elapsed` : done ? 'Done' : ''}
+                    </span>
+                    <button
+                      type="button"
+                      className="link-btn create-progress-toggle"
+                      onClick={() => setShowDetails((v) => !v)}
+                    >
+                      {showDetails ? 'Hide details' : 'Show details'}
+                    </button>
+                  </div>
+
+                  {showDetails && (
+                    <pre
+                      className="log-console log-console--sm create-progress-details"
+                      ref={logRef}
+                    >
+                      {log || 'Starting…'}
+                    </pre>
+                  )}
+                </div>
               )}
 
               {error && <div className="alert alert--error">{error}</div>}
