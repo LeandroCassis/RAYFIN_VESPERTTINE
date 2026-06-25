@@ -115,6 +115,53 @@ this app is to deploy it with `fabricator_deploy_and_wait` and inspect it throug
 still fine; what is off-limits is running, serving, or test-executing the app locally.)
 "#;
 
+/// Always-on instruction keeping the agent on stable, Fabric-supported Rayfin
+/// features and off experimental/preview ones (which often fail to deploy on
+/// Fabric) unless the user explicitly asks for them.
+const STABLE_ONLY_INSTRUCTIONS: &str = r#"---
+applyTo: '**'
+---
+# Build with stable, Fabric-supported Rayfin features (Rayfin Fabricator)
+
+You are the coding agent inside **Rayfin Fabricator**. Apps built here are deployed to Microsoft
+Fabric. **Experimental / preview Rayfin features are usually incomplete and often do not deploy on
+Fabric** — for example, anonymous data access is documented as *"not currently supported on
+Fabric,"* and applying such a schema fails today. Reaching for these on your own wastes the
+deploy-and-validate loop and leaves the user with an app that breaks when deployed.
+
+## Default to stable features only
+Unless the user **explicitly** asks for a specific experimental feature, build only with stable,
+Fabric-supported Rayfin features. Do not opt into experimental/preview APIs on your own.
+
+Treat a feature as experimental — and therefore off by default — whenever the Rayfin docs mark it
+**experimental**, **preview**, or **"not currently supported on Fabric."** Concretely this
+includes (non-exhaustively):
+
+- Anything imported from the **`@microsoft/rayfin-core/experimental`** subpath — e.g. `anonymous`
+  / `role('anonymous', …)` (anonymous/public data access). By default import only from
+  `@microsoft/rayfin-core`, never from its `/experimental` subpath.
+- Capabilities gated behind **`RAYFIN_FEATURE_FLAGS`** — e.g. `storage`, `functions`,
+  `postgresql`. (Fabric apps are MSSQL-only regardless.)
+- `rayfin dev` and the `RAYFIN_WEBSERVICE_IMAGE_NAME` override, which are explicitly experimental.
+
+If you are unsure whether something is supported, check the docs first
+(`search_docs(query: '<topic>', module: 'guide')` or `rayfin docs search '<topic>' --module guide`)
+before using it.
+
+## What to do instead
+When a request would otherwise need an experimental feature, implement it with the closest
+**stable** equivalent, then briefly tell the user you skipped the experimental feature and they can
+ask for it if they want it. For example, instead of the experimental `@anonymous` import, use
+`@authenticated` / `@role('authenticated', …)` so the entity still deploys — then note something
+like: "I used authenticated access; anonymous/public access is an experimental Rayfin feature that
+isn't supported on Fabric yet, so I skipped it. Let me know if you'd like me to try it anyway."
+
+## When the user explicitly asks
+If the user explicitly asks for the experimental feature (names it, or says to use the experimental
+version), go ahead — but warn them up front that it is experimental and may fail to deploy on
+Fabric, then deploy and validate as usual so they see the real result.
+"#;
+
 /// Write (or refresh) the injected skill + instruction files under the app data
 /// dir. Idempotent and best-effort: always overwrites so content updates ship
 /// with the app. Call once at startup, before any session opens.
@@ -135,6 +182,7 @@ fn write_all(root: &std::path::Path) -> std::io::Result<()> {
   let instr_dir = root.join("instructions");
   std::fs::create_dir_all(&instr_dir)?;
   std::fs::write(instr_dir.join("fabricator-validate.instructions.md"), VALIDATE_INSTRUCTIONS)?;
+  std::fs::write(instr_dir.join("fabricator-stable-only.instructions.md"), STABLE_ONLY_INSTRUCTIONS)?;
   Ok(())
 }
 
@@ -177,6 +225,22 @@ mod tests {
   }
 
   #[test]
+  fn stable_only_instructions_steer_away_from_experimental() {
+    assert!(STABLE_ONLY_INSTRUCTIONS.contains("applyTo: '**'"));
+    // Names the concrete experimental surfaces the agent must avoid by default.
+    for marker in ["@microsoft/rayfin-core/experimental", "RAYFIN_FEATURE_FLAGS", "rayfin dev"] {
+      assert!(
+        STABLE_ONLY_INSTRUCTIONS.contains(marker),
+        "stable-only instructions should call out {marker}"
+      );
+    }
+    // Off by default unless explicitly requested, with a stable fallback the agent
+    // should reach for instead.
+    assert!(STABLE_ONLY_INSTRUCTIONS.contains("explicitly"));
+    assert!(STABLE_ONLY_INSTRUCTIONS.contains("@authenticated"));
+  }
+
+  #[test]
   fn write_all_creates_expected_layout() {
     let tmp = std::env::temp_dir().join(format!("fab-agent-test-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&tmp);
@@ -184,9 +248,12 @@ mod tests {
 
     let skill = tmp.join("skills").join("deploy-and-validate").join("SKILL.md");
     let instr = tmp.join("instructions").join("fabricator-validate.instructions.md");
+    let stable = tmp.join("instructions").join("fabricator-stable-only.instructions.md");
     assert!(skill.is_file(), "SKILL.md should exist at {skill:?}");
     assert!(instr.is_file(), "instructions file should exist at {instr:?}");
+    assert!(stable.is_file(), "stable-only instructions should exist at {stable:?}");
     assert_eq!(std::fs::read_to_string(&skill).unwrap(), DEPLOY_VALIDATE_SKILL);
+    assert_eq!(std::fs::read_to_string(&stable).unwrap(), STABLE_ONLY_INSTRUCTIONS);
 
     let _ = std::fs::remove_dir_all(&tmp);
   }
