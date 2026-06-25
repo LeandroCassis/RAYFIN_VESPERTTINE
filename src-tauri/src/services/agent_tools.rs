@@ -30,6 +30,13 @@ use crate::services::{preview, store};
 const NAV_TIMEOUT: Duration = Duration::from_secs(20);
 /// How long to wait for the renderer to surface a not-yet-created preview.
 const SHOW_TIMEOUT: Duration = Duration::from_secs(10);
+/// Let a scroll settle (and any lazy/below-the-fold content paint) before the
+/// follow-up screenshot.
+const SCROLL_SETTLE: Duration = Duration::from_millis(450);
+/// Upper bound on reading the preview's console buffer. Generous, but ensures the
+/// tool returns even if the result callback never fires (e.g. the page hasn't run
+/// the capture init script yet) rather than waiting indefinitely.
+const CONSOLE_TIMEOUT: Duration = Duration::from_secs(6);
 
 /// Build the Fabricator validation tool set for one project's chat session.
 pub fn fabricator_tools(app: AppHandle, project_id: String) -> Vec<Tool> {
@@ -74,7 +81,55 @@ pub fn fabricator_tools(app: AppHandle, project_id: String) -> Vec<Tool> {
       )
       .with_parameters(serde_json::json!({ "type": "object", "properties": {} }))
       .with_skip_permission(true)
-      .with_handler(Arc::new(ScreenshotTool { app, project_id })),
+      .with_handler(Arc::new(ScreenshotTool {
+        app: app.clone(),
+        project_id: project_id.clone(),
+      })),
+    Tool::new("fabricator_scroll")
+      .with_description(
+        "Scroll the page currently shown in Fabricator's built-in preview browser and return a \
+         fresh screenshot, so you can see content below (or above) the fold — e.g. lower \
+         dashboard tiles or the rest of a long table. Use this when a screenshot looks cut off \
+         at the bottom. Open a page first with fabricator_navigate.",
+      )
+      .with_parameters(serde_json::json!({
+        "type": "object",
+        "properties": {
+          "direction": {
+            "type": "string",
+            "enum": ["down", "up", "top", "bottom"],
+            "description": "Which way to scroll. \"down\" (default) / \"up\" move ~one viewport; \"top\"/\"bottom\" jump to the ends."
+          },
+          "amount": {
+            "type": "number",
+            "description": "Optional pixel distance for \"down\"/\"up\" (defaults to ~one viewport height)."
+          }
+        }
+      }))
+      .with_skip_permission(true)
+      .with_handler(Arc::new(ScrollTool {
+        app: app.clone(),
+        project_id: project_id.clone(),
+      })),
+    Tool::new("fabricator_console")
+      .with_description(
+        "Read the deployed app's browser console from Fabricator's preview — recent \
+         console.log/info/warn/error/debug messages plus uncaught errors and unhandled promise \
+         rejections. Use this to debug a blank screen, missing data, or a runtime error you \
+         can't diagnose from a screenshot alone. Open a page first with fabricator_navigate.",
+      )
+      .with_parameters(serde_json::json!({
+        "type": "object",
+        "properties": {
+          "level": {
+            "type": "string",
+            "enum": ["all", "error", "warn", "info", "log", "debug"],
+            "description": "Optional filter; defaults to \"all\". Use \"error\" to see only errors and rejections."
+          }
+        }
+      }))
+      .with_skip_permission(true)
+      .with_handler(Arc::new(ConsoleTool { app, project_id })),
   ]
 }
 
@@ -292,5 +347,238 @@ impl ToolHandler for ScreenshotTool {
          fabricator_deploy_and_wait, then try again."
       ))),
     }
+  }
+}
+
+struct ScrollTool {
+  app: AppHandle,
+  project_id: String,
+}
+
+#[derive(Deserialize, Default)]
+struct ScrollParams {
+  #[serde(default)]
+  direction: Option<String>,
+  #[serde(default)]
+  amount: Option<f64>,
+}
+
+#[async_trait]
+impl ToolHandler for ScrollTool {
+  async fn call(&self, invocation: ToolInvocation) -> Result<ToolResult, SdkError> {
+    let params: ScrollParams = invocation.params().unwrap_or_default();
+    let raw = params
+      .direction
+      .as_deref()
+      .unwrap_or("down")
+      .trim()
+      .to_lowercase();
+    let dir = match raw.as_str() {
+      "" | "down" => "down",
+      "up" => "up",
+      "top" => "top",
+      "bottom" => "bottom",
+      other => {
+        return Ok(failure(format!(
+          "Invalid scroll direction {other:?}. Use \"down\", \"up\", \"top\", or \"bottom\"."
+        )))
+      }
+    };
+
+    if !preview::is_preview_open(&self.app) {
+      return Ok(failure(
+        "The preview browser isn't open yet, so there's nothing to scroll. Deploy with \
+         fabricator_deploy_and_wait, then open a page with fabricator_navigate first.",
+      ));
+    }
+    // Only reveal the preview when it's actually hidden: re-showing can reset the
+    // page to the app root, so when it's already visible we scroll the exact page
+    // in place. Revealing (when hidden) goes through the renderer; the capture
+    // below refuses on a still-hidden surface, so there's no deadlock either way.
+    if !preview::is_preview_visible(&self.app) {
+      if let Some(url) = effective_base_url(&self.project_id) {
+        ensure_preview(&self.app, &url).await;
+      }
+    }
+
+    if let Err(e) = preview::scroll(&self.app, dir, params.amount) {
+      return Ok(failure(format!("Couldn't scroll the preview: {e}")));
+    }
+    tokio::time::sleep(SCROLL_SETTLE).await;
+
+    match preview::capture_preview_bytes(&self.app).await {
+      Ok(png) => Ok(image_result(
+        format!("Scrolled {dir} and captured the preview."),
+        png,
+        format!("Preview after scrolling {dir}"),
+      )),
+      Err(e) => Ok(failure(format!(
+        "Scrolled {dir} but couldn't capture a screenshot: {e}. The preview may be hidden \
+         behind another tab — open a route with fabricator_navigate and try again."
+      ))),
+    }
+  }
+}
+
+struct ConsoleTool {
+  app: AppHandle,
+  project_id: String,
+}
+
+#[derive(Deserialize, Default)]
+struct ConsoleParams {
+  #[serde(default)]
+  level: Option<String>,
+}
+
+#[async_trait]
+impl ToolHandler for ConsoleTool {
+  async fn call(&self, invocation: ToolInvocation) -> Result<ToolResult, SdkError> {
+    let params: ConsoleParams = invocation.params().unwrap_or_default();
+    if !preview::is_preview_open(&self.app) {
+      // Nudge the agent to open the app first; effective_base_url just sharpens
+      // the message when a deployment already exists.
+      let hint = if effective_base_url(&self.project_id).is_some() {
+        "open a page with fabricator_navigate"
+      } else {
+        "deploy with fabricator_deploy_and_wait, then open a page with fabricator_navigate"
+      };
+      return Ok(failure(format!(
+        "The preview browser isn't open, so there are no console logs to read yet — {hint} first."
+      )));
+    }
+    let json = match preview::read_console(&self.app, CONSOLE_TIMEOUT).await {
+      Ok(j) => j,
+      Err(e) => {
+        return Ok(failure(format!(
+          "Couldn't read the preview console: {e}. The page may still be loading — wait a \
+           moment and try again."
+        )))
+      }
+    };
+    Ok(ToolResult::Text(format_console(&json, params.level.as_deref())))
+  }
+}
+
+#[derive(Deserialize)]
+struct ConsoleEntry {
+  #[serde(default)]
+  level: String,
+  #[serde(default)]
+  text: String,
+}
+
+/// Parse the JSON the page handed back into entries, tolerating both a raw JSON
+/// array and a double-encoded JSON string holding the array (engines differ in
+/// how `eval` serializes the result), and any unexpected shape (→ empty).
+fn parse_console_entries(json: &str) -> Vec<ConsoleEntry> {
+  if let Ok(v) = serde_json::from_str::<Vec<ConsoleEntry>>(json) {
+    return v;
+  }
+  if let Ok(inner) = serde_json::from_str::<String>(json) {
+    if let Ok(v) = serde_json::from_str::<Vec<ConsoleEntry>>(&inner) {
+      return v;
+    }
+  }
+  Vec::new()
+}
+
+/// Render captured console entries (oldest→newest) into a compact, readable log
+/// for the model, optionally filtered to a single level. Caps the output so a
+/// chatty page can't flood the turn.
+fn format_console(json: &str, level_filter: Option<&str>) -> String {
+  let entries = parse_console_entries(json);
+  let want = level_filter
+    .map(|s| s.trim().to_lowercase())
+    .filter(|s| !s.is_empty() && s != "all");
+
+  let mut filtered: Vec<&ConsoleEntry> = entries
+    .iter()
+    .filter(|e| match &want {
+      Some(w) => e.level.eq_ignore_ascii_case(w),
+      None => true,
+    })
+    .collect();
+
+  if filtered.is_empty() {
+    return match &want {
+      Some(w) => format!(
+        "No `{w}` messages have been logged to the preview console yet. (Note: only output \
+         since the page last loaded is captured; navigate/reload to recapture.)"
+      ),
+      None => "No messages have been logged to the preview console yet. (Note: only output \
+               since the page last loaded is captured; navigate/reload to recapture.)"
+        .to_string(),
+    };
+  }
+
+  let total = filtered.len();
+  const MAX_LINES: usize = 80;
+  if filtered.len() > MAX_LINES {
+    filtered = filtered.split_off(filtered.len() - MAX_LINES);
+  }
+
+  let mut out = String::new();
+  out.push_str("Console output from the preview page");
+  if let Some(w) = &want {
+    out.push_str(&format!(" (level: {w})"));
+  }
+  if total > filtered.len() {
+    out.push_str(&format!(" — latest {} of {total} messages:\n", filtered.len()));
+  } else {
+    out.push_str(&format!(" — {total} message{}:\n", if total == 1 { "" } else { "s" }));
+  }
+  for e in &filtered {
+    let lvl = if e.level.is_empty() {
+      "LOG".to_string()
+    } else {
+      e.level.to_uppercase()
+    };
+    let text = e.text.replace(['\r', '\n'], " ");
+    out.push_str(&format!("[{lvl}] {text}\n"));
+  }
+  out.trim_end().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  #[test]
+  fn format_console_handles_empty_and_levels() {
+    assert!(format_console("[]", None).contains("No messages"));
+    assert!(format_console("not json", None).contains("No messages"));
+    assert!(format_console("[]", Some("error")).contains("No `error`"));
+
+    let logs = r#"[{"level":"log","text":"hello"},{"level":"error","text":"boom"}]"#;
+    let all = format_console(logs, None);
+    assert!(all.contains("[LOG] hello"));
+    assert!(all.contains("[ERROR] boom"));
+    assert!(all.contains("2 messages"));
+
+    let errs = format_console(logs, Some("error"));
+    assert!(errs.contains("[ERROR] boom"));
+    assert!(!errs.contains("hello"));
+  }
+
+  #[test]
+  fn format_console_accepts_double_encoded_json() {
+    // Some engines return the value as a JSON string holding the array.
+    let inner = r#"[{"level":"warn","text":"heads up"}]"#;
+    let double = serde_json::to_string(inner).unwrap();
+    let out = format_console(&double, None);
+    assert!(out.contains("[WARN] heads up"), "got: {out}");
+  }
+
+  #[test]
+  fn format_console_collapses_newlines_and_caps_lines() {
+    let mut items = Vec::new();
+    for i in 0..200 {
+      items.push(serde_json::json!({ "level": "log", "text": format!("line\n{i}") }));
+    }
+    let json = serde_json::Value::Array(items).to_string();
+    let out = format_console(&json, None);
+    assert!(out.contains("latest 80 of 200 messages"));
+    assert!(!out.contains("line\n"), "newlines should be collapsed");
   }
 }

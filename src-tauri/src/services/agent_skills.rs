@@ -57,9 +57,15 @@ not after the whole dashboard is finished.
 2. If the deploy fails, read the returned error, fix the code, and deploy again.
 3. Once live, open the page you changed with **`fabricator_navigate`** (pass a route such as
    `/` or `/todos`, or a full URL) and/or take a **`fabricator_screenshot`**. Both return a
-   screenshot of the running app, so you see exactly what the user sees.
+   screenshot of the running app, so you see exactly what the user sees. If the page is taller
+   than the viewport (the screenshot looks cut off at the bottom), use **`fabricator_scroll`**
+   (`direction`: `down`/`up`/`top`/`bottom`) to bring lower content — e.g. the bottom tiles or
+   the rest of a table — into view; it returns a fresh screenshot after scrolling.
 4. Inspect the screenshot. If the hero slice is missing, broken, or looks wrong, fix the
-   code and redeploy until the deployed app is correct.
+   code and redeploy until the deployed app is correct. If the page is blank, data is missing,
+   or something errors in a way you can't see, read the browser console with
+   **`fabricator_console`** (recent `console.*` plus uncaught errors and unhandled promise
+   rejections) to pinpoint the failure, then fix and redeploy.
 5. Phase 2 — Breadth: add the rest in small increments, deploying and screenshotting after
    every 1–2 additions.
 6. Phase 3 — Polish: refine theme, states, spacing, and edge cases based on what the
@@ -68,6 +74,10 @@ not after the whole dashboard is finished.
 ## Notes
 - Prefer screenshots over assumptions — verify visually that the change actually works in the
   deployed app.
+- For content below the fold, scroll with `fabricator_scroll` instead of assuming it renders —
+  e.g. to confirm the lower tiles of a dashboard or the rest of a long table.
+- When a screenshot can't explain a blank page, missing data, or a broken interaction, check
+  `fabricator_console` for errors before guessing at the cause.
 - Never batch all changes into one final deploy; deploy + screenshot after the hero slice
   and after every 1–2 subsequent additions, fixing what the screenshots reveal.
 - Deployment and preview happen exclusively through these tools; never run `rayfin up`
@@ -209,7 +219,13 @@ mod tests {
   fn skill_frontmatter_and_tools_are_present() {
     assert!(DEPLOY_VALIDATE_SKILL.starts_with("---\n"));
     assert!(DEPLOY_VALIDATE_SKILL.contains("name: deploy-and-validate"));
-    for tool in ["fabricator_deploy_and_wait", "fabricator_navigate", "fabricator_screenshot"] {
+    for tool in [
+      "fabricator_deploy_and_wait",
+      "fabricator_navigate",
+      "fabricator_screenshot",
+      "fabricator_scroll",
+      "fabricator_console",
+    ] {
       assert!(DEPLOY_VALIDATE_SKILL.contains(tool), "skill should mention {tool}");
     }
     // The skill must steer away from the shell deploy path Fabricator owns.

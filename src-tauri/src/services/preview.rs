@@ -36,6 +36,67 @@ const PREVIEW_NAV: &str = "preview:nav";
 /// preview pane even when another tab is focused.
 const PREVIEW_AGENT: &str = "preview:agent";
 
+/// Document-start script injected into the preview so the agent can later read
+/// the page's console output (see [`read_console`]). It mirrors `console.*`,
+/// `window.onerror`, and `unhandledrejection` into a small bounded ring buffer on
+/// `window.__fabricatorConsole`. Defensive and idempotent: it always forwards to
+/// the original console method and never throws, so it cannot perturb the app
+/// under test. Runs in the page's main world via
+/// [`WebviewBuilder::initialization_script`].
+const CONSOLE_INIT_JS: &str = r#";(function () {
+  try {
+    if (window.__fabricatorConsole) return;
+    var MAX = 200;
+    var buf = [];
+    function fmt(a) {
+      try {
+        if (a instanceof Error) return String(a.stack || (a.name + ': ' + a.message));
+        if (typeof a === 'string') return a;
+        if (a && typeof a === 'object') { try { return JSON.stringify(a); } catch (e) { return String(a); } }
+        return String(a);
+      } catch (e) { return '<unserializable>'; }
+    }
+    function push(level, args) {
+      try {
+        var parts = [];
+        for (var i = 0; i < args.length; i++) parts.push(fmt(args[i]));
+        var text = parts.join(' ');
+        if (text.length > 2000) text = text.slice(0, 2000) + '\u2026';
+        buf.push({ level: level, text: text, t: Date.now() });
+        if (buf.length > MAX) buf.splice(0, buf.length - MAX);
+      } catch (e) {}
+    }
+    window.__fabricatorConsole = { entries: buf, clear: function () { buf.length = 0; } };
+    var levels = ['log', 'info', 'warn', 'error', 'debug'];
+    for (var k = 0; k < levels.length; k++) {
+      (function (m) {
+        var orig = (window.console && typeof console[m] === 'function') ? console[m].bind(console) : function () {};
+        console[m] = function () { push(m, arguments); return orig.apply(console, arguments); };
+      })(levels[k]);
+    }
+    window.addEventListener('error', function (e) {
+      try {
+        if (e && e.message) push('error', [e.message + (e.filename ? ' (' + e.filename + ':' + (e.lineno || 0) + ')' : '')]);
+        else push('error', ['Uncaught error']);
+      } catch (x) {}
+    });
+    window.addEventListener('unhandledrejection', function (e) {
+      try { push('error', ['Unhandled promise rejection: ' + fmt(e && e.reason)]); } catch (x) {}
+    });
+  } catch (e) {}
+})();"#;
+
+/// Reads the captured console ring buffer back out (newest entries last). Returns
+/// a JSON array of `{level, text, t}`; the host JSON-parses it (see
+/// `agent_tools::format_console`).
+const READ_CONSOLE_JS: &str = r#"(function () {
+  try {
+    var c = window.__fabricatorConsole;
+    if (!c || !c.entries) return [];
+    return c.entries.slice(-120);
+  } catch (e) { return []; }
+})()"#;
+
 /// Logical-pixel rectangle reported by the renderer (its host element's bounds,
 /// relative to the window client area — i.e. `getBoundingClientRect()`).
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
@@ -140,6 +201,10 @@ fn build(app: &AppHandle, url: Url, bounds: PreviewBounds) -> AppResult<()> {
 
   let builder = WebviewBuilder::new(PREVIEW_LABEL, WebviewUrl::External(url))
     .focused(false)
+    // Capture the deployed app's console output/errors so the agent can read
+    // them back later via `fabricator_console`. Must be set before the webview
+    // is created so it runs at document start on every page.
+    .initialization_script(CONSOLE_INIT_JS)
     .on_navigation(move |u| {
       on_navigation(&nav_app, u);
       true
@@ -457,6 +522,109 @@ pub(crate) async fn capture_preview_bytes(app: &AppHandle) -> AppResult<Vec<u8>>
 /// been shown at least once this session).
 pub(crate) fn is_preview_open(app: &AppHandle) -> bool {
   app.get_webview(PREVIEW_LABEL).is_some()
+}
+
+/// Whether the preview child webview is currently shown (not hidden behind
+/// another tab/overlay). Callers that need to reveal it can skip the (route-
+/// resetting) re-show when this is already `true`.
+pub(crate) fn is_preview_visible(app: &AppHandle) -> bool {
+  app.state::<PreviewState>().inner.lock().unwrap().visible
+}
+
+/// Scroll the preview's main scrollable surface. `direction` is one of
+/// `down` / `up` / `top` / `bottom`; `amount` (px) overrides the step for
+/// `up`/`down`. Fire-and-forget through [`Webview::eval`], which queues the
+/// script on the webview without pumping the UI-thread message loop, so — unlike
+/// `CapturePreview` — it is safe even if the surface is hidden. No-op error if
+/// the preview has not been created yet.
+pub(crate) fn scroll(app: &AppHandle, direction: &str, amount: Option<f64>) -> AppResult<()> {
+  let wv = app
+    .get_webview(PREVIEW_LABEL)
+    .ok_or_else(|| AppError::Msg("preview is not open".into()))?;
+  wv.eval(build_scroll_js(direction, amount))
+    .map_err(|e| AppError::Msg(e.to_string()))
+}
+
+/// Read the preview page's captured console output (see [`CONSOLE_INIT_JS`]) as a
+/// JSON array string.
+///
+/// Uses [`Webview::eval_with_callback`], which delivers the script result
+/// asynchronously through wry's event loop **without** pumping the UI-thread
+/// message loop (the Windows `ICoreWebView2::ExecuteScript` / macOS
+/// `evaluateJavaScript` completion handlers fire on their own) — so, unlike the
+/// `CapturePreview`-based screenshot path, it cannot deadlock the app on a hidden
+/// surface. The `timeout` is a belt-and-suspenders guard: if the callback never
+/// fires (e.g. the page hasn't yet run the init script), the read resolves to a
+/// timeout error instead of hanging the tool.
+pub(crate) async fn read_console(app: &AppHandle, timeout: Duration) -> AppResult<String> {
+  let wv = app
+    .get_webview(PREVIEW_LABEL)
+    .ok_or_else(|| AppError::Msg("preview is not open".into()))?;
+  let (tx, rx) = oneshot::channel::<String>();
+  let tx = Mutex::new(Some(tx));
+  wv.eval_with_callback(READ_CONSOLE_JS, move |json| {
+    if let Ok(mut guard) = tx.lock() {
+      if let Some(tx) = guard.take() {
+        let _ = tx.send(json);
+      }
+    }
+  })
+  .map_err(|e| AppError::Msg(e.to_string()))?;
+  match tokio::time::timeout(timeout, rx).await {
+    Ok(Ok(json)) => Ok(json),
+    Ok(Err(_)) => Err(AppError::Msg("console read was cancelled".into())),
+    Err(_) => Err(AppError::Msg("timed out reading the preview console".into())),
+  }
+}
+
+/// Build the scroll script for [`scroll`]. Targets the largest scrollable element
+/// (the viewport scroller, or an inner `overflow:auto/scroll` container if one is
+/// meaningfully taller), and sets `scrollTop` directly so it lands instantly on
+/// every engine (no `behavior` keyword required) — the caller settles briefly,
+/// then screenshots.
+fn build_scroll_js(direction: &str, amount: Option<f64>) -> String {
+  let dir = match direction {
+    "up" => "up",
+    "top" => "top",
+    "bottom" => "bottom",
+    _ => "down",
+  };
+  let amt = match amount {
+    Some(n) if n.is_finite() && n > 0.0 => n.to_string(),
+    _ => "null".to_string(),
+  };
+  format!(
+    r#"(function () {{
+  try {{
+    var dir = "{dir}";
+    var amt = {amt};
+    function scroller() {{
+      var doc = document.scrollingElement || document.documentElement || document.body;
+      var best = doc, bestOver = doc ? (doc.scrollHeight - doc.clientHeight) : 0;
+      var nodes = document.querySelectorAll('*');
+      var limit = Math.min(nodes.length, 4000);
+      for (var i = 0; i < limit; i++) {{
+        var el = nodes[i], s;
+        try {{ s = getComputedStyle(el); }} catch (e) {{ continue; }}
+        if (!s) continue;
+        if (s.overflowY === 'auto' || s.overflowY === 'scroll') {{
+          var over = el.scrollHeight - el.clientHeight;
+          if (over > bestOver + 8 && el.clientHeight > 40) {{ best = el; bestOver = over; }}
+        }}
+      }}
+      return best || doc;
+    }}
+    var el = scroller();
+    if (!el) return;
+    var view = el.clientHeight || window.innerHeight || 600;
+    var step = (amt != null && !isNaN(amt)) ? amt : Math.max(160, Math.round(view * 0.85));
+    if (dir === 'top') el.scrollTop = 0;
+    else if (dir === 'bottom') el.scrollTop = el.scrollHeight;
+    else if (dir === 'up') el.scrollTop = Math.max(0, el.scrollTop - step);
+    else el.scrollTop = el.scrollTop + step;
+  }} catch (e) {{}}
+}})();"#
+  )
 }
 
 /// Ask the renderer to surface the preview pane and load `url` on the agent's
