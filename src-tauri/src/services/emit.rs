@@ -36,18 +36,11 @@ pub fn proc_streamer(app: &AppHandle, channel: &str) -> OnData {
 }
 
 /// Emit one chat event, wrapped in its routing envelope.
-pub fn emit_chat_event(
-  app: &AppHandle,
-  project_id: &str,
-  thread_id: &str,
-  turn_id: &str,
-  event: ChatEvent,
-) {
+pub fn emit_chat_event(app: &AppHandle, project_id: &str, turn_id: &str, event: ChatEvent) {
   let _ = app.emit(
     CHAT_EVENT,
     ChatEventEnvelope {
       project_id: project_id.to_string(),
-      thread_id: thread_id.to_string(),
       turn_id: turn_id.to_string(),
       event,
     },

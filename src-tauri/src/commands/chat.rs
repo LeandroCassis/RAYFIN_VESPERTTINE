@@ -1,9 +1,9 @@
 //! Chat engine: drives the GitHub Copilot CLI as the app's AI agent and maps its
 //! event stream into clean ChatEvents for the renderer.
 //!
-//! Built on the GitHub Copilot Rust SDK: each project (and side thread) keeps one
-//! persistent [`Session`](github_copilot_sdk::session::Session) — created or
-//! resumed from its stored `copilot_session_id` by
+//! Built on the GitHub Copilot Rust SDK: each project keeps one persistent
+//! [`Session`](github_copilot_sdk::session::Session) — created or resumed from
+//! its stored `copilot_session_id` by
 //! [`CopilotManager`](crate::services::copilot::CopilotManager) — and a turn sends
 //! the prompt, then drains the session's typed event subscription to idle. Reusing
 //! the same session id across turns preserves conversation context (and survives
@@ -28,7 +28,7 @@ use uuid::Uuid;
 use crate::commands::screenshot;
 use crate::services::copilot::PlanModeHandler;
 use crate::services::emit::emit_chat_event;
-use crate::services::history::{self, MAIN_THREAD_ID};
+use crate::services::history;
 use crate::services::store;
 use crate::state::{AppState, TurnRoute};
 use crate::types::{ChatEvent, ChatMessage, ChatOptions, ChatToolCall, ChatToolState, ChatTurnResult, CopilotModel, SteerResult};
@@ -59,10 +59,6 @@ fn session_mode(mode: &Option<String>) -> SessionMode {
     Some("autopilot") => SessionMode::Autopilot,
     _ => SessionMode::Interactive,
   }
-}
-
-fn thread_opt(thread_id: &Option<String>) -> Option<&str> {
-  thread_id.as_deref()
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -251,49 +247,25 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
   Flow::Continue
 }
 
-struct ThreadContext {
+struct ProjectContext {
   cwd: String,
   session_id: String,
 }
 
-/// Resolve the working dir + Copilot session id for a thread, creating and
-/// persisting a session id on first use. Returns None when the project/thread is
-/// gone. Model/effort stay project-level (shared across threads).
-fn resolve_context(project_id: &str, thread_id: &str) -> Option<ThreadContext> {
+/// Resolve the working dir + Copilot session id for a project, creating and
+/// persisting a session id on first use. Returns None when the project is gone.
+fn resolve_context(project_id: &str) -> Option<ProjectContext> {
   let project = store::find_project(project_id)?;
-
-  if thread_id == MAIN_THREAD_ID {
-    let session_id = match project.copilot_session_id {
-      Some(s) => s,
-      None => {
-        let sid = Uuid::new_v4().to_string();
-        let stored = sid.clone();
-        store::mutate_project(project_id, move |p| p.copilot_session_id = Some(stored));
-        sid
-      }
-    };
-    return Some(ThreadContext { cwd: project.path, session_id });
-  }
-
-  let thread = project.threads.as_ref()?.iter().find(|t| t.id == thread_id)?;
-  let cwd = thread.worktree_path.clone();
-  let session_id = match thread.copilot_session_id.clone() {
+  let session_id = match project.copilot_session_id {
     Some(s) => s,
     None => {
       let sid = Uuid::new_v4().to_string();
       let stored = sid.clone();
-      let target = thread_id.to_string();
-      store::mutate_project(project_id, move |p| {
-        if let Some(threads) = p.threads.as_mut() {
-          if let Some(t) = threads.iter_mut().find(|t| t.id == target) {
-            t.copilot_session_id = Some(stored);
-          }
-        }
-      });
+      store::mutate_project(project_id, move |p| p.copilot_session_id = Some(stored));
       sid
     }
   };
-  Some(ThreadContext { cwd, session_id })
+  Some(ProjectContext { cwd: project.path, session_id })
 }
 
 #[tauri::command]
@@ -304,15 +276,14 @@ pub async fn chat_send(
   turn_id: String,
   text: String,
   attachments: Option<Vec<String>>,
-  thread_id: Option<String>,
   mode: Option<String>,
 ) -> Result<ChatTurnResult, String> {
-  run_turn(app, state.inner(), project_id, turn_id, text, attachments, thread_id, mode).await
+  run_turn(app, state.inner(), project_id, turn_id, text, attachments, mode).await
 }
 
-/// The turn engine shared by `chat_send` and the side-thread merge flow. Drives
-/// one Copilot invocation and streams its events to `(project_id, thread, turn_id)`.
-/// Always resolves to `Ok` — failures surface inside the [`ChatTurnResult`].
+/// The turn engine behind `chat_send`. Drives one Copilot invocation and streams
+/// its events to `(project_id, turn_id)`. Always resolves to `Ok` — failures
+/// surface inside the [`ChatTurnResult`].
 pub(crate) async fn run_turn(
   app: AppHandle,
   state: &AppState,
@@ -320,14 +291,12 @@ pub(crate) async fn run_turn(
   turn_id: String,
   text: String,
   attachments: Option<Vec<String>>,
-  thread_id: Option<String>,
   mode: Option<String>,
 ) -> Result<ChatTurnResult, String> {
-  let thread = thread_id.clone().unwrap_or_else(|| MAIN_THREAD_ID.to_string());
   let attachments = attachments.unwrap_or_default();
 
   let Some(project) = store::find_project(&project_id) else {
-    emit_chat_event(&app, &project_id, &thread, &turn_id, ChatEvent::Error { text: "Project not found.".into() });
+    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: "Project not found.".into() });
     screenshot::cleanup(&attachments);
     return Ok(ChatTurnResult {
       ok: false,
@@ -337,25 +306,24 @@ pub(crate) async fn run_turn(
     });
   };
 
-  let Some(ctx_info) = resolve_context(&project_id, &thread) else {
-    emit_chat_event(&app, &project_id, &thread, &turn_id, ChatEvent::Error { text: "Side thread not found.".into() });
+  let Some(ctx_info) = resolve_context(&project_id) else {
+    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: "Project not found.".into() });
     screenshot::cleanup(&attachments);
     return Ok(ChatTurnResult {
       ok: false,
-      error: Some("Thread not found.".into()),
+      error: Some("Project not found.".into()),
       files_modified: vec![],
       ran_deploy: false,
     });
   };
 
-  // Guard against two concurrent turns on the same project/thread.
-  let Some(token) = state.try_begin_chat(&project_id, thread_opt(&thread_id)) else {
+  // Guard against two concurrent turns on the same project.
+  let Some(token) = state.try_begin_chat(&project_id) else {
     emit_chat_event(
       &app,
       &project_id,
-      &thread,
       &turn_id,
-      ChatEvent::Error { text: "A message is already being processed for this thread.".into() },
+      ChatEvent::Error { text: "A message is already being processed for this project.".into() },
     );
     return Ok(ChatTurnResult {
       ok: false,
@@ -375,12 +343,11 @@ pub(crate) async fn run_turn(
   // agent deploy and visually inspect the running app through the preview browser.
   let fab_tools = crate::services::agent_tools::fabricator_tools(app.clone(), project_id.clone());
 
-  // Open (or resume) this thread's persistent SDK session, reconciling model/effort.
+  // Open (or resume) this project's persistent SDK session, reconciling model/effort.
   let session = match state
     .copilot
     .turn_session(
       &project_id,
-      &thread,
       &ctx_info.cwd,
       &ctx_info.session_id,
       project.model.clone(),
@@ -392,9 +359,9 @@ pub(crate) async fn run_turn(
   {
     Ok(s) => s,
     Err(e) => {
-      emit_chat_event(&app, &project_id, &thread, &turn_id, ChatEvent::Error { text: e.clone() });
+      emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: e.clone() });
       screenshot::cleanup(&attachments);
-      state.end_chat(&project_id, thread_opt(&thread_id));
+      state.end_chat(&project_id);
       return Ok(ChatTurnResult { ok: false, error: Some(e), files_modified: vec![], ran_deploy: false });
     }
   };
@@ -411,7 +378,7 @@ pub(crate) async fn run_turn(
   let session_key = ctx_info.session_id.clone();
   state.plan.set_route(
     &session_key,
-    TurnRoute { project_id: project_id.clone(), thread_id: thread.clone(), turn_id: turn_id.clone() },
+    TurnRoute { project_id: project_id.clone(), turn_id: turn_id.clone() },
   );
 
   // File attachments → typed SDK attachments (built once, cloned per attempt).
@@ -466,7 +433,7 @@ pub(crate) async fn run_turn(
           }
           recv = sub.recv() => match recv {
             Ok(ev) => {
-              let mut sink = |e: ChatEvent| emit_chat_event(&app, &project_id, &thread, &turn_id, e);
+              let mut sink = |e: ChatEvent| emit_chat_event(&app, &project_id, &turn_id, e);
               if let Flow::Stop = map_event(&ev.event_type, &ev.data, &mut sink, &mut ctx) {
                 return DrainEnd::Finished;
               }
@@ -509,7 +476,6 @@ pub(crate) async fn run_turn(
     emit_chat_event(
       &app,
       &project_id,
-      &thread,
       &turn_id,
       ChatEvent::Notice { text: format!("Copilot hiccup — retrying ({}/{})…", attempt, MAX_ATTEMPTS - 1) },
     );
@@ -518,18 +484,17 @@ pub(crate) async fn run_turn(
   }
 
   screenshot::cleanup(&attachments);
-  state.end_chat(&project_id, thread_opt(&thread_id));
+  state.end_chat(&project_id);
   // Drop this turn's plan route and unblock any handler still awaiting a decision
   // (covers Stop / timeout while an approval card is open).
   state.plan.clear_route(&session_key);
   state.plan.reject_pending(&session_key);
 
   if let Some(e) = send_error {
-    emit_chat_event(&app, &project_id, &thread, &turn_id, ChatEvent::Error { text: e.clone() });
+    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: e.clone() });
     emit_chat_event(
       &app,
       &project_id,
-      &thread,
       &turn_id,
       ChatEvent::Result { ok: false, files_modified: vec![], ran_deploy: ctx.ran_deploy },
     );
@@ -544,13 +509,12 @@ pub(crate) async fn run_turn(
     } else {
       "Copilot ended unexpectedly.".to_string()
     };
-    emit_chat_event(&app, &project_id, &thread, &turn_id, ChatEvent::Error { text: detail });
+    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: detail });
   }
 
   emit_chat_event(
     &app,
     &project_id,
-    &thread,
     &turn_id,
     ChatEvent::Result { ok, files_modified: ctx.files_modified.clone(), ran_deploy: ctx.ran_deploy },
   );
@@ -563,11 +527,11 @@ pub(crate) async fn run_turn(
 }
 
 #[tauri::command]
-pub fn chat_cancel(state: State<'_, AppState>, project_id: String, thread_id: Option<String>) {
-  state.cancel_chat(&project_id, thread_opt(&thread_id));
+pub fn chat_cancel(state: State<'_, AppState>, project_id: String) {
+  state.cancel_chat(&project_id);
 }
 
-/// Interject a message into the turn already running for `(project, thread)` —
+/// Interject a message into the turn already running for `project` —
 /// conversation steering. Returns `{ steered: true }` when a turn was in flight:
 /// the message either interrupts the current step immediately (Immediate
 /// delivery) or, when a Plan card is awaiting a decision, is routed as
@@ -580,16 +544,14 @@ pub async fn chat_steer(
   project_id: String,
   text: String,
   attachments: Option<Vec<String>>,
-  thread_id: Option<String>,
 ) -> Result<SteerResult, String> {
-  let thread = thread_id.clone().unwrap_or_else(|| MAIN_THREAD_ID.to_string());
   let attachments = attachments.unwrap_or_default();
 
   // Nothing running → let the caller start a normal turn.
-  if !state.is_chat_running(&project_id, thread_opt(&thread_id)) {
+  if !state.is_chat_running(&project_id) {
     return Ok(SteerResult { steered: false });
   }
-  let Some(ctx_info) = resolve_context(&project_id, &thread) else {
+  let Some(ctx_info) = resolve_context(&project_id) else {
     return Ok(SteerResult { steered: false });
   };
   // Where the live turn is streaming, so any plan card dismisses on the right turn.
@@ -600,7 +562,7 @@ pub async fn chat_steer(
   // feedback that asks it to revise the plan instead of an immediate interjection.
   if let Some(request_id) = state.plan.pending_request(&ctx_info.session_id) {
     if let Some(turn) = &active_turn {
-      emit_chat_event(&app, &project_id, &thread, turn, ChatEvent::PlanResolved { request_id: request_id.clone() });
+      emit_chat_event(&app, &project_id, turn, ChatEvent::PlanResolved { request_id: request_id.clone() });
     }
     state.plan.resolve(
       &request_id,
@@ -613,7 +575,7 @@ pub async fn chat_steer(
   // Normal interjection: deliver the message Immediately so it interrupts the
   // current step. The in-flight `run_turn` drain loop streams the resulting
   // events to the same turn, so we take no new turn lock here.
-  let Some(session) = state.copilot.peek_session(&project_id, &thread).await else {
+  let Some(session) = state.copilot.peek_session(&project_id).await else {
     // Running but no cached session (shouldn't happen) — treat as handled so the
     // renderer doesn't start a competing turn that the run guard would reject.
     screenshot::cleanup(&attachments);
@@ -630,7 +592,7 @@ pub async fn chat_steer(
   }
   if let Err(e) = session.send(opts).await {
     if let Some(turn) = &active_turn {
-      emit_chat_event(&app, &project_id, &thread, turn, ChatEvent::Error { text: format!("Couldn't interject: {e}") });
+      emit_chat_event(&app, &project_id, turn, ChatEvent::Error { text: format!("Couldn't interject: {e}") });
     }
     screenshot::cleanup(&attachments);
     // Handled (with an error shown) — don't start a competing turn.
@@ -649,33 +611,19 @@ pub async fn chat_steer(
 }
 
 #[tauri::command]
-pub async fn chat_reset(state: State<'_, AppState>, project_id: String, thread_id: Option<String>) -> Result<(), String> {
-  let tid = thread_opt(&thread_id);
+pub async fn chat_reset(state: State<'_, AppState>, project_id: String) -> Result<(), String> {
   // Stop any in-flight turn first (mirrors chat.ts resetSession → cancelMessage).
-  state.cancel_chat(&project_id, tid);
+  state.cancel_chat(&project_id);
   // Drop the cached SDK session so the next turn starts a brand-new conversation.
-  state.copilot.forget(&project_id, tid.unwrap_or(MAIN_THREAD_ID)).await;
-  history::clear_history(&project_id, tid);
-  match tid {
-    None | Some(MAIN_THREAD_ID) => {
-      store::mutate_project(&project_id, |p| p.copilot_session_id = None);
-    }
-    Some(tid) => {
-      store::mutate_project(&project_id, |p| {
-        if let Some(threads) = p.threads.as_mut() {
-          if let Some(t) = threads.iter_mut().find(|t| t.id == tid) {
-            t.copilot_session_id = None;
-          }
-        }
-      });
-    }
-  }
+  state.copilot.forget(&project_id).await;
+  history::clear_history(&project_id);
+  store::mutate_project(&project_id, |p| p.copilot_session_id = None);
   Ok(())
 }
 
 #[tauri::command]
-pub fn chat_history(project_id: String, thread_id: Option<String>) -> Vec<ChatMessage> {
-  history::load_history(&project_id, thread_opt(&thread_id))
+pub fn chat_history(project_id: String) -> Vec<ChatMessage> {
+  history::load_history(&project_id)
 }
 
 /// Resolve a pending Plan-mode approval prompt raised via `exit_plan_mode`.
@@ -703,8 +651,8 @@ pub fn chat_resolve_plan(
 }
 
 #[tauri::command]
-pub fn chat_save_history(project_id: String, messages: Vec<ChatMessage>, thread_id: Option<String>) {
-  history::save_history(&project_id, messages, thread_opt(&thread_id));
+pub fn chat_save_history(project_id: String, messages: Vec<ChatMessage>) {
+  history::save_history(&project_id, messages);
 }
 
 #[tauri::command]

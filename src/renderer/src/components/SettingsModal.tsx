@@ -171,12 +171,6 @@ export default function SettingsModal({
                 Experiments <span className="settings-beta">Beta</span>
               </span>
               <ToggleRow
-                label="Side threads"
-                hint="Run parallel background agents that auto-merge into your main thread."
-                checked={Boolean(settings.experiments?.sideThreads)}
-                onChange={(v) => onChange({ experiments: { sideThreads: v } })}
-              />
-              <ToggleRow
                 label="Auto-refresh the Advisor"
                 hint="Re-run a stale review automatically when you open the Advisor."
                 checked={Boolean(settings.experiments?.advisorAutoRun)}

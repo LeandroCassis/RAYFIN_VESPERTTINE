@@ -188,7 +188,7 @@ export function EraserIcon(props: IconProps): JSX.Element {
   )
 }
 
-/** Git-branch / fork — start a parallel side thread. */
+/** Git-branch / fork glyph. */
 export function BranchIcon(props: IconProps): JSX.Element {
   return (
     <Icon {...props}>

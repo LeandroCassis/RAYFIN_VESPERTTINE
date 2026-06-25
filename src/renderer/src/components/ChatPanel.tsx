@@ -11,7 +11,6 @@ import {
   type DragEvent
 } from 'react'
 import {
-  MAIN_THREAD_ID,
   type ChatEvent,
   type ChatMessage,
   type ChatMode,
@@ -83,14 +82,10 @@ export interface OutboundPrompt {
 
 interface Props {
   project: StudioProject
-  /** Which thread this panel drives (main thread when omitted). */
-  threadId?: string
   messages: UIChatMessage[]
   onChange: (updater: (prev: UIChatMessage[]) => UIChatMessage[]) => void
   /** Called after a turn completes (used later to trigger deploy/preview refresh). */
   onTurnComplete?: (result: ChatTurnResult) => void
-  /** Called when this thread starts/stops a turn (drives status dots + merge defer). */
-  onBusyChange?: (busy: boolean) => void
   /** Region screenshots staged for the next message. */
   attachments?: PendingShot[]
   /** Stage an image the user added, pasted, or dropped into the composer. */
@@ -126,7 +121,7 @@ const EFFORT_OPTIONS: ReasoningEffort[] = ['low', 'medium', 'high', 'xhigh', 'ma
 const EFFORT_ORDER: ReasoningEffort[] = ['none', 'low', 'medium', 'high', 'xhigh', 'max']
 
 // Module-level cache so the per-user model list is fetched once and shared across
-// every ChatPanel instance (one per thread), rather than re-queried on each open.
+// every ChatPanel instance, rather than re-queried on each open.
 let modelsCache: CopilotModel[] | null = null
 let modelsPromise: Promise<CopilotModel[]> | null = null
 
@@ -630,25 +625,6 @@ function SendIcon(): JSX.Element {
   )
 }
 
-function MergeIcon(): JSX.Element {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <circle cx="6" cy="6" r="2.4" />
-      <circle cx="6" cy="18" r="2.4" />
-      <circle cx="18" cy="9" r="2.4" />
-      <path d="M6 8.4v7.2" />
-      <path d="M6 12h4a5 5 0 0 0 5-5V9" />
-    </svg>
-  )
-}
-
 /** Small glyph per chat mode, shown in the composer mode selector + its menu. */
 function ModeIcon({ mode, className }: { mode: ChatMode; className?: string }): JSX.Element {
   const cls = className ?? 'btn-ico'
@@ -802,7 +778,7 @@ function ToolRow({
   )
 }
 
-/** Renders a turn's tool-activity list (used by the legacy / merge-event body). */
+/** Renders a turn's tool-activity list. */
 function ToolActivity({
   tools,
   projectPath
@@ -1314,11 +1290,11 @@ function rankFiles(files: MentionFile[], query: string): MentionFile[] {
 }
 
 /**
- * One conversation row (assistant/user turn or a merge event), memoized so the
- * thousands of state updates a streaming turn produces only re-render the *one*
- * turn that changed — completed turns keep their object identity (see `reduce`)
- * and therefore skip re-rendering entirely. Callbacks must be referentially
- * stable (the parent passes `useCallback`-wrapped wrappers) and `canRetry` is a
+ * One conversation row (assistant or user turn), memoized so the thousands of
+ * state updates a streaming turn produces only re-render the *one* turn that
+ * changed — completed turns keep their object identity (see `reduce`) and
+ * therefore skip re-rendering entirely. Callbacks must be referentially stable
+ * (the parent passes `useCallback`-wrapped wrappers) and `canRetry` is a
  * precomputed primitive, so memo's shallow compare holds for settled turns.
  */
 const MessageRow = memo(function MessageRow({
@@ -1326,43 +1302,18 @@ const MessageRow = memo(function MessageRow({
   projectPath,
   canRetry,
   onRetry,
+  canResume,
+  onResume,
   onResolvePlan
 }: {
   message: UIChatMessage
   projectPath: string
   canRetry: boolean
   onRetry: (id: string) => void
+  canResume: boolean
+  onResume: (id: string) => void
   onResolvePlan: (msgId: string, requestId: string, action: string, feedback?: string) => void
 }): JSX.Element {
-  if (m.kind === 'merge') {
-    const who = m.mergeName ?? 'side thread'
-    const label = m.error
-      ? `Couldn’t merge “${who}” into main`
-      : m.pending
-        ? `Merging “${who}” into main…`
-        : `Merged “${who}” into main`
-    const hasBody = m.tools.length > 0 || Boolean(m.text)
-    return (
-      <div
-        className={`merge-event${m.error ? ' merge-event--error' : ''}${
-          m.pending ? ' merge-event--pending' : ''
-        }`}
-      >
-        <div className="merge-event-head">
-          <span className="merge-event-icon">
-            {m.pending ? <span className="tool-spin" /> : m.error ? '⚠' : <MergeIcon />}
-          </span>
-          <span className="merge-event-label">{label}</span>
-        </div>
-        {hasBody && (
-          <div className="merge-event-body">
-            <AssistantBody message={m} projectPath={projectPath} />
-          </div>
-        )}
-        {m.error && <div className="alert alert--error merge-event-error">{m.error}</div>}
-      </div>
-    )
-  }
   return (
     <div className={`turn turn--${m.role}`}>
       <div className="turn-head">
@@ -1431,6 +1382,22 @@ const MessageRow = memo(function MessageRow({
             )}
           </div>
         )}
+        {m.interrupted && !m.pending && !m.error && (
+          <div className="msg-interrupted">
+            <span className="msg-interrupted-text">
+              This response was interrupted when the app closed.
+            </span>
+            {canResume && (
+              <button
+                className="btn btn--xs btn--ghost msg-interrupted-resume"
+                onClick={() => onResume(m.id)}
+                title="Re-run this prompt and continue"
+              >
+                ⟲ Resume
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -1438,11 +1405,9 @@ const MessageRow = memo(function MessageRow({
 
 export default function ChatPanel({
   project,
-  threadId = MAIN_THREAD_ID,
   messages,
   onChange,
   onTurnComplete,
-  onBusyChange,
   attachments,
   onAddAttachment,
   onRemoveAttachment,
@@ -1459,6 +1424,17 @@ export default function ChatPanel({
 }: Props): JSX.Element {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
+  // Recover the in-flight state when the panel remounts mid-turn — switching
+  // workbench tabs/projects or a dev hot-reload tears down this component while
+  // the backend turn keeps streaming. `messages` is owned by the parent and
+  // survives the remount, so a still-pending assistant turn means a turn is
+  // genuinely live; without this, `sending` reset to false and the Stop button
+  // (plus the Clear / model-switch locks) silently vanished. Completed history
+  // hydrates non-pending, so this never sticks after a turn settles.
+  const hasLiveTurn = messages.some((m) => m.role === 'assistant' && m.pending)
+  useEffect(() => {
+    setSending((s) => (s === hasLiveTurn ? s : hasLiveTurn))
+  }, [hasLiveTurn])
   const [mode, setMode] = useState<ChatMode>('agent')
   const [model, setModel] = useState(project.model ?? '')
   const [effort, setEffort] = useState<ReasoningEffort | ''>(project.effort ?? '')
@@ -1473,9 +1449,12 @@ export default function ChatPanel({
   // always point at the latest closures, preserving current `messages`/`sending`.
   const retryRef = useRef(retry)
   retryRef.current = retry
+  const resumeRef = useRef(resume)
+  resumeRef.current = resume
   const resolvePlanRef = useRef(resolvePlan)
   resolvePlanRef.current = resolvePlan
   const onRetry = useCallback((id: string) => void retryRef.current(id), [])
+  const onResume = useCallback((id: string) => void resumeRef.current(id), [])
   const onResolvePlan = useCallback(
     (msgId: string, requestId: string, action: string, feedback?: string) =>
       void resolvePlanRef.current(msgId, requestId, action, feedback),
@@ -1603,7 +1582,7 @@ export default function ChatPanel({
     }
 
     const off = window.api.onChatEvent((envelope) => {
-      if (envelope.projectId !== project.id || envelope.threadId !== threadId) return
+      if (envelope.projectId !== project.id) return
       const ev = envelope.event
       if (ev.type === 'delta') {
         buf.set(envelope.turnId, (buf.get(envelope.turnId) ?? '') + ev.text)
@@ -1627,7 +1606,7 @@ export default function ChatPanel({
       }
       buf.clear()
     }
-  }, [project.id, threadId])
+  }, [project.id])
 
   // Keep the view pinned to the newest content — but only when the user is already
   // near the bottom, so reading earlier messages isn't interrupted. Otherwise we
@@ -1806,7 +1785,7 @@ export default function ChatPanel({
     }
     let steered = true
     try {
-      const res = await window.api.chat.steer(project.id, text, shots.map((s) => s.path), threadId)
+      const res = await window.api.chat.steer(project.id, text, shots.map((s) => s.path))
       steered = !!res?.steered
     } catch (err) {
       console.error('Failed to steer', err)
@@ -1851,21 +1830,18 @@ export default function ChatPanel({
     }
     onChange((prev) => [...prev, userMsg, assistantMsg])
     setSending(true)
-    onBusyChange?.(true)
     try {
       const result = await window.api.chat.send(
         project.id,
         turnId,
         prompt,
         shots.map((s) => s.path),
-        threadId,
         mode
       )
       onChange((prev) => prev.map((m) => (m.turnId === turnId ? { ...m, pending: false } : m)))
       onTurnComplete?.(result)
     } finally {
       setSending(false)
-      onBusyChange?.(false)
     }
   }
 
@@ -1879,8 +1855,42 @@ export default function ChatPanel({
     await dispatch(user.text, user.text, [])
   }
 
+  /**
+   * Resume a turn that was interrupted by the app closing/crashing mid-stream.
+   * The preceding user prompt is re-run in place: the stranded (partial)
+   * assistant turn is dropped and a fresh one streams in its slot. The backend
+   * resumes the same Copilot session, so the agent keeps the prior context.
+   */
+  async function resume(assistantId: string): Promise<void> {
+    if (sending) return
+    const idx = messages.findIndex((m) => m.id === assistantId)
+    if (idx <= 0) return
+    const user = messages[idx - 1]
+    if (!user || user.role !== 'user' || user.text === '(screenshot)') return
+    const turnId = uid()
+    const assistantMsg: UIChatMessage = {
+      id: uid(),
+      turnId,
+      role: 'assistant',
+      text: '',
+      tools: [],
+      segments: [],
+      pending: true,
+      startedAt: Date.now()
+    }
+    onChange((prev) => [...prev.filter((m) => m.id !== assistantId), assistantMsg])
+    setSending(true)
+    try {
+      const result = await window.api.chat.send(project.id, turnId, user.text, [], mode)
+      onChange((prev) => prev.map((m) => (m.turnId === turnId ? { ...m, pending: false } : m)))
+      onTurnComplete?.(result)
+    } finally {
+      setSending(false)
+    }
+  }
+
   async function stop(): Promise<void> {
-    await window.api.chat.cancel(project.id, threadId)
+    await window.api.chat.cancel(project.id)
   }
 
   /** Answer a Plan-mode approval card; optimistically disables its buttons. */
@@ -1904,7 +1914,7 @@ export default function ChatPanel({
   }
 
   async function newChat(): Promise<void> {
-    await window.api.chat.reset(project.id, threadId)
+    await window.api.chat.reset(project.id)
     onChange(() => [])
     setMode('agent')
     onClearHistory?.()
@@ -2073,8 +2083,13 @@ export default function ChatPanel({
         <div className="chat-model-menu" onClick={(e) => e.stopPropagation()}>
           <button
             className="chat-model-btn"
-            title="Choose the AI model and reasoning effort"
+            title={
+              sending
+                ? 'Model can’t be changed while the assistant is working'
+                : 'Choose the AI model and reasoning effort'
+            }
             onClick={() => setShowModel((s) => !s)}
+            disabled={sending}
           >
             <SparkleIcon className="chat-model-btn-icon" />
             <span className="chat-model-btn-label">{selectedModel?.name || model || 'Auto'}</span>
@@ -2200,12 +2215,13 @@ export default function ChatPanel({
 
         {messages.map((m, i) => {
           const prevUser = m.role === 'assistant' && i > 0 ? messages[i - 1] : undefined
-          const canRetry =
-            Boolean(m.error) &&
+          const rerunnable =
             !sending &&
             prevUser?.role === 'user' &&
             !prevUser.attachments &&
             prevUser.text !== '(screenshot)'
+          const canRetry = Boolean(m.error) && rerunnable
+          const canResume = Boolean(m.interrupted) && !m.pending && rerunnable
           return (
             <MessageRow
               key={m.id}
@@ -2213,6 +2229,8 @@ export default function ChatPanel({
               projectPath={project.path}
               canRetry={canRetry}
               onRetry={onRetry}
+              canResume={canResume}
+              onResume={onResume}
               onResolvePlan={onResolvePlan}
             />
           )

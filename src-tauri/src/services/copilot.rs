@@ -54,8 +54,8 @@ pub struct CopilotManager {
   sessions: Mutex<HashMap<String, Entry>>,
 }
 
-fn cache_key(project_id: &str, thread_id: &str) -> String {
-  format!("{project_id}::{thread_id}")
+fn cache_key(project_id: &str) -> String {
+  project_id.to_string()
 }
 
 /// On-disk session-state directory the CLI persists per session id.
@@ -135,7 +135,6 @@ impl ExitPlanModeHandler for PlanModeHandler {
     emit_chat_event(
       &self.app,
       &route.project_id,
-      &route.thread_id,
       &route.turn_id,
       ChatEvent::PlanProposed {
         request_id,
@@ -300,12 +299,11 @@ impl CopilotManager {
     Err(format!("Failed to list Copilot models: {last_err}"))
   }
 
-  /// Get the persistent, cached session for a project/thread turn, creating or
+  /// Get the persistent, cached session for a project turn, creating or
   /// resuming it as needed and reconciling the current model/effort.
   pub async fn turn_session(
     &self,
     project_id: &str,
-    thread_id: &str,
     cwd: &str,
     session_id: &str,
     model: Option<String>,
@@ -313,7 +311,7 @@ impl CopilotManager {
     exit_plan: Option<Arc<dyn ExitPlanModeHandler>>,
     tools: Vec<Tool>,
   ) -> Result<Arc<Session>, String> {
-    let key = cache_key(project_id, thread_id);
+    let key = cache_key(project_id);
     let want_model = concrete_model(&model);
     let want_effort = norm_effort(&effort);
 
@@ -412,19 +410,19 @@ impl CopilotManager {
     Ok(Arc::new(session))
   }
 
-  /// Return the cached live session for a project/thread **without** creating,
+  /// Return the cached live session for a project **without** creating,
   /// resuming, or re-applying model/effort. Used by conversation steering, which
   /// must interject into the exact session a turn is already running on.
-  pub async fn peek_session(&self, project_id: &str, thread_id: &str) -> Option<Arc<Session>> {
-    let key = cache_key(project_id, thread_id);
+  pub async fn peek_session(&self, project_id: &str) -> Option<Arc<Session>> {
+    let key = cache_key(project_id);
     self.sessions.lock().await.get(&key).map(|e| e.session.clone())
   }
 
-  /// Forget (and disconnect) the cached session for a project/thread. Used by
+  /// Forget (and disconnect) the cached session for a project. Used by
   /// `chat_reset`, which also clears the stored session id so the next turn
   /// starts a brand-new conversation.
-  pub async fn forget(&self, project_id: &str, thread_id: &str) {
-    let key = cache_key(project_id, thread_id);
+  pub async fn forget(&self, project_id: &str) {
+    let key = cache_key(project_id);
     let old = self.sessions.lock().await.remove(&key);
     if let Some(old) = old {
       let _ = old.session.disconnect().await;

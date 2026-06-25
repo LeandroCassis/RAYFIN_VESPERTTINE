@@ -149,12 +149,18 @@ export default function SkillsView({ project, onChanged }: Props): JSX.Element {
                   return (
                     <div
                       key={skill.id}
-                      className={`skill-card${skill.active ? ' skill-card--active' : ''}`}
+                      className={`skill-row${skill.active ? ' skill-row--active' : ''}`}
                     >
-                      <div className="skill-card-top">
-                        <span className="skill-icon" aria-hidden="true">
-                          {skill.icon}
-                        </span>
+                      <span className="skill-icon" aria-hidden="true">
+                        {skill.icon}
+                      </span>
+                      <div className="skill-row-body">
+                        <h3 className="skill-name">{skill.title}</h3>
+                        <p className="skill-desc" title={skill.description}>
+                          {skill.description}
+                        </p>
+                      </div>
+                      <div className="skill-row-actions">
                         {skill.base ? (
                           <span className="skill-flag skill-flag--base">Always on</span>
                         ) : skill.custom ? (
@@ -162,10 +168,6 @@ export default function SkillsView({ project, onChanged }: Props): JSX.Element {
                         ) : skill.active ? (
                           <span className="skill-flag skill-flag--on">Active</span>
                         ) : null}
-                      </div>
-                      <h3 className="skill-name">{skill.title}</h3>
-                      <p className="skill-desc">{skill.description}</p>
-                      <div className="skill-card-foot">
                         <button
                           className="btn btn--xs btn--ghost"
                           onClick={() => setPreview(skill)}
@@ -182,7 +184,7 @@ export default function SkillsView({ project, onChanged }: Props): JSX.Element {
                           </span>
                         ) : (
                           <button
-                            className={`btn btn--sm${skill.active ? '' : ' btn--primary'}`}
+                            className={`btn btn--xs${skill.active ? '' : ' btn--primary'}`}
                             onClick={() => void toggle(skill)}
                             disabled={isBusy}
                           >

@@ -1,13 +1,9 @@
 //! Per-project chat-history persistence — the Rust counterpart to
-//! `src/main/services/history.ts`. Each project thread's transcript is a JSON
-//! file under `<dataDir>/chats/`. The main thread keeps the bare
-//! `<projectId>.json` name; side threads use `<projectId>__<threadId>.json`.
+//! `src/main/services/history.ts`. Each project's transcript is a JSON file
+//! `<projectId>.json` under `<dataDir>/chats/`.
 
 use super::paths;
 use crate::types::ChatMessage;
-
-/// The implicit main thread's id (mirrors `MAIN_THREAD_ID` in `shared/ipc.ts`).
-pub const MAIN_THREAD_ID: &str = "main";
 
 /// Keep transcripts bounded; older messages beyond this are dropped on save.
 const MAX_MESSAGES: usize = 1000;
@@ -25,29 +21,22 @@ fn safe_slug(input: &str, fallback: &str) -> String {
   }
 }
 
-fn history_file(project_id: &str, thread_id: Option<&str>) -> std::path::PathBuf {
-  let dir = paths::chats_dir();
-  let project = safe_slug(project_id, "unknown");
-  match thread_id {
-    None | Some(MAIN_THREAD_ID) => dir.join(format!("{project}.json")),
-    Some(tid) => {
-      let thread = safe_slug(tid, "thread");
-      dir.join(format!("{project}__{thread}.json"))
-    }
-  }
+fn history_file(project_id: &str) -> std::path::PathBuf {
+  paths::chats_dir().join(format!("{}.json", safe_slug(project_id, "unknown")))
 }
 
-/// Coerce arbitrary persisted JSON into a clean `Vec<ChatMessage>`.
+/// Coerce arbitrary persisted JSON into a clean `Vec<ChatMessage>`, dropping
+/// legacy "merge" system events from the removed side-threads feature.
 fn sanitize(messages: Vec<ChatMessage>) -> Vec<ChatMessage> {
   messages
     .into_iter()
-    .filter(|m| m.role == "user" || m.role == "assistant")
+    .filter(|m| (m.role == "user" || m.role == "assistant") && m.kind.as_deref() != Some("merge"))
     .collect()
 }
 
-/// Load a project thread's persisted conversation (empty when none/invalid).
-pub fn load_history(project_id: &str, thread_id: Option<&str>) -> Vec<ChatMessage> {
-  match std::fs::read_to_string(history_file(project_id, thread_id)) {
+/// Load a project's persisted conversation (empty when none/invalid).
+pub fn load_history(project_id: &str) -> Vec<ChatMessage> {
+  match std::fs::read_to_string(history_file(project_id)) {
     Ok(raw) => serde_json::from_str::<Vec<ChatMessage>>(&raw)
       .map(sanitize)
       .unwrap_or_default(),
@@ -55,13 +44,13 @@ pub fn load_history(project_id: &str, thread_id: Option<&str>) -> Vec<ChatMessag
   }
 }
 
-/// Persist a project thread's conversation. An empty list removes the file.
-pub fn save_history(project_id: &str, messages: Vec<ChatMessage>, thread_id: Option<&str>) {
+/// Persist a project's conversation. An empty list removes the file.
+pub fn save_history(project_id: &str, messages: Vec<ChatMessage>) {
   let mut clean = sanitize(messages);
   if clean.len() > MAX_MESSAGES {
     clean = clean.split_off(clean.len() - MAX_MESSAGES);
   }
-  let file = history_file(project_id, thread_id);
+  let file = history_file(project_id);
   if clean.is_empty() {
     let _ = std::fs::remove_file(&file);
     return;
@@ -76,7 +65,7 @@ pub fn save_history(project_id: &str, messages: Vec<ChatMessage>, thread_id: Opt
   }
 }
 
-/// Delete a project thread's persisted conversation (used on removal).
-pub fn clear_history(project_id: &str, thread_id: Option<&str>) {
-  let _ = std::fs::remove_file(history_file(project_id, thread_id));
+/// Delete a project's persisted conversation (used on removal).
+pub fn clear_history(project_id: &str) {
+  let _ = std::fs::remove_file(history_file(project_id));
 }

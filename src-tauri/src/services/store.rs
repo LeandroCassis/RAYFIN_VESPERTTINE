@@ -10,9 +10,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::paths;
-use crate::types::{
-  AppSettings, ExperimentFlags, ProjectThread, ProjectsState, StudioProject,
-};
+use crate::types::{AppSettings, ExperimentFlags, ProjectsState, StudioProject};
 
 struct Cache {
   state: ProjectsState,
@@ -36,7 +34,6 @@ fn default_settings() -> AppSettings {
   AppSettings {
     theme: "dark".to_string(),
     experiments: Some(ExperimentFlags {
-      side_threads: Some(false),
       advisor_auto_run: Some(false),
       compatibility_rendering: Some(false),
     }),
@@ -126,13 +123,9 @@ pub fn set_settings(theme: Option<String>, experiments: Option<ExperimentFlags>)
     }
     if let Some(patch) = experiments {
       let current = c.settings.experiments.get_or_insert(ExperimentFlags {
-        side_threads: Some(false),
         advisor_auto_run: Some(false),
         compatibility_rendering: Some(false),
       });
-      if let Some(v) = patch.side_threads {
-        current.side_threads = Some(v);
-      }
       if let Some(v) = patch.advisor_auto_run {
         current.advisor_auto_run = Some(v);
       }
@@ -210,9 +203,4 @@ pub fn mutate_project(id: &str, f: impl FnOnce(&mut StudioProject)) -> ProjectsS
 
 pub fn find_project(id: &str) -> Option<StudioProject> {
   with_cache(|c| c.state.projects.iter().find(|p| p.id == id).cloned())
-}
-
-/// Replace a project's side-thread list and persist.
-pub fn set_threads(id: &str, threads: Vec<ProjectThread>) -> ProjectsState {
-  mutate_project(id, |p| p.threads = Some(threads))
 }

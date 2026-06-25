@@ -19,7 +19,6 @@ import {
   type ChatMode,
   type ChatOptions,
   type CreateProjectInput,
-  type CreateThreadInput,
   type PreviewBounds,
   type PreviewNavState,
   type PreviewAgentEvent,
@@ -143,37 +142,25 @@ export const api: RayfinStudioApi = {
       turnId: string,
       text: string,
       attachments?: string[],
-      threadId?: string,
       mode?: ChatMode
-    ) => invoke('chat_send', { projectId, turnId, text, attachments, threadId, mode }),
+    ) => invoke('chat_send', { projectId, turnId, text, attachments, mode }),
     steer: (
       projectId: string,
       text: string,
-      attachments?: string[],
-      threadId?: string
-    ) => invoke('chat_steer', { projectId, text, attachments, threadId }),
-    cancel: (projectId: string, threadId?: string) =>
-      invoke('chat_cancel', { projectId, threadId }),
-    reset: (projectId: string, threadId?: string) => invoke('chat_reset', { projectId, threadId }),
+      attachments?: string[]
+    ) => invoke('chat_steer', { projectId, text, attachments }),
+    cancel: (projectId: string) => invoke('chat_cancel', { projectId }),
+    reset: (projectId: string) => invoke('chat_reset', { projectId }),
     resolvePlan: (requestId: string, action: string, feedback?: string) =>
       invoke('chat_resolve_plan', { requestId, action, feedback }),
-    history: (projectId: string, threadId?: string) =>
-      invoke('chat_history', { projectId, threadId }),
-    saveHistory: (projectId: string, messages: ChatMessage[], threadId?: string) =>
-      invoke('chat_save_history', { projectId, messages, threadId }),
+    history: (projectId: string) => invoke('chat_history', { projectId }),
+    saveHistory: (projectId: string, messages: ChatMessage[]) =>
+      invoke('chat_save_history', { projectId, messages }),
     setOptions: (projectId: string, options: ChatOptions) =>
       invoke('chat_set_options', { projectId, options }),
     listModels: () => invoke('chat_models'),
     suggest: (projectId: string) => invoke('chat_suggest', { projectId }),
     cancelSuggest: (projectId: string) => invoke('chat_suggest_cancel', { projectId })
-  },
-
-  threads: {
-    list: (projectId: string) => invoke('threads_list', { projectId }),
-    create: (input: CreateThreadInput) => invoke('threads_create', { input }),
-    remove: (projectId: string, threadId: string) =>
-      invoke('threads_remove', { projectId, threadId }),
-    merge: (projectId: string, threadId: string) => invoke('threads_merge', { projectId, threadId })
   },
 
   screenshot: {

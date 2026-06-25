@@ -13,11 +13,10 @@ use tokio::sync::oneshot;
 
 use crate::services::copilot::CopilotManager;
 use crate::services::exec::CancelToken;
-use crate::services::history::MAIN_THREAD_ID;
 
 #[derive(Default)]
 pub struct AppState {
-  /// Active chat cancel tokens, keyed by `"<projectId>::<threadId>"`.
+  /// Active chat cancel tokens, keyed by `projectId` (one turn per project).
   chat_cancels: Mutex<HashMap<String, CancelToken>>,
   /// Active advisor-run cancel tokens, keyed by `projectId` (one run per project).
   advisor_cancels: Mutex<HashMap<String, CancelToken>>,
@@ -34,7 +33,6 @@ pub struct AppState {
 #[derive(Clone)]
 pub struct TurnRoute {
   pub project_id: String,
-  pub thread_id: String,
   pub turn_id: String,
 }
 
@@ -118,37 +116,28 @@ impl PlanGate {
   }
 }
 
-fn key(project_id: &str, thread_id: Option<&str>) -> String {
-  format!("{project_id}::{}", thread_id.unwrap_or(MAIN_THREAD_ID))
-}
-
 impl AppState {
   /// Register a fresh cancel token for a turn only if none is already running for
-  /// this project/thread. Returns `None` when a turn is already in flight.
-  pub fn try_begin_chat(&self, project_id: &str, thread_id: Option<&str>) -> Option<CancelToken> {
+  /// this project. Returns `None` when a turn is already in flight.
+  pub fn try_begin_chat(&self, project_id: &str) -> Option<CancelToken> {
     let mut map = self.chat_cancels.lock().unwrap();
-    let k = key(project_id, thread_id);
-    if map.contains_key(&k) {
+    if map.contains_key(project_id) {
       return None;
     }
     let token = CancelToken::new();
-    map.insert(k, token.clone());
+    map.insert(project_id.to_string(), token.clone());
     Some(token)
   }
 
   /// Remove a turn's cancel token (called when the turn completes).
-  pub fn end_chat(&self, project_id: &str, thread_id: Option<&str>) {
-    self
-      .chat_cancels
-      .lock()
-      .unwrap()
-      .remove(&key(project_id, thread_id));
+  pub fn end_chat(&self, project_id: &str) {
+    self.chat_cancels.lock().unwrap().remove(project_id);
   }
 
   /// Cancel an in-flight turn, if one is running. Returns true when a token was
   /// found and signalled.
-  pub fn cancel_chat(&self, project_id: &str, thread_id: Option<&str>) -> bool {
-    if let Some(token) = self.chat_cancels.lock().unwrap().remove(&key(project_id, thread_id)) {
+  pub fn cancel_chat(&self, project_id: &str) -> bool {
+    if let Some(token) = self.chat_cancels.lock().unwrap().remove(project_id) {
       token.cancel();
       true
     } else {
@@ -156,11 +145,11 @@ impl AppState {
     }
   }
 
-  /// Whether a chat turn is currently in flight for this project/thread. Lets
+  /// Whether a chat turn is currently in flight for this project. Lets
   /// conversation steering decide between interjecting into a live turn and
   /// starting a fresh one.
-  pub fn is_chat_running(&self, project_id: &str, thread_id: Option<&str>) -> bool {
-    self.chat_cancels.lock().unwrap().contains_key(&key(project_id, thread_id))
+  pub fn is_chat_running(&self, project_id: &str) -> bool {
+    self.chat_cancels.lock().unwrap().contains_key(project_id)
   }
 
   /// Register a fresh advisor-run cancel token for a project only if none is

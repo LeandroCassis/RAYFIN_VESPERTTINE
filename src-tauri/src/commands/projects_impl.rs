@@ -258,7 +258,6 @@ fn register_project(dir: &Path, display_name: Option<&str>) -> StudioProject {
     effort: None,
     preview_mode: None,
     missing: None,
-    threads: None,
   };
   store::upsert_project(project.clone());
   project
@@ -500,12 +499,10 @@ pub async fn remove_project(
   id: String,
   delete_files: bool,
 ) -> ProjectsState {
-  // Stop any in-flight chat, drop the transcript, and tear down every side
-  // thread (worktrees + branches) *before* the project folder goes away — the
-  // worktree-removal git commands need the project to still exist on disk.
-  state.cancel_chat(&id, Some(history::MAIN_THREAD_ID));
-  history::clear_history(&id, None);
-  crate::commands::threads::remove_all_threads(&id).await;
+  // Stop any in-flight chat and drop the transcript *before* the project folder
+  // goes away.
+  state.cancel_chat(&id);
+  history::clear_history(&id);
 
   if delete_files {
     if let Some(project) = store::find_project(&id) {

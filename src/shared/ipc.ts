@@ -377,52 +377,6 @@ export interface StudioProject {
   previewMode?: PreviewMode
   /** True when the folder no longer exists / is no longer a Rayfin project. */
   missing?: boolean
-  /**
-   * Experimental "side threads" — parallel forks of this project, each a focused
-   * background agent working in its own git branch + worktree. Empty/absent for
-   * projects with no side threads. The implicit "Main" thread is the project
-   * itself (its existing path, branch, and {@link copilotSessionId}).
-   */
-  threads?: ProjectThread[]
-}
-
-/** The implicit main thread's id (the project itself; never a side thread). */
-export const MAIN_THREAD_ID = 'main'
-
-/** Lifecycle of a side thread, as persisted on the project. */
-export type ThreadStatus = 'active' | 'merged' | 'error'
-
-/**
- * An experimental side thread: a parallel fork of a project that a background
- * Copilot agent works in isolation, via its own git branch checked out in a
- * linked worktree (outside the project dir). When it goes idle after a
- * successful turn it auto-merges into main and the project redeploys.
- */
-export interface ProjectThread {
-  /** Stable id (uuid) for this side thread. */
-  id: string
-  /** Display name, e.g. "Mobile view". */
-  name: string
-  /** Branch holding the thread's work, e.g. `fabricator/thread-<shortId>`. */
-  branch: string
-  /** Absolute path to the thread's linked git worktree. */
-  worktreePath: string
-  /** The thread agent's own Copilot CLI session id (independent memory). */
-  copilotSessionId?: string
-  /** Lifecycle state. */
-  status: ThreadStatus
-  /** The project's default branch this thread merges back into (e.g. `main`). */
-  baseBranch: string
-  /** Main HEAD commit the thread was forked from (its merge base). */
-  baseCommit: string
-  /** ISO timestamp when the thread was created. */
-  createdAt: string
-  /** ISO timestamp when the thread merged into main (status === 'merged'). */
-  mergedAt?: string
-  /** The merge commit recorded on main (status === 'merged'). */
-  mergeCommit?: string
-  /** Friendly error text when status === 'error'. */
-  lastError?: string
 }
 
 export interface ProjectsState {
@@ -444,11 +398,6 @@ export interface AppSettings {
 
 /** Opt-in experimental feature flags (Settings → Experiments). */
 export interface ExperimentFlags {
-  /**
-   * Side threads: fork a project into parallel background agents that each work
-   * in their own git branch/worktree and auto-merge + redeploy when idle.
-   */
-  sideThreads?: boolean
   /**
    * Advisor auto-refresh: when the Advisor tab is opened and its saved analysis
    * has gone stale (the code changed since the last review), automatically
@@ -701,8 +650,6 @@ export type ChatEvent =
 /** Envelope so the renderer can route events to the right project's conversation. */
 export interface ChatEventEnvelope {
   projectId: string
-  /** Which thread the event belongs to (MAIN_THREAD_ID for the main thread). */
-  threadId: string
   /** Correlates events to a single send() turn. */
   turnId: string
   event: ChatEvent
@@ -724,39 +671,6 @@ export interface SteerResult {
    * renderer then sends the message as a normal new turn.
    */
   steered: boolean
-}
-
-/* ------------------------------------------------------------------ *
- * Side threads (experimental)
- * ------------------------------------------------------------------ */
-
-/** Input for creating a side thread. */
-export interface CreateThreadInput {
-  projectId: string
-  /** Display name, e.g. "Mobile view". */
-  name: string
-}
-
-/** Result of a thread lifecycle action (create/remove), with the fresh list. */
-export interface ThreadActionResult {
-  ok: boolean
-  error?: string
-  /** The created thread (on a successful create). */
-  thread?: ProjectThread
-  /** The project's full side-thread list after the action. */
-  threads: ProjectThread[]
-}
-
-/** Result of merging a side thread into the project's main branch. */
-export interface MergeResult {
-  ok: boolean
-  error?: string
-  /** True when git reported conflicts that Copilot was asked to resolve. */
-  hadConflicts?: boolean
-  /** The merge commit recorded on main, when successful. */
-  mergeCommit?: string
-  /** The project's full side-thread list after the merge. */
-  threads: ProjectThread[]
 }
 
 /* ------------------------------------------------------------------ *
@@ -959,12 +873,12 @@ export interface ChatMessage {
   /** Thumbnail data URLs for screenshots attached to this (user) message. */
   attachmentThumbs?: string[]
   /**
-   * Marks a non-conversational system event rendered distinctly from a normal
-   * turn. `'merge'` = an auto-merge of a side thread into main.
+   * True when this assistant turn was still streaming when the app closed or
+   * crashed. Persisted only for the in-flight turn so it can be detected on the
+   * next launch and offered for "resume" (re-run the prompt); cleared once the
+   * turn completes normally.
    */
-  kind?: 'merge'
-  /** For a `kind: 'merge'` event: the merged side thread's display name. */
-  mergeName?: string
+  interrupted?: boolean
 }
 
 /* ------------------------------------------------------------------ *
@@ -1073,11 +987,6 @@ export const IpcChannels = {
   chatHistory: 'chat:history',
   chatSaveHistory: 'chat:saveHistory',
   chatSetOptions: 'chat:setOptions',
-
-  threadsList: 'threads:list',
-  threadsCreate: 'threads:create',
-  threadsRemove: 'threads:remove',
-  threadsMerge: 'threads:merge',
 
   screenshotSave: 'screenshot:save',
   screenshotCleanup: 'screenshot:cleanup',
@@ -1305,23 +1214,21 @@ export interface RayfinStudioApi {
 
   chat: {
     /**
-     * Send a message to the Copilot agent scoped to the project (and optional
-     * side thread). Streams `chat:event` envelopes (subscribe via onChatEvent)
-     * and resolves with the final turn result. `turnId` correlates the streamed
-     * events. `attachments` are absolute file paths (e.g. region screenshots)
-     * passed to copilot as `--attachment` and cleaned up after the turn.
-     * `threadId` defaults to the main thread when omitted.
+     * Send a message to the Copilot agent scoped to the project. Streams
+     * `chat:event` envelopes (subscribe via onChatEvent) and resolves with the
+     * final turn result. `turnId` correlates the streamed events. `attachments`
+     * are absolute file paths (e.g. region screenshots) passed to copilot as
+     * `--attachment` and cleaned up after the turn.
      */
     send: (
       projectId: string,
       turnId: string,
       text: string,
       attachments?: string[],
-      threadId?: string,
       mode?: ChatMode
     ) => Promise<ChatTurnResult>
     /**
-     * Interject a message into the turn already running for a project's thread —
+     * Interject a message into the turn already running for a project —
      * conversation steering. When a turn is in flight the message interrupts the
      * current step immediately (or, if a Plan card is open, becomes plan-revision
      * feedback) and resolves with `{ steered: true }`. When nothing is running it
@@ -1330,13 +1237,12 @@ export interface RayfinStudioApi {
     steer: (
       projectId: string,
       text: string,
-      attachments?: string[],
-      threadId?: string
+      attachments?: string[]
     ) => Promise<SteerResult>
-    /** Cancel the in-flight turn for a project's thread (main when omitted). */
-    cancel: (projectId: string, threadId?: string) => Promise<void>
+    /** Cancel the in-flight turn for a project. */
+    cancel: (projectId: string) => Promise<void>
     /** Start a fresh conversation (drops the persisted Copilot session id). */
-    reset: (projectId: string, threadId?: string) => Promise<void>
+    reset: (projectId: string) => Promise<void>
     /**
      * Answer a Plan-mode approval prompt (`plan-proposed`). `action` is one of
      * 'interactive' | 'autopilot' | 'autopilot_fleet' | 'exit_only' to approve and
@@ -1344,10 +1250,10 @@ export interface RayfinStudioApi {
      * the plan (optionally with `feedback`).
      */
     resolvePlan: (requestId: string, action: string, feedback?: string) => Promise<void>
-    /** Load the persisted conversation history for a project's thread. */
-    history: (projectId: string, threadId?: string) => Promise<ChatMessage[]>
-    /** Persist the conversation history for a thread (empty array clears it). */
-    saveHistory: (projectId: string, messages: ChatMessage[], threadId?: string) => Promise<void>
+    /** Load the persisted conversation history for a project. */
+    history: (projectId: string) => Promise<ChatMessage[]>
+    /** Persist the conversation history for a project (empty array clears it). */
+    saveHistory: (projectId: string, messages: ChatMessage[]) => Promise<void>
     /** Set the model / reasoning effort used for this project's chat. */
     setOptions: (projectId: string, options: ChatOptions) => Promise<void>
     /** List the Copilot models available to the signed-in user (for the picker). */
@@ -1361,22 +1267,6 @@ export interface RayfinStudioApi {
     suggest: (projectId: string) => Promise<SuggestionSet>
     /** Cancel an in-flight suggestion generation (e.g. the user started typing). */
     cancelSuggest: (projectId: string) => Promise<boolean>
-  }
-
-  /** Experimental side threads (parallel forks). */
-  threads: {
-    /** List a project's side threads. */
-    list: (projectId: string) => Promise<ProjectThread[]>
-    /** Fork a new side thread (branch + linked worktree + own Copilot session). */
-    create: (input: CreateThreadInput) => Promise<ThreadActionResult>
-    /** Discard a side thread (remove its worktree + branch + transcript). */
-    remove: (projectId: string, threadId: string) => Promise<ThreadActionResult>
-    /**
-     * Merge a side thread into the project's main branch, resolving any
-     * conflicts with Copilot. Streams Copilot conflict-resolution progress on
-     * the main thread's `chat:event` channel.
-     */
-    merge: (projectId: string, threadId: string) => Promise<MergeResult>
   }
 
   screenshot: {

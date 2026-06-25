@@ -188,11 +188,6 @@ pub fn run() {
       // suggestions
       commands::suggest::chat_suggest,
       commands::suggest::chat_suggest_cancel,
-      // threads
-      commands::threads::threads_list,
-      commands::threads::threads_create,
-      commands::threads::threads_remove,
-      commands::threads::threads_merge,
       // screenshot
       commands::screenshot::screenshot_save,
       commands::screenshot::screenshot_cleanup,

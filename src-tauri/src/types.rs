@@ -309,27 +309,6 @@ pub struct FabricDeployment {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
-pub struct ProjectThread {
-  pub id: String,
-  pub name: String,
-  pub branch: String,
-  pub worktree_path: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub copilot_session_id: Option<String>,
-  pub status: String,
-  pub base_branch: String,
-  pub base_commit: String,
-  pub created_at: String,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub merged_at: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub merge_commit: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub last_error: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
 pub struct StudioProject {
   pub id: String,
   pub name: String,
@@ -365,8 +344,6 @@ pub struct StudioProject {
   pub preview_mode: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub missing: Option<bool>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub threads: Option<Vec<ProjectThread>>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -380,8 +357,6 @@ pub struct ProjectsState {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ExperimentFlags {
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub side_threads: Option<bool>,
   /// Auto-refresh the Advisor review when its results go stale (opt-in).
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub advisor_auto_run: Option<bool>,
@@ -668,7 +643,6 @@ pub enum ChatEvent {
 #[serde(rename_all = "camelCase")]
 pub struct ChatEventEnvelope {
   pub project_id: String,
-  pub thread_id: String,
   pub turn_id: String,
   pub event: ChatEvent,
 }
@@ -734,43 +708,16 @@ pub struct ChatMessage {
   pub attachments: Option<u32>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub attachment_thumbs: Option<Vec<String>>,
-  #[serde(skip_serializing_if = "Option::is_none")]
+  /// Legacy marker for a removed "merge" system event; retained only so old
+  /// transcripts deserialize (such messages are dropped on load). See
+  /// `history::sanitize`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
   pub kind: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub merge_name: Option<String>,
-}
-
-/* ----------------------------- threads ----------------------------- */
-
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct CreateThreadInput {
-  pub project_id: String,
-  pub name: String,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadActionResult {
-  pub ok: bool,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub error: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub thread: Option<ProjectThread>,
-  pub threads: Vec<ProjectThread>,
-}
-
-#[derive(Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct MergeResult {
-  pub ok: bool,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub error: Option<String>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub had_conflicts: Option<bool>,
-  #[serde(skip_serializing_if = "Option::is_none")]
-  pub merge_commit: Option<String>,
-  pub threads: Vec<ProjectThread>,
+  /// True when an assistant turn was still streaming when the app closed/crashed.
+  /// Persisted for the in-flight turn so it can be detected and offered for
+  /// "resume" (re-run the prompt) on the next launch; cleared on completion.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub interrupted: Option<bool>,
 }
 
 /* ----------------------------- rayfin versions ----------------------------- */
