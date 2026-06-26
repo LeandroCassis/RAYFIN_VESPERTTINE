@@ -8,7 +8,7 @@
 import { useEffect, useState } from "react";
 
 /**
- * Shared chart-styling tokens for the kit's Recharts surfaces.
+ * Shared chart-styling tokens for the kit's custom SVG charts.
  *
  * Every color is resolved from the `--color-*` CSS custom properties defined
  * in `src/global.css`, so charts re-theme automatically when the `.dark`
@@ -148,12 +148,12 @@ function read(): ChartTheme {
 }
 
 /**
- * Resolves the CSS variables that Recharts cannot reference via `var()`
- * (axis `stroke` / tick `fill`, grid, cursor) into concrete color strings,
- * and re-resolves them whenever the `.dark` class on `<html>` flips.
+ * Resolves the chart `--color-*` CSS variables (axis, grid, cursor, reference,
+ * tooltip) into concrete color strings, and re-resolves them whenever the
+ * `.dark` class on `<html>` flips.
  *
- * Series stroke/fill props can use `var(--color-chart-n)` directly; this
- * hook is for the props Recharts measures or rasterizes.
+ * The custom SVG charts can also reference `var(--color-chart-n)` directly in
+ * `fill` / `stroke`; this hook is for code paths that need a resolved string.
  */
 export function useChartTheme(): ChartTheme {
     const [theme, setTheme] = useState<ChartTheme>(read);
@@ -170,49 +170,4 @@ export function useChartTheme(): ChartTheme {
         return () => observer.disconnect();
     }, []);
     return theme;
-}
-
-/* --------------- Shared Recharts prop bundles --------------- */
-
-/** Shared axis props — hides axis/tick lines, uses muted mono ticks. */
-export function axisProps(theme: ChartTheme) {
-    return {
-        stroke: theme.axis,
-        tickLine: false,
-        axisLine: false,
-        tick: {
-            fill: theme.axis,
-            fontSize: 11,
-            fontFamily: "var(--font-mono)",
-            letterSpacing: 0.2,
-        },
-    } as const;
-}
-
-/** Shared `CartesianGrid` props — faint horizontal-only gridlines. */
-export function gridProps(theme: ChartTheme) {
-    return {
-        stroke: theme.grid,
-        strokeDasharray: "3 3",
-        vertical: false,
-    } as const;
-}
-
-/** Shared cursor for line/area Tooltips. */
-export function lineCursor(theme: ChartTheme) {
-    return { stroke: theme.cursor, strokeDasharray: "3 3" };
-}
-
-/** Shared cursor for bar Tooltips — a faint highlighted band. */
-export function barCursor(theme: ChartTheme) {
-    return { fill: theme.cursor, radius: 6 };
-}
-
-/** Reference-line styling (avg / target markers). */
-export function referenceLineProps(theme: ChartTheme) {
-    return {
-        stroke: theme.reference,
-        strokeDasharray: "4 4",
-        strokeOpacity: 0.7,
-    } as const;
 }

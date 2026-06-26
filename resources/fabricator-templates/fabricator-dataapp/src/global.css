@@ -16,8 +16,8 @@
  *
  * The whole palette lives in `@theme static` so every `--color-*` is
  * emitted as a real CSS variable (not tree-shaken). This is required:
- * Recharts reads `var(--color-chart-n)` straight from the SVG, the chart
- * helpers read the vars via `getComputedStyle`, and the Fabric DataGrid
+ * the custom SVG charts read `var(--color-chart-n)` straight from the SVG, the
+ * chart helpers read the vars via `getComputedStyle`, and the Fabric DataGrid
  * reads the bridged vars below through `readCssTheme()`.
  * `.dark` then flips every token.
  *

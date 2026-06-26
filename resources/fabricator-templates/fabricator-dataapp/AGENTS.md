@@ -2,12 +2,12 @@
 
 > **You're an agent** working on a React-based **Fabric Analytics** data app:
 > connect a Power BI semantic model, query it with DAX, and build a dashboard by
-> **composing a pre-built component kit** (Recharts charts + the Fabric
+> **composing a pre-built component kit** (custom D3/SVG charts + the Fabric
 > `DataGrid`). This file is your top-level orientation.
 >
 > **Two things to internalize before writing code:**
 > 1. **Compose, don't hand-write.** Pick components from the kit
->    (`src/components/dashboard/`) and pass them data. Writing Recharts/JSX or a
+>    (`src/components/dashboard/`) and pass them data. Hand-writing SVG/JSX or a
 >    bespoke chart by hand is the slow, expensive path. The kit catalog is the
 >    `visuals` skill — read it first.
 > 2. **Ship fast, then iterate.** Follow the `build-workflow` skill: one real
@@ -90,7 +90,8 @@ hand-edit the generated file — edit `fabric.yaml`.
 ```
 
 The kit is exported from one barrel: **`@/components/dashboard`** (components +
-types + the `format` / `chartTokens` / `toChartData` / `toDataTable` helpers).
+types + the `format` / `chartTokens` / `toChartData` / `toDataTable` helpers,
+plus slicer/filter helpers).
 
 ---
 
@@ -113,8 +114,9 @@ has no auth host and KPIs render error tiles. Deploy and review instead.
 Pick a component and pass data. The two-step flow is always: **fetch** with
 `useSemanticModelQuery` → **map** with `toChartData` / `toDataTable` → **pass**
 `data` + `loading` + `error` to a card. Don't pre-render skeletons/empty states
-yourself; the cards do it. Reach for raw Recharts only via the documented escape
-hatch (`ChartCard` + kit theme helpers) when nothing in the kit fits.
+yourself; the cards do it. Build a custom chart only via the documented escape
+hatch — compose it on the kit's chart core (`ChartFrame` + `d3-scale` + theme
+helpers) when nothing in the kit fits.
 
 ### Formatting & color live in the component layer
 Emit raw typed numbers from DAX (never `FORMAT()` to text). Format with a card's
@@ -145,12 +147,16 @@ Never hand-edit the generated file.
 | Write or fix a DAX query | `dax-authoring` + `query-design` skills |
 | Decide DAX vs. TypeScript for a transform | `query-design` skill (responsibility matrix) |
 | Make it look stunning / theme it | `app-design` skill + edit `src/global.css` tokens |
-| Add a filter / segmented control | `visuals` skill (Controls) — own the value in React state |
+| Add a lightweight filter / segmented control | `visuals` skill (Controls) — own the value in React state |
+| Add Power BI-style slicers (shared filter state) | `visuals` skill → **Slicers & shared filter state** (`FilterStateProvider` + `FilterBar`/`DropdownSlicer`/…) |
+| Make charts cross-filter / cross-highlight on click | `visuals` skill → **Coordinated interactions** (`useCrossFilter`) |
+| Add drill-down (click a bar to go deeper) | `visuals` skill → **Coordinated interactions** (`useDrilldown` + `DrilldownBreadcrumb`) |
+| Preview/validate visuals locally without Fabric | run the dev-only component gallery (`npm run gallery`) |
 | Overlay a different-unit trend (bar + line) | `visuals` skill → `ComboChartCard` (dual axis) |
 | Show a metric vs. target (gauge / progress) | `visuals` skill → `GaugeCard` / `BulletChartCard` |
 | Vary card sizes / non-uniform layout | `visuals` skill → `BentoGrid` / `BentoItem` |
 | Pivot a long result into multi-series | `visuals` skill → `pivotChartData` |
-| Build a chart the kit lacks (radar/treemap/…) | `visuals` skill → **Escape hatch** (Recharts inside `ChartCard`) |
+| Build a chart the kit lacks (radar/treemap/…) | `visuals` skill → **Escape hatch** (custom chart core inside `ChartCard`) |
 | Wire/connect a semantic model | `fabric-cli` + `fabric-sdk` skills; edit `fabric.yaml` |
 | Deploy to test | `npm run rayfin:up` (or let Fabricator deploy + screenshot) |
 
@@ -161,8 +167,8 @@ Never hand-edit the generated file.
 - **`.agents/skills/build-workflow/SKILL.md`** — START HERE; the fast,
   iterative "time to wow" loop that orchestrates the other skills.
 - **`.agents/skills/visuals/SKILL.md`** — the kit catalog: every component with
-  props + a copy-paste snippet, the two-step data flow, formatting/color, and
-  the Recharts escape hatch.
+  props + a copy-paste snippet, the two-step data flow, formatting/color,
+  slicers + coordinated interactions, and the custom-chart escape hatch.
 - **`.agents/skills/query-design/SKILL.md`** — what belongs in DAX vs.
   TypeScript vs. the kit.
 - **`.agents/skills/app-design/SKILL.md`** — aesthetic direction, typography,

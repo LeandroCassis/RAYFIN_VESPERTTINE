@@ -5,12 +5,7 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import {
-    PolarAngleAxis,
-    RadialBar,
-    RadialBarChart,
-    ResponsiveContainer,
-} from "recharts";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { resolveColor } from "@/lib/chartTokens";
 import { resolveFormat, type ValueFormat } from "@/lib/format";
@@ -18,7 +13,10 @@ import { cn } from "@/lib/utils";
 
 import { ChartCard } from "./ChartCard";
 import { MAX_CHART_HEIGHT, MIN_CHART_HEIGHT } from "./ChartFrame";
+import { AnimatedNumber } from "./AnimatedNumber";
 import { type ChartCardCommonProps } from "./cartesian";
+import { arcPath, compassToRadians } from "./charts/arc";
+import { useChartSize } from "./charts/useChartSize";
 import { TileBody } from "./states";
 
 export interface GaugeCardProps extends ChartCardCommonProps {
@@ -44,11 +42,73 @@ export interface GaugeCardProps extends ChartCardCommonProps {
     endAngle?: number;
 }
 
+/** Measured custom-SVG radial gauge: a background track + a value arc. */
+function GaugeArc({
+    pct,
+    color,
+    startAngle,
+    endAngle,
+}: {
+    pct: number;
+    color: string;
+    startAngle: number;
+    endAngle: number;
+}) {
+    const { ref, size } = useChartSize();
+    const reduce = useReducedMotion();
+    const width = size.width;
+    const height = size.height;
+    const a0 = compassToRadians(startAngle);
+    const a1 = compassToRadians(endAngle);
+    const aValue = a0 + (Math.min(Math.max(pct, 0), 100) / 100) * (a1 - a0);
+    const radius = Math.max(0, Math.min(width / 1.85, height / 1.5));
+    const band = Math.min(Math.max(radius * 0.16, 10), 22);
+    const inner = Math.max(0, radius - band);
+    const cx = width / 2;
+    const cy = height / 2 + radius * 0.22;
+
+    return (
+        <div ref={ref} className="absolute inset-0">
+            {width > 0 && height > 0 && radius > 0 && (
+                <svg width={width} height={height} role="img">
+                    <g transform={`translate(${cx},${cy})`}>
+                        <path
+                            d={arcPath({
+                                innerRadius: inner,
+                                outerRadius: radius,
+                                startAngle: a0,
+                                endAngle: a1,
+                                cornerRadius: band / 2,
+                            })}
+                            fill="var(--color-chart-track)"
+                        />
+                        {pct > 0 && (
+                            <motion.path
+                                d={arcPath({
+                                    innerRadius: inner,
+                                    outerRadius: radius,
+                                    startAngle: a0,
+                                    endAngle: aValue,
+                                    cornerRadius: band / 2,
+                                })}
+                                fill={color}
+                                initial={reduce ? false : { opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.5 }}
+                            />
+                        )}
+                    </g>
+                </svg>
+            )}
+        </div>
+    );
+}
+
 /**
  * Single-metric radial gauge for progress toward a target or fixed maximum.
- * The value is rendered as a KPI-sized center label over a themed Recharts
- * `RadialBarChart`, while loading / empty / error states are handled by the
- * standard chart card shell.
+ * The value is rendered as a KPI-sized center label over a fully custom SVG arc
+ * (no charting library), while loading / empty / error states are handled by
+ * the standard chart card shell.
  *
  * @example
  * ```tsx
@@ -116,7 +176,6 @@ export function GaugeCard({
         safeTarget != null
             ? `${Math.round(Number.isFinite(rawPct) ? rawPct : 0)}% of target`
             : (label ?? `of ${safeMax}`);
-    const data = [{ value: pct }];
 
     return (
         <ChartCard
@@ -145,33 +204,19 @@ export function GaugeCard({
                               }
                     }
                 >
-                    <ResponsiveContainer width="100%" height="100%">
-                        <RadialBarChart
-                            data={data}
-                            innerRadius="70%"
-                            outerRadius="100%"
-                            startAngle={startAngle}
-                            endAngle={endAngle}
-                            barSize={14}
-                        >
-                            <PolarAngleAxis
-                                type="number"
-                                domain={[0, 100]}
-                                angleAxisId={0}
-                                tick={false}
-                            />
-                            <RadialBar
-                                background={{ fill: "var(--color-chart-track)" }}
-                                dataKey="value"
-                                cornerRadius={8}
-                                fill={color}
-                                isAnimationActive={false}
-                            />
-                        </RadialBarChart>
-                    </ResponsiveContainer>
+                    <GaugeArc
+                        pct={pct}
+                        color={color}
+                        startAngle={startAngle}
+                        endAngle={endAngle}
+                    />
                     <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
                         <span className="block max-w-full truncate font-numeric text-[28px] font-semibold leading-none tracking-tight text-foreground tabular-nums">
-                            {format(safeValue)}
+                            {Number.isFinite(safeValue) ? (
+                                <AnimatedNumber value={safeValue} format={format} />
+                            ) : (
+                                format(safeValue)
+                            )}
                         </span>
                         <span className="mt-1 block max-w-full truncate font-numeric text-sm text-muted-foreground tabular-nums">
                             {caption}

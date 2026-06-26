@@ -5,14 +5,16 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import type { ReactElement, ReactNode } from "react";
-import { ResponsiveContainer } from "recharts";
+import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
+import { useChartSize } from "./charts/useChartSize";
+import type { ChartSize } from "./charts/types";
+
 /**
  * Shared responsive + legend wrapper behind every kit chart card. Owns the
- * `ResponsiveContainer` sizing and the (static) legend so all cards scale and
+ * `ResizeObserver` sizing and the (static) legend so all cards scale and
  * legend identically with zero per-card duplication.
  *
  * **Sizing.** By default the plot is **aspect-ratio responsive**: its height is
@@ -20,6 +22,11 @@ import { cn } from "@/lib/utils";
  * `[minHeight, maxHeight]`, so a chart is short on a phone and taller in a wide
  * bento tile — never a fixed pixel height. Pass an explicit `height` to opt out
  * and pin a fixed pixel height (back-compat).
+ *
+ * **Render prop.** `children` receives the measured `{ width, height }` of the
+ * plot box (in CSS px) and returns the custom SVG chart. It is invoked only
+ * once the box has a non-zero size. The box is `position: relative`, so a chart
+ * can absolutely-position an HTML tooltip overlay inside it.
  */
 
 /** Default width ÷ height ratio for wide charts (line / area / bar / combo). */
@@ -43,8 +50,8 @@ export interface LegendItem {
 }
 
 export interface ChartFrameProps {
-    /** The Recharts chart element (a single child for `ResponsiveContainer`). */
-    children: ReactElement;
+    /** Render prop: receives the measured plot size, returns the SVG chart. */
+    children: ReactNode | ((size: ChartSize) => ReactNode);
     /** Fixed pixel height — overrides the responsive aspect sizing. */
     height?: number;
     /** Width/height ratio used when `height` is unset (default {@link DEFAULT_ASPECT}). */
@@ -102,7 +109,7 @@ function LegendStrip({
 }
 
 /**
- * Wrap a Recharts chart for responsive sizing + a themed static legend.
+ * Wrap a custom SVG chart for responsive sizing + a themed static legend.
  *
  * @example
  * ```tsx
@@ -110,7 +117,7 @@ function LegendStrip({
  *   legend={[{ label: "Revenue", color: seriesColor(0) }]}
  *   legendPlacement="top"
  * >
- *   <LineChart data={rows}>…</LineChart>
+ *   {({ width, height }) => <MyChartSvg width={width} height={height} />}
  * </ChartFrame>
  * ```
  */
@@ -126,28 +133,29 @@ export function ChartFrame({
 }: ChartFrameProps) {
     const showLegend =
         legendPlacement !== "none" && legend != null && legend.length > 0;
+    const { ref, size } = useChartSize();
 
     // Fixed height when provided; otherwise aspect-driven + clamped.
-    const container =
-        height != null ? (
-            <ResponsiveContainer width="100%" height={height}>
-                {children}
-            </ResponsiveContainer>
-        ) : (
-            <ResponsiveContainer
-                width="100%"
-                aspect={aspect}
-                minHeight={minHeight}
-                maxHeight={maxHeight}
-            >
-                {children}
-            </ResponsiveContainer>
-        );
+    const plotStyle: CSSProperties =
+        height != null
+            ? { height }
+            : { aspectRatio: String(aspect), minHeight, maxHeight };
+
+    const renderChild = () => {
+        if (size.width <= 0 || size.height <= 0) return null;
+        return typeof children === "function" ? children(size) : children;
+    };
+
+    const plot = (
+        <div ref={ref} className="relative w-full" style={plotStyle}>
+            {renderChild()}
+        </div>
+    );
 
     if (showLegend && legendPlacement === "right") {
         return (
             <div className={cn("flex w-full items-stretch gap-4", className)}>
-                <div className="min-w-0 flex-1">{container}</div>
+                <div className="min-w-0 flex-1">{plot}</div>
                 <LegendStrip items={legend} placement="right" />
             </div>
         );
@@ -158,7 +166,7 @@ export function ChartFrame({
             {showLegend && legendPlacement === "top" && (
                 <LegendStrip items={legend} placement="top" />
             )}
-            {container}
+            {plot}
             {showLegend && legendPlacement === "bottom" && (
                 <LegendStrip items={legend} placement="bottom" />
             )}

@@ -5,37 +5,37 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import type { ReactElement, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useId } from "react";
-import {
-    Area,
-    AreaChart,
-    Bar,
-    BarChart,
-    CartesianGrid,
-    Line,
-    LineChart,
-    ReferenceLine,
-    Tooltip,
-    XAxis,
-    YAxis,
-} from "recharts";
+import { motion, useReducedMotion } from "framer-motion";
+import { area as d3Area, line as d3Line } from "d3-shape";
 
-import {
-    axisProps,
-    barCursor,
-    gridProps,
-    lineCursor,
-    referenceLineProps,
-    resolveColor,
-    useChartTheme,
-} from "@/lib/chartTokens";
-import { inferXFormat, autoAxisWidth } from "@/lib/auto-format";
+import { resolveColor, useChartTheme, type ChartTheme } from "@/lib/chartTokens";
+import { autoAxisWidth, inferXFormat } from "@/lib/auto-format";
 import { resolveFormat, type ValueFormat } from "@/lib/format";
 import { warnMissingKeys } from "@/lib/validate";
 
 import { ChartFrame, type LegendItem, type LegendPlacement } from "./ChartFrame";
 import { ChartTooltip } from "./ChartTooltip";
+import { AxisBottom, AxisLeft } from "./charts/axis";
+import { GridColumns, GridRows } from "./charts/grid";
+import {
+    bandScale,
+    curveFactory,
+    linearScale,
+    linearTicks,
+    pointScale,
+    thinTicksByWidth,
+    valueDomain,
+    type CurveType,
+} from "./charts/scales";
+import { tooltipBoxStyle, useChartTooltip } from "./charts/tooltip";
+import {
+    isInteractive,
+    markOpacity,
+    type ChartSize,
+    type MarkInteraction,
+} from "./charts/types";
 
 /** One plotted measure. The model maps DAX rows → array and lists series. */
 export interface SeriesConfig {
@@ -67,7 +67,7 @@ export interface ChartCardCommonProps {
     onRetry?: () => void;
 }
 
-export interface CartesianChartProps {
+export interface CartesianChartProps extends MarkInteraction {
     type: "line" | "area" | "bar";
     /** Row objects — map your DAX result into these. */
     data?: Array<Record<string, unknown>>;
@@ -94,7 +94,7 @@ export interface CartesianChartProps {
     /** Stack bars / areas (default false). */
     stacked?: boolean;
     /** Line/area interpolation (default `"monotone"`). */
-    curve?: "monotone" | "linear" | "natural" | "step";
+    curve?: CurveType;
     /** Horizontal marker lines (avg / target). */
     referenceLines?: ReadonlyArray<{ y: number; label?: string }>;
 }
@@ -127,9 +127,12 @@ export function ChartLegend({
 
 /**
  * Shared renderer behind `LineChartCard` / `AreaChartCard` / `BarChartCard`.
- * Owns the ResponsiveContainer, themed axes/grid/tooltip/cursor, optional
- * legend, gradients, dark-mode, and number/date formatting — so the public
- * cards stay declarative. Not exported from the kit barrel; use the cards.
+ * Renders a fully custom SVG plot (no charting library): `d3-scale` /
+ * `d3-shape` math + declarative React SVG, themed via `chartTokens`, animated
+ * with `framer-motion`. Owns responsive sizing, axes/grid, hit-tested tooltip,
+ * legend, gradients, stacking, reference lines, and click cross-filtering — so
+ * the public cards stay declarative. Not exported from the kit barrel; use the
+ * cards.
  */
 export function CartesianChart({
     type,
@@ -147,199 +150,18 @@ export function CartesianChart({
     stacked,
     curve = "monotone",
     referenceLines,
+    selectedKeys,
+    onSelect,
+    dimUnselected,
 }: CartesianChartProps) {
-    const theme = useChartTheme();
-    const uid = useId();
-    const formatValue = resolveFormat(valueFormat);
     const resolvedXFormat = xFormat ?? inferXFormat(data, xKey);
-    const yValues = data
-        .flatMap((row) => series.map((entry) => Number(row[entry.key])))
-        .filter((value) => Number.isFinite(value));
-    const yWidth = autoAxisWidth(yValues, formatValue);
     const colors = series.map((entry, index) => resolveColor(entry.color, index));
     const legend = showLegend ?? series.length > 1;
-    const isHorizontalBar = type === "bar" && layout === "horizontal";
 
     warnMissingKeys("CartesianChart", data, [
         xKey,
         ...series.map((entry) => entry.key),
     ]);
-
-    const common: ReactNode[] = [
-        showGrid ? <CartesianGrid key="grid" {...gridProps(theme)} /> : null,
-        <XAxis
-            key="x"
-            dataKey={xKey}
-            {...axisProps(theme)}
-            minTickGap={24}
-            tickFormatter={
-                resolvedXFormat
-                    ? (value) => resolvedXFormat(value as string | number)
-                    : undefined
-            }
-        />,
-        <YAxis
-            key="y"
-            {...axisProps(theme)}
-            width={yWidth}
-            tickFormatter={(value) => formatValue(Number(value))}
-        />,
-        <Tooltip
-            key="tip"
-            cursor={type === "bar" ? barCursor(theme) : lineCursor(theme)}
-            content={
-                <ChartTooltip
-                    valueFormat={valueFormat}
-                    labelFormat={resolvedXFormat}
-                />
-            }
-        />,
-        ...(referenceLines?.map((line, index) => (
-            <ReferenceLine
-                key={`ref-${index}`}
-                y={line.y}
-                {...referenceLineProps(theme)}
-                label={
-                    line.label
-                        ? {
-                              value: line.label,
-                              position: "insideTopRight",
-                              fill: theme.foregroundMuted,
-                              fontSize: 11,
-                          }
-                        : undefined
-                }
-            />
-        )) ?? []),
-    ];
-
-    const horizontalBarCommon: ReactNode[] = [
-        showGrid ? (
-            <CartesianGrid
-                key="grid"
-                {...gridProps(theme)}
-                vertical
-                horizontal={false}
-            />
-        ) : null,
-        <XAxis
-            key="x"
-            type="number"
-            {...axisProps(theme)}
-            tickFormatter={(value) => formatValue(Number(value))}
-        />,
-        <YAxis
-            key="y"
-            type="category"
-            dataKey={xKey}
-            {...axisProps(theme)}
-            width={112}
-            tickFormatter={
-                resolvedXFormat
-                    ? (value) => resolvedXFormat(value as string | number)
-                    : undefined
-            }
-        />,
-        <Tooltip
-            key="tip"
-            cursor={barCursor(theme)}
-            content={
-                <ChartTooltip
-                    valueFormat={valueFormat}
-                    labelFormat={resolvedXFormat}
-                />
-            }
-        />,
-    ];
-
-    let chart: ReactElement;
-    if (type === "line") {
-        chart = (
-            <LineChart data={data}>
-                {common}
-                {series.map((entry, index) => (
-                    <Line
-                        key={entry.key}
-                        type={curve}
-                        dataKey={entry.key}
-                        name={entry.label ?? entry.key}
-                        stroke={colors[index]}
-                        strokeWidth={2}
-                        dot={false}
-                        activeDot={{ r: 4, strokeWidth: 0 }}
-                        isAnimationActive={false}
-                    />
-                ))}
-            </LineChart>
-        );
-    } else if (type === "area") {
-        chart = (
-            <AreaChart data={data}>
-                <defs>
-                    {series.map((entry, index) => (
-                        <linearGradient
-                            key={entry.key}
-                            id={`${uid}-${index}`}
-                            x1="0"
-                            y1="0"
-                            x2="0"
-                            y2="1"
-                        >
-                            <stop
-                                offset="0%"
-                                stopColor={colors[index]}
-                                stopOpacity={0.28}
-                            />
-                            <stop
-                                offset="100%"
-                                stopColor={colors[index]}
-                                stopOpacity={0.02}
-                            />
-                        </linearGradient>
-                    ))}
-                </defs>
-                {common}
-                {series.map((entry, index) => (
-                    <Area
-                        key={entry.key}
-                        type={curve}
-                        dataKey={entry.key}
-                        name={entry.label ?? entry.key}
-                        stroke={colors[index]}
-                        strokeWidth={2}
-                        fill={`url(#${uid}-${index})`}
-                        fillOpacity={1}
-                        stackId={
-                            stacked ? (entry.stackId ?? "stack") : entry.stackId
-                        }
-                        dot={false}
-                        activeDot={{ r: 4, strokeWidth: 0 }}
-                        isAnimationActive={false}
-                    />
-                ))}
-            </AreaChart>
-        );
-    } else {
-        chart = (
-            <BarChart data={data} layout={isHorizontalBar ? "vertical" : undefined}>
-                {isHorizontalBar ? horizontalBarCommon : common}
-                {series.map((entry, index) => (
-                    <Bar
-                        key={entry.key}
-                        dataKey={entry.key}
-                        name={entry.label ?? entry.key}
-                        fill={colors[index]}
-                        stackId={
-                            stacked ? (entry.stackId ?? "stack") : entry.stackId
-                        }
-                        radius={isHorizontalBar ? [0, 4, 4, 0] : [4, 4, 0, 0]}
-                        maxBarSize={isHorizontalBar ? 32 : 48}
-                        isAnimationActive={false}
-                    />
-                ))}
-            </BarChart>
-        );
-    }
 
     const legendItems: LegendItem[] | undefined = legend
         ? series.map((entry, index) => ({
@@ -355,7 +177,658 @@ export function CartesianChart({
             legend={legendItems}
             legendPlacement={legendPlacement}
         >
-            {chart}
+            {(size) => (
+                <CartesianPlot
+                    size={size}
+                    type={type}
+                    data={data}
+                    xKey={xKey}
+                    series={series}
+                    colors={colors}
+                    layout={layout}
+                    valueFormat={valueFormat}
+                    resolvedXFormat={resolvedXFormat}
+                    showGrid={showGrid}
+                    stacked={stacked}
+                    curve={curve}
+                    referenceLines={referenceLines}
+                    interaction={{ selectedKeys, onSelect, dimUnselected }}
+                />
+            )}
         </ChartFrame>
+    );
+}
+
+interface CartesianPlotProps {
+    size: ChartSize;
+    type: "line" | "area" | "bar";
+    data: Array<Record<string, unknown>>;
+    xKey: string;
+    series: SeriesConfig[];
+    colors: string[];
+    layout: "vertical" | "horizontal";
+    valueFormat?: ValueFormat;
+    resolvedXFormat?: (value: string | number) => string;
+    showGrid: boolean;
+    stacked?: boolean;
+    curve: CurveType;
+    referenceLines?: ReadonlyArray<{ y: number; label?: string }>;
+    interaction: MarkInteraction;
+}
+
+/** Value-space stack segment for one datum/series in a stacked chart. */
+interface StackSeg {
+    lo: number;
+    hi: number;
+}
+
+function CartesianPlot({
+    size,
+    type,
+    data,
+    xKey,
+    series,
+    colors,
+    layout,
+    valueFormat,
+    resolvedXFormat,
+    showGrid,
+    stacked,
+    curve,
+    referenceLines,
+    interaction,
+}: CartesianPlotProps) {
+    const theme = useChartTheme();
+    const uid = useId().replace(/:/g, "");
+    const reduce = useReducedMotion();
+    const tooltip = useChartTooltip();
+
+    const { width, height } = size;
+    const formatValue = resolveFormat(valueFormat);
+    const seriesKeys = series.map((entry) => entry.key);
+    const categories = data.map((row) => String(row[xKey]));
+    const isHorizontalBar = type === "bar" && layout === "horizontal";
+    const interactive = isInteractive(interaction);
+    const formatX = (value: string | number) =>
+        resolvedXFormat ? resolvedXFormat(value) : String(value);
+
+    const yValues = data
+        .flatMap((row) => seriesKeys.map((key) => Number(row[key])))
+        .filter((value) => Number.isFinite(value));
+    const yAxisWidth = autoAxisWidth(yValues, formatValue);
+
+    const margin = isHorizontalBar
+        ? { top: 8, right: 16, bottom: 26, left: 116 }
+        : { top: 10, right: 14, bottom: 26, left: yAxisWidth };
+    const innerW = Math.max(0, width - margin.left - margin.right);
+    const innerH = Math.max(0, height - margin.top - margin.bottom);
+
+    if (innerW <= 0 || innerH <= 0) return null;
+
+    // Precompute stacked segments (value-space) when stacking is on.
+    const stacks: StackSeg[][] = stacked
+        ? data.map((row) => {
+              let pos = 0;
+              let neg = 0;
+              return series.map((entry) => {
+                  const value = Number(row[entry.key]) || 0;
+                  if (value >= 0) {
+                      const seg = { lo: pos, hi: pos + value };
+                      pos = seg.hi;
+                      return seg;
+                  }
+                  const seg = { lo: neg + value, hi: neg };
+                  neg = seg.lo;
+                  return seg;
+              });
+          })
+        : [];
+
+    const body = isHorizontalBar ? (
+        <HorizontalBars
+            data={data}
+            categories={categories}
+            series={series}
+            colors={colors}
+            stacks={stacks}
+            stacked={stacked}
+            innerW={innerW}
+            innerH={innerH}
+            theme={theme}
+            showGrid={showGrid}
+            formatValue={formatValue}
+            formatX={formatX}
+            interaction={interaction}
+            reduce={Boolean(reduce)}
+        />
+    ) : (
+        <VerticalPlot
+            type={type}
+            data={data}
+            categories={categories}
+            series={series}
+            colors={colors}
+            stacks={stacks}
+            stacked={stacked}
+            curve={curve}
+            innerW={innerW}
+            innerH={innerH}
+            theme={theme}
+            showGrid={showGrid}
+            formatValue={formatValue}
+            formatX={formatX}
+            referenceLines={referenceLines}
+            interaction={interaction}
+            uid={uid}
+            reduce={Boolean(reduce)}
+            activeIndex={tooltip.state?.index ?? null}
+        />
+    );
+
+    // Pointer hit-testing: map cursor → nearest category index.
+    const onPointerMove = (event: React.PointerEvent<SVGRectElement>) => {
+        const box = event.currentTarget.getBoundingClientRect();
+        const localX = event.clientX - box.left;
+        const localY = event.clientY - box.top;
+        if (categories.length === 0) return;
+        let bestIndex = 0;
+        let bestDist = Number.POSITIVE_INFINITY;
+        categories.forEach((_, index) => {
+            const pos = isHorizontalBar
+                ? categoryCenter(index, categories.length, innerH)
+                : categoryCenter(index, categories.length, innerW);
+            const cursor = isHorizontalBar ? localY : localX;
+            const dist = Math.abs(pos - cursor);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIndex = index;
+            }
+        });
+        const anchorX = isHorizontalBar
+            ? margin.left + localX
+            : margin.left + categoryCenter(bestIndex, categories.length, innerW);
+        const anchorY = isHorizontalBar
+            ? margin.top + categoryCenter(bestIndex, categories.length, innerH)
+            : margin.top + localY;
+        tooltip.show(bestIndex, anchorX, anchorY);
+    };
+
+    const onClick = () => {
+        if (!interactive || tooltip.state == null) return;
+        interaction.onSelect?.(categories[tooltip.state.index]);
+    };
+
+    const active = tooltip.state;
+    const payload =
+        active != null
+            ? series.map((entry, index) => ({
+                  name: entry.label ?? entry.key,
+                  dataKey: entry.key,
+                  value: Number(data[active.index]?.[entry.key]),
+                  color: colors[index],
+              }))
+            : [];
+
+    return (
+        <>
+            <svg
+                width={width}
+                height={height}
+                role="img"
+                className="overflow-visible"
+            >
+                <g transform={`translate(${margin.left},${margin.top})`}>
+                    {body}
+                    {/* Active cursor highlight. */}
+                    {active != null && !isHorizontalBar && (
+                        <line
+                            x1={categoryCenter(
+                                active.index,
+                                categories.length,
+                                innerW,
+                            )}
+                            x2={categoryCenter(
+                                active.index,
+                                categories.length,
+                                innerW,
+                            )}
+                            y1={0}
+                            y2={innerH}
+                            stroke={theme.cursor}
+                            strokeDasharray="3 3"
+                        />
+                    )}
+                    {/* Pointer capture surface (on top). */}
+                    <rect
+                        x={0}
+                        y={0}
+                        width={innerW}
+                        height={innerH}
+                        fill="transparent"
+                        style={{ cursor: interactive ? "pointer" : "default" }}
+                        onPointerMove={onPointerMove}
+                        onPointerLeave={tooltip.hide}
+                        onClick={onClick}
+                    />
+                </g>
+            </svg>
+            {active != null && (
+                <div style={tooltipBoxStyle(active.x, active.y, width)}>
+                    <ChartTooltip
+                        active
+                        payload={payload}
+                        label={data[active.index]?.[xKey] as string | number}
+                        valueFormat={valueFormat}
+                        labelFormat={resolvedXFormat}
+                    />
+                </div>
+            )}
+        </>
+    );
+}
+
+/** Center pixel of the Nth of `count` evenly-spaced categories across `span`. */
+function categoryCenter(index: number, count: number, span: number): number {
+    if (count <= 0) return 0;
+    return ((index + 0.5) / count) * span;
+}
+
+/* --------------------------- Vertical line/area/bar --------------------------- */
+
+interface VerticalPlotProps {
+    type: "line" | "area" | "bar";
+    data: Array<Record<string, unknown>>;
+    categories: string[];
+    series: SeriesConfig[];
+    colors: string[];
+    stacks: StackSeg[][];
+    stacked?: boolean;
+    curve: CurveType;
+    innerW: number;
+    innerH: number;
+    theme: ChartTheme;
+    showGrid: boolean;
+    formatValue: (value: number) => string;
+    formatX: (value: string | number) => string;
+    referenceLines?: ReadonlyArray<{ y: number; label?: string }>;
+    interaction: MarkInteraction;
+    uid: string;
+    reduce: boolean;
+    activeIndex: number | null;
+}
+
+function VerticalPlot({
+    type,
+    data,
+    categories,
+    series,
+    colors,
+    stacks,
+    stacked,
+    curve,
+    innerW,
+    innerH,
+    theme,
+    showGrid,
+    formatValue,
+    formatX,
+    referenceLines,
+    interaction,
+    uid,
+    reduce,
+    activeIndex,
+}: VerticalPlotProps) {
+    const seriesKeys = series.map((entry) => entry.key);
+    const yScale = linearScale(
+        valueDomain(data, seriesKeys, { stacked }),
+        [innerH, 0],
+    );
+    const yTicks = linearTicks(yScale, 5);
+    const baseline = yScale(0);
+
+    const xBand = bandScale(categories, innerW);
+    const xPoint = pointScale(categories, innerW);
+    const centerX = (index: number) =>
+        type === "bar"
+            ? (xBand(categories[index]) ?? 0) + xBand.bandwidth() / 2
+            : (xPoint(categories[index]) ?? 0);
+
+    const keptXTicks = thinTicksByWidth(
+        categories.map((label, index) => ({
+            key: `${label}-${index}`,
+            label: formatX(label),
+            pos: centerX(index),
+        })),
+    );
+
+    return (
+        <>
+            {showGrid && (
+                <GridRows
+                    positions={yTicks.map((tick) => yScale(tick))}
+                    left={0}
+                    right={innerW}
+                    theme={theme}
+                />
+            )}
+            <AxisLeft
+                ticks={yTicks.map((tick) => ({
+                    key: String(tick),
+                    label: formatValue(tick),
+                    pos: yScale(tick),
+                }))}
+                right={0}
+                theme={theme}
+            />
+            <AxisBottom ticks={keptXTicks} top={innerH} theme={theme} />
+
+            {referenceLines?.map((ref, index) => (
+                <g key={`ref-${index}`}>
+                    <line
+                        x1={0}
+                        x2={innerW}
+                        y1={yScale(ref.y)}
+                        y2={yScale(ref.y)}
+                        stroke={theme.reference}
+                        strokeDasharray="4 4"
+                        strokeOpacity={0.7}
+                    />
+                    {ref.label && (
+                        <text
+                            x={innerW}
+                            y={yScale(ref.y) - 4}
+                            textAnchor="end"
+                            fontSize={11}
+                            fill={theme.foregroundMuted}
+                        >
+                            {ref.label}
+                        </text>
+                    )}
+                </g>
+            ))}
+
+            {type === "bar"
+                ? series.map((entry, si) => {
+                      const groupW = xBand.bandwidth();
+                      const barW = stacked ? groupW : groupW / series.length;
+                      return (
+                          <g key={entry.key}>
+                              {data.map((row, i) => {
+                                  const value = Number(row[entry.key]);
+                                  if (!Number.isFinite(value)) return null;
+                                  const slotX = xBand(categories[i]) ?? 0;
+                                  let x: number;
+                                  let yTop: number;
+                                  let barH: number;
+                                  if (stacked) {
+                                      const seg = stacks[i][si];
+                                      x = slotX;
+                                      yTop = yScale(seg.hi);
+                                      barH = Math.abs(yScale(seg.lo) - yScale(seg.hi));
+                                  } else {
+                                      x = slotX + si * barW;
+                                      yTop = Math.min(yScale(value), baseline);
+                                      barH = Math.abs(yScale(value) - baseline);
+                                  }
+                                  const radius = Math.min(4, barW / 2);
+                                  return (
+                                      <motion.rect
+                                          key={i}
+                                          x={x}
+                                          width={Math.max(0, barW - 1)}
+                                          rx={radius}
+                                          fill={colors[si]}
+                                          initial={
+                                              reduce
+                                                  ? false
+                                                  : { y: baseline, height: 0 }
+                                          }
+                                          animate={{ y: yTop, height: barH }}
+                                          transition={{
+                                              duration: 0.5,
+                                              ease: "easeOut",
+                                              delay: i * 0.012,
+                                          }}
+                                          opacity={markOpacity(
+                                              categories[i],
+                                              interaction,
+                                          )}
+                                      />
+                                  );
+                              })}
+                          </g>
+                      );
+                  })
+                : series.map((entry, si) => {
+                      const points = data.map(
+                          (row, i) =>
+                              [centerX(i), yScale(Number(row[entry.key]))] as [
+                                  number,
+                                  number,
+                              ],
+                      );
+                      const lineGen = d3Line<[number, number]>()
+                          .defined((point) => Number.isFinite(point[1]))
+                          .x((point) => point[0])
+                          .y((point) => point[1])
+                          .curve(curveFactory(curve));
+                      const linePath = lineGen(points) ?? "";
+
+                      let areaPath = "";
+                      if (type === "area") {
+                          if (stacked) {
+                              const areaGen = d3Area<number>()
+                                  .defined((i) =>
+                                      Number.isFinite(Number(data[i][entry.key])),
+                                  )
+                                  .x((i) => centerX(i))
+                                  .y0((i) => yScale(stacks[i][si].lo))
+                                  .y1((i) => yScale(stacks[i][si].hi))
+                                  .curve(curveFactory(curve));
+                              areaPath = areaGen(data.map((_, i) => i)) ?? "";
+                          } else {
+                              const areaGen = d3Area<[number, number]>()
+                                  .defined((point) => Number.isFinite(point[1]))
+                                  .x((point) => point[0])
+                                  .y0(baseline)
+                                  .y1((point) => point[1])
+                                  .curve(curveFactory(curve));
+                              areaPath = areaGen(points) ?? "";
+                          }
+                      }
+
+                      const gradientId = `${uid}-grad-${si}`;
+                      return (
+                          <g key={entry.key}>
+                              {type === "area" && (
+                                  <>
+                                      <defs>
+                                          <linearGradient
+                                              id={gradientId}
+                                              x1="0"
+                                              y1="0"
+                                              x2="0"
+                                              y2="1"
+                                          >
+                                              <stop
+                                                  offset="0%"
+                                                  stopColor={colors[si]}
+                                                  stopOpacity={0.3}
+                                              />
+                                              <stop
+                                                  offset="100%"
+                                                  stopColor={colors[si]}
+                                                  stopOpacity={0.02}
+                                              />
+                                          </linearGradient>
+                                      </defs>
+                                      <motion.path
+                                          d={areaPath}
+                                          fill={`url(#${gradientId})`}
+                                          initial={
+                                              reduce ? false : { opacity: 0 }
+                                          }
+                                          animate={{ opacity: 1 }}
+                                          transition={{ duration: 0.5 }}
+                                      />
+                                  </>
+                              )}
+                              <motion.path
+                                  d={linePath}
+                                  fill="none"
+                                  stroke={colors[si]}
+                                  strokeWidth={2}
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  initial={
+                                      reduce ? false : { pathLength: 0 }
+                                  }
+                                  animate={{ pathLength: 1 }}
+                                  transition={{ duration: 0.7, ease: "easeInOut" }}
+                              />
+                              {activeIndex != null &&
+                                  Number.isFinite(
+                                      Number(data[activeIndex]?.[entry.key]),
+                                  ) && (
+                                      <circle
+                                          cx={centerX(activeIndex)}
+                                          cy={yScale(
+                                              Number(data[activeIndex][entry.key]),
+                                          )}
+                                          r={4}
+                                          fill={colors[si]}
+                                          stroke={theme.surface}
+                                          strokeWidth={2}
+                                      />
+                                  )}
+                          </g>
+                      );
+                  })}
+        </>
+    );
+}
+
+/* ------------------------------ Horizontal bars ------------------------------ */
+
+interface HorizontalBarsProps {
+    data: Array<Record<string, unknown>>;
+    categories: string[];
+    series: SeriesConfig[];
+    colors: string[];
+    stacks: StackSeg[][];
+    stacked?: boolean;
+    innerW: number;
+    innerH: number;
+    theme: ChartTheme;
+    showGrid: boolean;
+    formatValue: (value: number) => string;
+    formatX: (value: string | number) => string;
+    interaction: MarkInteraction;
+    reduce: boolean;
+}
+
+function HorizontalBars({
+    data,
+    categories,
+    series,
+    colors,
+    stacks,
+    stacked,
+    innerW,
+    innerH,
+    theme,
+    showGrid,
+    formatValue,
+    formatX,
+    interaction,
+    reduce,
+}: HorizontalBarsProps) {
+    const seriesKeys = series.map((entry) => entry.key);
+    const xScale = linearScale(
+        valueDomain(data, seriesKeys, { stacked }),
+        [0, innerW],
+    );
+    const xTicks = linearTicks(xScale, 5);
+    const baseX = xScale(0);
+    const yBand = bandScale(categories, innerH);
+
+    return (
+        <>
+            {showGrid && (
+                <GridColumns
+                    positions={xTicks.map((tick) => xScale(tick))}
+                    top={0}
+                    bottom={innerH}
+                    theme={theme}
+                />
+            )}
+            <AxisBottom
+                ticks={thinTicksByWidth(
+                    xTicks.map((tick) => ({
+                        key: String(tick),
+                        label: formatValue(tick),
+                        pos: xScale(tick),
+                    })),
+                )}
+                top={innerH}
+                theme={theme}
+            />
+            <AxisLeft
+                ticks={categories.map((label, index) => ({
+                    key: `${label}-${index}`,
+                    label: formatX(label),
+                    pos: (yBand(label) ?? 0) + yBand.bandwidth() / 2,
+                }))}
+                right={0}
+                theme={theme}
+            />
+            {series.map((entry, si) => {
+                const groupH = yBand.bandwidth();
+                const barH = stacked ? groupH : groupH / series.length;
+                return (
+                    <g key={entry.key}>
+                        {data.map((row, i) => {
+                            const value = Number(row[entry.key]);
+                            if (!Number.isFinite(value)) return null;
+                            const slotY = yBand(categories[i]) ?? 0;
+                            let y: number;
+                            let x: number;
+                            let barW: number;
+                            if (stacked) {
+                                const seg = stacks[i][si];
+                                y = slotY;
+                                x = xScale(seg.lo);
+                                barW = Math.abs(xScale(seg.hi) - xScale(seg.lo));
+                            } else {
+                                y = slotY + si * barH;
+                                x = Math.min(xScale(value), baseX);
+                                barW = Math.abs(xScale(value) - baseX);
+                            }
+                            const radius = Math.min(4, barH / 2);
+                            return (
+                                <motion.rect
+                                    key={i}
+                                    y={y}
+                                    height={Math.max(0, barH - 1)}
+                                    x={x}
+                                    rx={radius}
+                                    fill={colors[si]}
+                                    initial={
+                                        reduce ? false : { width: 0 }
+                                    }
+                                    animate={{ width: barW }}
+                                    transition={{
+                                        duration: 0.5,
+                                        ease: "easeOut",
+                                        delay: i * 0.012,
+                                    }}
+                                    opacity={markOpacity(categories[i], interaction)}
+                                />
+                            );
+                        })}
+                    </g>
+                );
+            })}
+        </>
     );
 }

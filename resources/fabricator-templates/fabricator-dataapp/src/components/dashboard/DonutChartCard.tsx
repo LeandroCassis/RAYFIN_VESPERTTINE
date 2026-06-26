@@ -6,7 +6,7 @@
 //-----------------------------------------------------------------------
 
 import type { ReactNode } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { resolveColor, seriesColor } from "@/lib/chartTokens";
 import { resolveFormat, type ValueFormat } from "@/lib/format";
@@ -15,6 +15,9 @@ import { ChartCard } from "./ChartCard";
 import type { ChartCardCommonProps } from "./cartesian";
 import type { LegendPlacement } from "./ChartFrame";
 import { ChartTooltip } from "./ChartTooltip";
+import { arcCentroid, arcPath, pieSlices } from "./charts/arc";
+import { tooltipBoxStyle, useChartTooltip } from "./charts/tooltip";
+import { useChartSize } from "./charts/useChartSize";
 import { TileBody } from "./states";
 
 export interface DonutChartCardProps extends ChartCardCommonProps {
@@ -55,9 +58,100 @@ export interface DonutChartCardProps extends ChartCardCommonProps {
     showLegend?: boolean;
 }
 
+/** Measured custom-SVG donut/pie with hover tooltip. */
+function DonutSvg({
+    rows,
+    nameKey,
+    valueKey,
+    donut,
+    cellColor,
+    valueFormat,
+}: {
+    rows: Array<Record<string, unknown>>;
+    nameKey: string;
+    valueKey: string;
+    donut: boolean;
+    cellColor: (index: number) => string;
+    valueFormat?: ValueFormat;
+}) {
+    const { ref, size } = useChartSize();
+    const tooltip = useChartTooltip();
+    const reduce = useReducedMotion();
+
+    const width = size.width;
+    const height = size.height;
+    const radius = Math.max(0, Math.min(width, height) / 2);
+    const outer = radius * 0.96;
+    const inner = donut ? radius * 0.62 : 0;
+    const values = rows.map((row) => Number(row[valueKey]) || 0);
+    const slices = pieSlices(values, { padAngle: donut ? 0.018 : 0 });
+    const active = tooltip.state;
+
+    return (
+        <div ref={ref} className="absolute inset-0">
+            {width > 0 && height > 0 && (
+                <svg width={width} height={height} role="img">
+                    <g transform={`translate(${width / 2},${height / 2})`}>
+                        {slices.map((slice, index) => (
+                            <motion.path
+                                key={index}
+                                d={arcPath({
+                                    innerRadius: inner,
+                                    outerRadius: outer,
+                                    startAngle: slice.startAngle,
+                                    endAngle: slice.endAngle,
+                                    cornerRadius: donut ? 3 : 0,
+                                })}
+                                fill={cellColor(index)}
+                                stroke="var(--color-card)"
+                                strokeWidth={2}
+                                initial={reduce ? false : { opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ duration: 0.4, delay: index * 0.04 }}
+                                style={{ cursor: "default" }}
+                                onPointerEnter={() => {
+                                    const [cx, cy] = arcCentroid({
+                                        innerRadius: inner,
+                                        outerRadius: outer,
+                                        startAngle: slice.startAngle,
+                                        endAngle: slice.endAngle,
+                                    });
+                                    tooltip.show(
+                                        index,
+                                        width / 2 + cx,
+                                        height / 2 + cy,
+                                    );
+                                }}
+                                onPointerLeave={tooltip.hide}
+                            />
+                        ))}
+                    </g>
+                </svg>
+            )}
+            {active != null && rows[active.index] && (
+                <div style={tooltipBoxStyle(active.x, active.y, width)}>
+                    <ChartTooltip
+                        active
+                        label={String(rows[active.index][nameKey] ?? "")}
+                        payload={[
+                            {
+                                name: String(rows[active.index][nameKey] ?? ""),
+                                value: Number(rows[active.index][valueKey]),
+                                color: cellColor(active.index),
+                            },
+                        ]}
+                        valueFormat={valueFormat}
+                    />
+                </div>
+            )}
+        </div>
+    );
+}
+
 /**
- * Categorical share as a donut (or pie) with a value/share legend. The donut
- * center shows the total by default.
+ * Categorical share as a donut (or pie) with a value/share legend — a fully
+ * custom SVG (no charting library). The donut center shows the total by
+ * default.
  *
  * @example
  * ```tsx
@@ -120,28 +214,14 @@ export function DonutChartCard({
             className="relative mx-auto aspect-square w-full shrink-0"
             style={{ maxWidth: height }}
         >
-            <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                    <Pie
-                        data={rows}
-                        dataKey={valueKey}
-                        nameKey={nameKey}
-                        innerRadius={donut ? "62%" : 0}
-                        outerRadius="92%"
-                        paddingAngle={donut ? 2 : 0}
-                        stroke="var(--color-card)"
-                        strokeWidth={2}
-                        isAnimationActive={false}
-                    >
-                        {rows.map((_, index) => (
-                            <Cell key={index} fill={cellColor(index)} />
-                        ))}
-                    </Pie>
-                    <Tooltip
-                        content={<ChartTooltip valueFormat={valueFormat} />}
-                    />
-                </PieChart>
-            </ResponsiveContainer>
+            <DonutSvg
+                rows={rows}
+                nameKey={nameKey}
+                valueKey={valueKey}
+                donut={donut}
+                cellColor={cellColor}
+                valueFormat={valueFormat}
+            />
             {resolvedCenter && (
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
                     {resolvedCenter}

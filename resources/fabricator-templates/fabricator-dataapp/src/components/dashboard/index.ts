@@ -9,12 +9,15 @@
  * Dashboard kit — the pick-&-choose component library.
  *
  * Compose dashboards by importing these components and passing data; you
- * should rarely hand-write Recharts or raw JSX. Read each component's JSDoc
- * (and the `visuals` skill catalog) for a copy-paste snippet.
+ * should rarely hand-write SVG or raw JSX. Charts are fully custom (D3 math +
+ * SVG, no charting library), slicers + chart clicks share one filter model,
+ * and every component reads each other's JSDoc (and the `visuals` skill
+ * catalog) for a copy-paste snippet.
  *
  *   import {
  *     PageShell, BentoGrid, BentoItem, KpiGrid, ChartGrid,
  *     KpiCard, LineChartCard, BarChartCard, ComboChartCard, DataTableCard,
+ *     FilterStateProvider, FilterBar, DropdownSlicer, useCrossFilter,
  *     pivotChartData, deriveKpi, ThemeToggle,
  *   } from "@/components/dashboard";
  */
@@ -72,6 +75,8 @@ export { BulletChartCard, ProgressBar } from "./BulletChartCard";
 export type { BulletChartCardProps, ProgressBarProps } from "./BulletChartCard";
 export { ChartTooltip } from "./ChartTooltip";
 export type { ChartTooltipProps } from "./ChartTooltip";
+export { AnimatedNumber } from "./AnimatedNumber";
+export type { AnimatedNumberProps } from "./AnimatedNumber";
 export type {
     SeriesConfig,
     ChartCardCommonProps,
@@ -112,10 +117,69 @@ export {
     MoonIcon,
     ArrowUpRightIcon,
     ArrowDownRightIcon,
+    ChevronRightIcon,
+    ChevronDownIcon,
     AlertTriangleIcon,
     InboxIcon,
 } from "./icons";
 export type { IconProps } from "./icons";
+
+/* ----------------------- Filters + slicers ----------------------------- */
+export {
+    FilterStateProvider,
+    useFilterState,
+    fieldShortName,
+    parseField,
+} from "./filters/filter-state";
+export type {
+    FilterField,
+    FilterSelection,
+    FilterStateApi,
+} from "./filters/filter-state";
+export { Popover } from "./filters/Popover";
+export type { PopoverProps } from "./filters/Popover";
+export { DropdownSlicer } from "./filters/DropdownSlicer";
+export type { DropdownSlicerProps } from "./filters/DropdownSlicer";
+export { ListSlicer } from "./filters/ListSlicer";
+export type { ListSlicerProps } from "./filters/ListSlicer";
+export { SearchSlicer } from "./filters/SearchSlicer";
+export type { SearchSlicerProps } from "./filters/SearchSlicer";
+export { DateRangeSlicer } from "./filters/DateRangeSlicer";
+export type { DateRangeSlicerProps } from "./filters/DateRangeSlicer";
+export { RangeSlicer } from "./filters/RangeSlicer";
+export type { RangeSlicerProps } from "./filters/RangeSlicer";
+export { FilterBar } from "./filters/FilterBar";
+export type { FilterBarProps } from "./filters/FilterBar";
+
+/* --------------- Coordinated interactions (Tableau-like) --------------- */
+export { DrilldownBreadcrumb } from "./DrilldownBreadcrumb";
+export type { DrilldownBreadcrumbProps } from "./DrilldownBreadcrumb";
+export { useCrossFilter } from "@/hooks/use-cross-filter";
+export type { CrossFilterProps } from "@/hooks/use-cross-filter";
+export { useDrilldown } from "@/hooks/use-drilldown";
+export type { DrilldownApi, DrilldownLevel } from "@/hooks/use-drilldown";
+export { useSlicerOptions } from "@/hooks/use-slicer-options";
+export type {
+    SlicerOption,
+    UseSlicerOptionsResult,
+} from "@/hooks/use-slicer-options";
+
+/* ----------------- Filter application (client + DAX) ------------------- */
+export { applyFilters, matchesSelection } from "@/lib/apply-filters";
+export type { ApplyFiltersOptions } from "@/lib/apply-filters";
+export {
+    toDaxFilters,
+    daxEscape,
+    daxValueList,
+    daxDateLiteral,
+} from "@/lib/dax-filters";
+export type { DaxFilters } from "@/lib/dax-filters";
+export { quoteFieldRef } from "@/lib/filter-field";
+export type { ParsedFilterField } from "@/lib/filter-field";
+
+/* --------------------- Custom chart core (advanced) -------------------- */
+export { useChartSize } from "./charts/useChartSize";
+export type { ChartSize, Margin, MarkInteraction } from "./charts/types";
 
 /* --------------------------- Helpers (re-exports) ---------------------- */
 export {

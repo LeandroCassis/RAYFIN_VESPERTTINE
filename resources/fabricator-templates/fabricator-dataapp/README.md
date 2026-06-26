@@ -2,7 +2,7 @@
 
 A **Fabric Analytics** React + Vite app: connect a Power BI semantic model,
 query it with DAX, and **compose stunning dashboards from a pre-built component
-kit** (Recharts charts + the Fabric `DataGrid`) — tuned for the **Rayfin
+kit** (custom D3/SVG charts + the Fabric `DataGrid`) — tuned for the **Rayfin
 Fabricator** deploy-to-test workflow.
 
 > This is a Fabricator template: there is **no local backend, dev server, or
@@ -17,8 +17,13 @@ you ready-made, themed building blocks — you **pick a component and pass it
 data**:
 
 - **Cards** — `KpiCard`, `ChartCard`, `DataTableCard`
-- **Charts** (Recharts) — `LineChartCard`, `AreaChartCard`, `BarChartCard`,
-  `DonutChartCard` / `PieChartCard`, `Sparkline`
+- **Charts** (custom D3/SVG) — `LineChartCard`, `AreaChartCard`, `BarChartCard`,
+  `ComboChartCard`, `ScatterChartCard`, `DonutChartCard` / `PieChartCard`,
+  `GaugeCard`, `FunnelChartCard`, `BulletChartCard`, `Sparkline`
+- **Slicers** (shared filter state) — `FilterStateProvider`, `FilterBar`,
+  `DropdownSlicer`, `ListSlicer`, `SearchSlicer`, `DateRangeSlicer`, `RangeSlicer`
+- **Interactions** (Tableau-like) — `useCrossFilter` (click-to-cross-filter),
+  `useDrilldown` + `DrilldownBreadcrumb`
 - **Layout** — `PageShell`, `KpiGrid`, `ChartGrid`, `Section`, `ThemeToggle`
 - **Controls** — `SegmentedControl`, `FilterChips`
 - **State tiles** — `EmptyTile`, `ErrorTile`, `ChartSkeleton`, `KpiSkeleton`
@@ -97,9 +102,10 @@ so it is meant to be opened from a deployed Fabric workspace (not `localhost`).
 
 ## Charts vs. tables
 
-- **Charts are Recharts**, wrapped by the kit's chart cards — pass `data` + a
-  declarative `series`. Need something exotic (scatter, radar, treemap)? Use the
-  Recharts escape hatch inside a `ChartCard` (see the `visuals` skill).
+- **Charts are custom D3/SVG** (no charting library), wrapped by the kit's chart
+  cards — pass `data` + a declarative `series`. Need something exotic (radar,
+  treemap, waterfall)? Build it on the chart core via the escape hatch inside a
+  `ChartCard` (see the `visuals` skill).
 - **Tables are the Fabric `DataGrid`**, wrapped by `DataTableCard` — map results
   with `toDataTable(table, columnMetadata)`.
 

@@ -6,9 +6,11 @@
 //-----------------------------------------------------------------------
 
 import { useId } from "react";
-import { Area, AreaChart, ResponsiveContainer } from "recharts";
+import { area as d3Area, line as d3Line } from "d3-shape";
 
 import { resolveColor } from "@/lib/chartTokens";
+
+import { useChartSize } from "./charts/useChartSize";
 
 export interface SparklineProps {
     /** A list of numbers, or objects keyed by `dataKey`. */
@@ -25,8 +27,9 @@ export interface SparklineProps {
 }
 
 /**
- * Compact, axis-less trend line for KPI cards and inline cells. Pass a raw
- * `number[]` (or objects + `dataKey`).
+ * Compact, axis-less trend line for KPI cards and inline cells — a fully custom
+ * SVG sparkline (no charting library). Pass a raw `number[]` (or objects +
+ * `dataKey`).
  *
  * @example
  * ```tsx
@@ -41,26 +44,62 @@ export function Sparkline({
     variant = "area",
     className,
 }: SparklineProps) {
-    const gradientId = useId();
+    const gradientId = useId().replace(/:/g, "");
     const stroke = resolveColor(color, 0);
+    const { ref, size } = useChartSize();
 
-    if (data.length === 0) return <div className={className} style={{ height }} />;
+    const values = (
+        typeof data[0] === "number"
+            ? (data as ReadonlyArray<number>)
+            : (data as ReadonlyArray<Record<string, unknown>>).map((row) =>
+                  Number(row[dataKey]),
+              )
+    ).map((value) => (Number.isFinite(value) ? value : Number.NaN));
 
-    const isNumeric = typeof data[0] === "number";
-    const chartData = isNumeric
-        ? (data as ReadonlyArray<number>).map((value) => ({ value }))
-        : (data as ReadonlyArray<Record<string, unknown>>);
-    const key = isNumeric ? "value" : dataKey;
+    const width = size.width;
+    const inner = Math.max(0, height - 4);
+
+    let linePath = "";
+    let areaPath = "";
+    if (width > 0 && values.length > 0) {
+        const finite = values.filter((value) => Number.isFinite(value));
+        const min = finite.length ? Math.min(...finite) : 0;
+        const max = finite.length ? Math.max(...finite) : 1;
+        const span = max - min || 1;
+        const x = (index: number) =>
+            values.length <= 1
+                ? width / 2
+                : (index / (values.length - 1)) * width;
+        const y = (value: number) => 2 + (1 - (value - min) / span) * inner;
+        const points = values.map(
+            (value, index) => [x(index), y(value)] as [number, number],
+        );
+        const defined = (point: [number, number]) => Number.isFinite(point[1]);
+        linePath =
+            d3Line<[number, number]>()
+                .defined(defined)
+                .x((point) => point[0])
+                .y((point) => point[1])(points) ?? "";
+        areaPath =
+            d3Area<[number, number]>()
+                .defined(defined)
+                .x((point) => point[0])
+                .y0(height)
+                .y1((point) => point[1])(points) ?? "";
+    }
 
     return (
-        <div className={className} style={{ height }}>
-            <ResponsiveContainer width="100%" height="100%">
-                <AreaChart
-                    data={chartData as Record<string, unknown>[]}
-                    margin={{ top: 2, right: 0, bottom: 0, left: 0 }}
-                >
+        <div ref={ref} className={className} style={{ height }}>
+            {width > 0 && (
+                <svg width={width} height={height} role="img" aria-hidden>
                     <defs>
-                        <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                        <linearGradient
+                            id={gradientId}
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                        >
                             <stop
                                 offset="0%"
                                 stopColor={stroke}
@@ -73,17 +112,19 @@ export function Sparkline({
                             />
                         </linearGradient>
                     </defs>
-                    <Area
-                        type="monotone"
-                        dataKey={key}
+                    {variant === "area" && (
+                        <path d={areaPath} fill={`url(#${gradientId})`} />
+                    )}
+                    <path
+                        d={linePath}
+                        fill="none"
                         stroke={stroke}
                         strokeWidth={1.75}
-                        fill={variant === "area" ? `url(#${gradientId})` : "none"}
-                        isAnimationActive={false}
-                        dot={false}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
                     />
-                </AreaChart>
-            </ResponsiveContainer>
+                </svg>
+            )}
         </div>
     );
 }

@@ -182,7 +182,7 @@ Content areas inside a card should use consistent horizontal padding that matche
 
 ### Bar corner radius
 
-The kit uses a consistent rounded bar treatment that follows the app's flat, modern radius system. If you use the Recharts escape hatch for a bespoke bar shape, choose sharp or rounded corners deliberately and apply that choice consistently across all bar charts.
+The kit uses a consistent rounded bar treatment that follows the app's flat, modern radius system. If you use the escape hatch (the custom chart core) for a bespoke bar shape, choose sharp or rounded corners deliberately and apply that choice consistently across all bar charts.
 
 ### Grouped bar charts
 
@@ -261,7 +261,7 @@ const table = toDataTable(data, columnMetadata);
 
 Most dashboard visuals should be composed from `KpiCard`, `LineChartCard`, `AreaChartCard`, `BarChartCard`, `DonutChartCard`, `DataTableCard`, `PageShell`, `KpiGrid`, and `ChartGrid`.
 
-If a visualization genuinely is not in the kit (scatter, radar, treemap, waterfall, heatmap, or a combo chart), use the `visuals` skill escape hatch: wrap a Recharts implementation in `ChartCard`, use `ChartTooltip`, `useChartTheme`, `seriesColor`/`roleColor`, and token colors such as `var(--color-chart-1)`. Do not hardcode hex colors.
+If a visualization genuinely is not in the kit (radar, treemap, waterfall, heatmap), use the `visuals` skill escape hatch: build it on the kit's chart core inside a `ChartCard` (`ChartFrame` for sizing, `d3-scale` for math, `useChartTheme` + `seriesColor`/`roleColor` for color, `ChartTooltip` for the themed tooltip), and token colors such as `var(--color-chart-1)`. Do not hardcode hex colors.
 
 ---
 

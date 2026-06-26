@@ -71,6 +71,22 @@ export function ArrowDownRightIcon(props: IconProps) {
     );
 }
 
+export function ChevronRightIcon(props: IconProps) {
+    return (
+        <Icon {...props}>
+            <path d="m9 18 6-6-6-6" />
+        </Icon>
+    );
+}
+
+export function ChevronDownIcon(props: IconProps) {
+    return (
+        <Icon {...props}>
+            <path d="m6 9 6 6 6-6" />
+        </Icon>
+    );
+}
+
 export function AlertTriangleIcon(props: IconProps) {
     return (
         <Icon {...props}>

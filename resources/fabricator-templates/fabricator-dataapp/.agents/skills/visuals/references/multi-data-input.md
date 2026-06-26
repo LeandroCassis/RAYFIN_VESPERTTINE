@@ -144,7 +144,8 @@ multi-series:
 
 Most multi-layer needs are already kit cards: a bar+line **dual-axis combo** is
 `ComboChartCard`, and x/y/bubble correlation is `ScatterChartCard` — reach for
-those before Recharts. Only for marks the cards don't cover (radar, treemap,
-waterfall) use the Recharts **escape hatch** inside a `ChartCard` (see the
+those before a custom chart. Only for marks the cards don't cover (radar,
+treemap, waterfall) use the **escape hatch** — build on the chart core inside a
+`ChartCard` (see the
 visuals catalog). You still pass plain arrays and the kit's theme helpers —
 there is no spec or dataset registry to manage.

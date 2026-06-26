@@ -1,14 +1,17 @@
 ---
 name: visuals
 description: >
-  Use when adding charts, KPIs, tables, or any visual to a dashboard. This is
-  the dashboard KIT catalog: a curated set of pre-built, themed components you
-  COMPOSE by passing data — you should rarely hand-write Recharts or raw JSX.
-  Covers KpiCard, the chart cards (line/area/bar/combo/scatter/donut/gauge/
-  funnel/bullet), DataTableCard, layout (PageShell/grids/bento), controls,
-  state tiles, the DAX-mapping helpers (toChartData / toDataTable /
-  pivotChartData / topN / deriveKpi), value formatting, color tokens, and the
-  Recharts escape hatch.
+  Use when adding charts, KPIs, tables, slicers, or any visual to a dashboard.
+  This is the dashboard KIT catalog: a curated set of pre-built, themed
+  components you COMPOSE by passing data — you should rarely hand-write SVG or
+  raw JSX. Charts are fully custom (D3 math + SVG, no charting library). Covers
+  KpiCard, the chart cards (line/area/bar/combo/scatter/donut/gauge/funnel/
+  bullet), DataTableCard, slicers (dropdown/list/search/date-range/range +
+  FilterBar) with shared filter state, Tableau-like coordinated interactions
+  (click-to-cross-filter, cross-highlight, drill-down), layout (PageShell/grids/
+  bento), controls, state tiles, the DAX-mapping helpers (toChartData /
+  toDataTable / pivotChartData / topN / deriveKpi), value formatting, color
+  tokens, and the custom-chart escape hatch.
 ---
 
 # Visuals — the dashboard kit (compose, don't hand-code)
@@ -17,12 +20,13 @@ description: >
 `src/components/dashboard/` and is exported from a single barrel
 (`@/components/dashboard`). Each card owns its theme, axes, gridlines,
 tooltip, legend, number/date formatting, dark mode, and loading/empty/error
-states — so you write *data*, not chart code. Writing a Recharts spec or a
-bespoke `<div>` grid by hand is the slow, expensive, error-prone path; reach
+states — so you write *data*, not chart code. Writing a bespoke SVG chart or a
+hand-rolled `<div>` grid is the slow, expensive, error-prone path; reach
 for it only when nothing in the kit fits (see [Escape hatch](#escape-hatch)).
 
-Charts are **Recharts**. Tables are the Fabric **DataGrid**. There is no
-Vega-Lite.
+Charts are **fully custom D3/SVG** (built on `d3-scale`/`d3-shape` math + React
+SVG — no Recharts, no charting library). Tables are the Fabric **DataGrid**.
+There is no Vega-Lite.
 
 ## Fast path
 
@@ -54,8 +58,10 @@ const rows = toChartData(data); // pass the query result straight in
 **Phase 2 — Breadth:** add the remaining KPIs/charts/table, wrapping them in
 `PageShell` + `KpiGrid`/`ChartGrid`. Deploy + review every 1–2 additions.
 
-**Phase 3 — Polish:** filters (`SegmentedControl`/`FilterChips`), reference
-lines, sparklines in KPI cards, donut breakdowns, and final formatting.
+**Phase 3 — Polish:** slicers + cross-filtering (`FilterStateProvider` +
+`FilterBar`/`DropdownSlicer`/…, or click-to-cross-filter via `useCrossFilter`),
+lightweight controls (`SegmentedControl`/`FilterChips`), reference lines,
+sparklines in KPI cards, donut breakdowns, and final formatting.
 
 Read the per-component props below only when you reach for that component.
 Every component also carries a JSDoc usage snippet — hover it or open the file.
@@ -125,12 +131,18 @@ import {
   PageShell, KpiGrid, ChartGrid, Section, BentoGrid, BentoItem, ThemeToggle,
   // controls
   SegmentedControl, FilterChips,
+  // slicers + shared filter state
+  FilterStateProvider, useFilterState, FilterBar,
+  DropdownSlicer, ListSlicer, SearchSlicer, DateRangeSlicer, RangeSlicer,
+  // coordinated interactions (Tableau-like)
+  useCrossFilter, useDrilldown, DrilldownBreadcrumb,
+  useSlicerOptions, applyFilters, toDaxFilters,
   // cards
   KpiCard, ChartCard, DataTableCard,
   // charts
   LineChartCard, AreaChartCard, BarChartCard, ComboChartCard, ScatterChartCard,
   DonutChartCard, PieChartCard, GaugeCard, FunnelChartCard, BulletChartCard,
-  ProgressBar, Sparkline, ChartTooltip, ChartFrame,
+  ProgressBar, Sparkline, ChartTooltip, ChartFrame, AnimatedNumber,
   // state tiles
   EmptyTile, ErrorTile, ChartSkeleton, KpiSkeleton, TileBody,
   // DAX-mapping helpers
@@ -228,6 +240,96 @@ const [regions, setRegions] = useState<string[]>([]);
 
 - **`SegmentedControl<T>`** — single-select pill group (`size?: "sm" | "md"`).
 - **`FilterChips<T>`** — multi-select chip row (`value` is an array).
+
+These are **lightweight, self-managed** controls (you own the `useState` and
+filter rows yourself). For **Power BI-style slicers** that auto-share selection
+across the whole dashboard (and drive cross-filtering), use the slicer suite +
+`FilterStateProvider` below instead.
+
+---
+
+## Slicers & shared filter state
+
+Slicers are real filter controls wired to one **shared filter model**. Wrap the
+dashboard in `<FilterStateProvider>` once; every slicer (and every chart click)
+reads/writes the same selections. Then **apply** those selections one of two
+ways: `applyFilters(rows, selections)` (instant, client-side) or
+`toDaxFilters(selections)` (re-query the model — see `query-design`).
+
+```tsx
+import {
+  FilterStateProvider, useFilterState, FilterBar,
+  DropdownSlicer, DateRangeSlicer, RangeSlicer,
+  applyFilters, BarChartCard, toChartData,
+} from "@/components/dashboard";
+
+function Dashboard() {
+  return (
+    <FilterStateProvider>
+      <FilterBar>
+        <DropdownSlicer label="Category" field="Product[Category]" options={catOptions} />
+        <DateRangeSlicer label="Date" field="Date[Date]" />
+        <RangeSlicer label="Price" field="Product[Price]" min={0} max={1000} />
+      </FilterBar>
+      <RevenueByRegion />
+    </FilterStateProvider>
+  );
+}
+
+function RevenueByRegion() {
+  const { selections } = useFilterState();
+  const rows = applyFilters(toChartData(data), selections); // client-side filter
+  return <BarChartCard data={rows} xKey="Region" series={[{ key: "Revenue" }]} />;
+}
+```
+
+Every slicer works **connected** (pass `field` → shared state) OR **controlled**
+(pass `value` + `onChange`). Connected mode is a no-op outside a provider, so a
+single tile stays safe.
+
+- **`DropdownSlicer`** — popover single/multi-select with search, select-all/
+  clear, and per-value counts. `options: SlicerOption[]` (`{ value, label, count? }`).
+- **`ListSlicer`** — the same list rendered inline (for a sidebar).
+- **`SearchSlicer`** — a text `contains` filter.
+- **`DateRangeSlicer`** — from/to dates + relative presets (Last 7/30/90, MTD, YTD, All).
+- **`RangeSlicer`** — dual-thumb numeric min/max.
+- **`FilterBar`** — toolbar that hosts slicers + shows active-filter chips + "Clear all".
+
+Fetch a slicer's distinct values straight from the model with
+**`useSlicerOptions({ connection, field, measure?, orderBy?, top? })`** →
+`{ options, isLoading, error }` (a `SUMMARIZECOLUMNS` + `TOPN` DAX query).
+Full guide: [slicers & filter state](references/slicers.md).
+
+---
+
+## Coordinated interactions (Tableau-like)
+
+Built on the same filter state — clicking a chart mark filters the rest.
+
+**Cross-filter + cross-highlight:** spread `useCrossFilter(field)` onto any
+interactive chart card. A click toggles that category in shared state; selected
+marks stay vivid while the rest dim across every connected card.
+
+```tsx
+const cross = useCrossFilter("Region[Region]");
+<BarChartCard data={rows} xKey="Region" series={[{ key: "Revenue" }]} {...cross} />
+// cross = { selectedKeys, onSelect, dimUnselected }
+```
+
+**Drill-down:** `useDrilldown(id, levels)` advances through a field hierarchy on
+click; pair it with `<DrilldownBreadcrumb>` to climb back up.
+
+```tsx
+const drill = useDrilldown("geo", [{ field: "Geo[Country]" }, { field: "Geo[City]" }]);
+<DrilldownBreadcrumb drilldown={drill} rootLabel="All" />
+<BarChartCard data={rows} xKey={drill.xKey} series={[{ key: "Revenue" }]}
+  onSelect={drill.drillInto} />
+```
+
+Cards expose the interaction contract (`MarkInteraction`: `onSelect`,
+`selectedKeys`, `dimUnselected`) — the cartesian cards (`LineChartCard` /
+`AreaChartCard` / `BarChartCard`) respond to clicks; donut and scatter currently
+show hover tooltips only. Full guide: [coordinated interactions](references/interactions.md).
 
 ---
 
@@ -447,8 +549,9 @@ Compact, axis-less trend for KPI cards / inline cells. Accepts a raw
 ```
 
 ### `ChartTooltip`
-The themed tooltip the chart cards wire up automatically. You only touch it
-in the escape hatch (`<Tooltip content={<ChartTooltip valueFormat="currency" />} />`).
+The themed tooltip the chart cards wire up automatically. You only touch it in a
+custom chart — render it inside the `tooltipBoxStyle(x, y, width)` overlay driven
+by `useChartTooltip()` (see its JSDoc and `cartesian.tsx`).
 
 ## State tiles
 
@@ -465,23 +568,56 @@ children).
 ## Escape hatch
 
 If a visualization genuinely isn't in the kit (e.g. radar, treemap, heatmap,
-waterfall), compose it inside a `ChartCard` using Recharts directly **plus
-the kit's helpers** so it still matches the theme:
+waterfall), **first consider adding it to the kit** — copy the closest card
+(`cartesian.tsx` is the reference) and reuse the custom chart core. For a true
+one-off, build it on that same core so it stays themed, responsive, and
+dark-mode-correct. There is **no charting library** to fall back on — you draw
+SVG, but the core does the hard parts (sizing, scales, axes, tooltip).
+
+The core: `ChartFrame` measures the plot and hands your render-prop the
+`{ width, height }`; `d3-scale` maps data → pixels; `useChartTheme()` +
+`seriesColor` / `roleColor` give theme-correct colors.
 
 ```tsx
-import { RadarChart, Radar, PolarGrid, PolarAngleAxis } from "recharts";
+import { scaleBand, scaleLinear } from "d3-scale";
 import { ChartCard, ChartFrame, useChartTheme, seriesColor } from "@/components/dashboard";
 
-function SkillsRadarCard({ data }: { data: Array<Record<string, number>> }) {
+function LollipopCard({ data }: { data: Array<{ label: string; value: number }> }) {
   const theme = useChartTheme();
+  const m = { top: 12, right: 16, bottom: 28, left: 8 };
   return (
-    <ChartCard title="Skill coverage">
-      <ChartFrame aspect={1.3}>
-        <RadarChart data={data}>
-          <PolarGrid stroke={theme.grid} />
-          <PolarAngleAxis dataKey="skill" tick={{ fill: theme.axis, fontSize: 11 }} />
-          <Radar dataKey="score" stroke={seriesColor(0)} fill={seriesColor(0)} fillOpacity={0.25} />
-        </RadarChart>
+    <ChartCard title="Score by category">
+      <ChartFrame aspect={1.8}>
+        {({ width, height }) => {
+          const iw = width - m.left - m.right;
+          const ih = height - m.top - m.bottom;
+          const x = scaleBand<string>()
+            .domain(data.map((d) => d.label)).range([0, iw]).padding(0.5);
+          const y = scaleLinear()
+            .domain([0, Math.max(0, ...data.map((d) => d.value))]).range([ih, 0]).nice();
+          return (
+            <svg width={width} height={height} role="img">
+              <g transform={`translate(${m.left},${m.top})`}>
+                {y.ticks(4).map((t) => (
+                  <line key={t} x1={0} x2={iw} y1={y(t)} y2={y(t)} stroke={theme.grid} />
+                ))}
+                {data.map((d) => {
+                  const cx = (x(d.label) ?? 0) + x.bandwidth() / 2;
+                  return (
+                    <g key={d.label}>
+                      <line x1={cx} x2={cx} y1={ih} y2={y(d.value)}
+                        stroke={theme.grid} strokeWidth={2} />
+                      <circle cx={cx} cy={y(d.value)} r={5} fill={seriesColor(0)} />
+                      <text x={cx} y={ih + 18} textAnchor="middle" fontSize={11} fill={theme.axis}>
+                        {d.label}
+                      </text>
+                    </g>
+                  );
+                })}
+              </g>
+            </svg>
+          );
+        }}
       </ChartFrame>
     </ChartCard>
   );
@@ -489,17 +625,25 @@ function SkillsRadarCard({ data }: { data: Array<Record<string, number>> }) {
 ```
 
 Rules for the escape hatch:
-- Wrap in `ChartCard`; size with the kit's `ChartFrame` (responsive aspect +
-  clamps, plus an optional `legend` / `legendPlacement`) instead of a bare,
-  fixed-height `ResponsiveContainer` — your custom chart then scales like the
-  built-in ones.
-- Use `axisProps`/`gridProps` + `useChartTheme()` and `seriesColor`/`roleColor`
-  (or `var(--color-chart-n)`) — never hardcode hex, so dark mode keeps working.
-- Pass `content={<ChartTooltip … />}` for a themed tooltip.
-- If you find yourself writing the same custom chart twice, add it to the kit
-  instead.
+- Size with `ChartFrame` (responsive aspect + clamps, optional `legend` /
+  `legendPlacement`) and its render-prop — never a fixed-height `<svg>`, so your
+  chart scales like the built-in ones.
+- Scale with `d3-scale`; for kit-perfect axes / gridlines / tooltips reuse the
+  core primitives in `@/components/dashboard/charts/*` (`bandScale` / `linearScale`,
+  `AxisBottom` / `AxisLeft`, `GridRows`, `useChartTooltip` + `tooltipBoxStyle` +
+  the `ChartTooltip` component).
+- Color with `useChartTheme()` + `seriesColor` / `roleColor` (or
+  `var(--color-chart-n)`) — never hardcode hex, so dark mode keeps working.
+- Spread `useCrossFilter(field)` (the `MarkInteraction` contract) onto your marks
+  to make a custom chart participate in cross-filtering.
+- If you write the same custom chart twice, promote it into the kit.
+
+For the full chart-core walkthrough (primitives + how to add a mark), see
+[custom charts](references/custom-charts.md).
 
 For deeper details: [formatting & colors](references/formatting.md),
 [multiple series & overlays](references/multi-data-input.md),
+[slicers & filter state](references/slicers.md),
+[coordinated interactions](references/interactions.md),
 [DataGrid cell rendering](references/data-grid-visual.md),
 [the `DataTable` shape](references/data-table.md).

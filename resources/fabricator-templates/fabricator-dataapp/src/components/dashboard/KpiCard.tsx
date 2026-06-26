@@ -6,12 +6,14 @@
 //-----------------------------------------------------------------------
 
 import type { ReactNode } from "react";
+import { useMemo } from "react";
 
 import { resolveColor } from "@/lib/chartTokens";
 import { formatDelta, resolveFormat, type ValueFormat } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { warnMissingKeys } from "@/lib/validate";
 
+import { AnimatedNumber } from "./AnimatedNumber";
 import { ArrowDownRightIcon, ArrowUpRightIcon } from "./icons";
 import { Sparkline } from "./Sparkline";
 import { EmptyTile, ErrorTile, KpiSkeleton } from "./states";
@@ -101,6 +103,7 @@ export function KpiCard({
     const derived = data && valueKey ? data[0]?.[valueKey] : undefined;
     const metricValue = value ?? derived;
     const isEmpty = value === undefined && (data?.length === 0 || derived == null);
+    const format = useMemo(() => resolveFormat(valueFormat), [valueFormat]);
 
     if (value === undefined && !loading && error == null) {
         // Loud, actionable hint instead of a silently empty tile — the most
@@ -138,10 +141,10 @@ export function KpiCard({
             </div>
         );
 
-    const valueText =
-        typeof metricValue === "number"
-            ? resolveFormat(valueFormat)(metricValue)
-            : String(metricValue ?? "");
+    const isNumericValue = typeof metricValue === "number";
+    const valueText = isNumericValue
+        ? format(metricValue)
+        : String(metricValue ?? "");
 
     // Auto-derive the delta from the trend (first → last) when not supplied.
     const finiteTrend = trend?.filter((n) => Number.isFinite(n)) ?? [];
@@ -203,7 +206,11 @@ export function KpiCard({
             <div className="flex items-end justify-between gap-3">
                 <div className="min-w-0">
                     <span className="block truncate font-numeric text-[28px] font-semibold leading-none tracking-tight text-foreground tabular-nums">
-                        {valueText}
+                        {isNumericValue ? (
+                            <AnimatedNumber value={metricValue} format={format} />
+                        ) : (
+                            valueText
+                        )}
                     </span>
                     {secondary && (
                         <span className="mt-1 block truncate font-numeric text-sm text-muted-foreground tabular-nums">

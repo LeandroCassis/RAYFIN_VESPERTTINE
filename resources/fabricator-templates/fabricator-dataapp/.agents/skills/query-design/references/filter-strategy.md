@@ -40,7 +40,24 @@ const filteredRows = rows.filter(row => row.Region === selectedRegion);
 />
 ```
 
-For tables, filter the `DataTable.rows` array and pass the result to `DataTableCard`. Kit controls (`SegmentedControl` / `FilterChips`) own the selected value in React state; they do not change the DAX query unless you choose the server-side path.
+That direct `.filter(...)` is fine for a one-off lightweight control. For shared slicers, use the kit's filter-state foundation instead of hand-rolling the predicate in each visual: slicers write `FilterSelection`s into `useFilterState()`, and visuals apply the active selections to already-mapped rows with `applyFilters(rows, selections)` from `@/components/dashboard`.
+
+```typescript
+import { applyFilters, toChartData, useFilterState } from "@/components/dashboard";
+
+const { selections } = useFilterState();
+const rows = toChartData(data, {
+  columns: { Region: "Region[Name]", Category: "Product[Category]", Revenue: "Revenue" },
+});
+const filteredRows = applyFilters(rows, selections);
+
+// If your mapped row key differs from the model column's short name:
+const filteredCustomRows = applyFilters(rows, selections, {
+  fieldMap: { "Region[Name]": "regionName" },
+});
+```
+
+For tables, apply the same selection model to `DataTable.rows` and pass the result to `DataTableCard`. Kit controls (`SegmentedControl` / `FilterChips`) can still own local React state for simple cases; use the slicer components for Power BI-style shared filter state. See the `visuals` skill's `references/slicers.md` for the full slicer catalog.
 
 ## Push Filter to DAX (server-side filtering)
 
@@ -62,6 +79,63 @@ ORDER BY 'Product'[Category]
 ```
 
 The query is lighter (computes for one date only), but each filter change requires a server round-trip.
+
+The shared filter model works for the server-side path too. Use `toDaxFilters(selections)` from `@/components/dashboard` to convert active `FilterSelection`s into DAX fragments: categorical `in` selections become `TREATAS` variables for `SUMMARIZECOLUMNS`, while numeric/date ranges become predicate expressions you can wrap in `FILTER(...)`.
+
+```typescript
+import { toDaxFilters, type FilterSelection } from "@/components/dashboard";
+
+const selections: Record<string, FilterSelection> = {
+  "Product[Category]": {
+    kind: "in",
+    field: "Product[Category]",
+    values: ["Bikes", "Accessories"],
+  },
+  "Calendar[Date]": {
+    kind: "range",
+    field: "Calendar[Date]",
+    min: 20240101,
+    max: 20240331,
+    dataType: "date",
+  },
+};
+
+const filters = toDaxFilters(selections);
+```
+
+`filters` contains:
+
+```dax
+// filters.defines
+VAR __f_Category_1 = TREATAS({"Bikes", "Accessories"}, 'Product'[Category])
+
+// filters.vars
+__f_Category_1
+
+// filters.predicates
+'Calendar'[Date] >= DATE(2024, 1, 1) && 'Calendar'[Date] <= DATE(2024, 3, 31)
+```
+
+Splice those fragments into the query you re-execute:
+
+```typescript
+const datePredicate = filters.predicates.join(" && ") || "TRUE()";
+
+const query = `
+DEFINE
+${filters.defines}
+EVALUATE
+  SUMMARIZECOLUMNS(
+    'Product'[Category],
+    ${filters.vars.join(",\n    ")}${filters.vars.length ? "," : ""}
+    FILTER(ALL('Calendar'[Date]), ${datePredicate}),
+    "Revenue", [Total Revenue]
+  )
+ORDER BY 'Product'[Category]
+`;
+```
+
+For the slicer options themselves, prefer `useSlicerOptions({ connection, field })`. It issues the distinct-value `SUMMARIZECOLUMNS` + `TOPN` query and returns `{ options, isLoading, error }`, so you do not need to hand-write that query.
 
 ## Choosing the Right Approach
 

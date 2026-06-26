@@ -17,11 +17,11 @@ interface TooltipEntry {
 }
 
 export interface ChartTooltipProps {
-    /** Injected by Recharts. */
+    /** Whether the tooltip is showing (set by the chart's hover state). */
     active?: boolean;
-    /** Injected by Recharts. */
+    /** The hovered series rows: `{ name, value, dataKey?, color? }`. */
     payload?: ReadonlyArray<TooltipEntry>;
-    /** Injected by Recharts. */
+    /** The hovered category/axis label. */
     label?: number | string;
     /** Formats each series value (defaults to `"number"`). */
     valueFormat?: ValueFormat;
@@ -34,10 +34,22 @@ export interface ChartTooltipProps {
 }
 
 /**
- * Themed tooltip shared by every kit chart. Pass it to a Recharts
- * `<Tooltip content={<ChartTooltip valueFormat="currency" />} />` — Recharts
- * injects `active` / `payload` / `label`. The kit chart cards wire this up
- * automatically, so apps rarely use it directly.
+ * Themed tooltip shared by every kit chart. The custom SVG chart core tracks
+ * the hovered mark with `useChartTooltip()` and renders this inside a
+ * positioned overlay (`tooltipBoxStyle(x, y, width)`), passing `active` /
+ * `payload` / `label`. The kit chart cards wire this up automatically, so apps
+ * only touch it in the [escape hatch](../../.agents/skills/visuals/SKILL.md).
+ *
+ * @example
+ * ```tsx
+ * const tip = useChartTooltip();
+ * // …on a mark: onMouseMove={() => tip.show(index, x, y)}
+ * {tip.state && (
+ *   <div style={tooltipBoxStyle(tip.state.x, tip.state.y, width)}>
+ *     <ChartTooltip active payload={payload} label={label} valueFormat="currency" />
+ *   </div>
+ * )}
+ * ```
  */
 export function ChartTooltip({
     active,

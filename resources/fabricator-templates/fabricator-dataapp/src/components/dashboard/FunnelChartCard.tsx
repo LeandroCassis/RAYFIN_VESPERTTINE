@@ -5,12 +5,7 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import {
-    Funnel,
-    FunnelChart,
-    LabelList,
-    Tooltip,
-} from "recharts";
+import { motion, useReducedMotion } from "framer-motion";
 
 import { seriesColor, useChartTheme } from "@/lib/chartTokens";
 import { resolveFormat, type ValueFormat } from "@/lib/format";
@@ -20,6 +15,8 @@ import { warnMissingKeys } from "@/lib/validate";
 import { ChartCard } from "./ChartCard";
 import { ChartFrame } from "./ChartFrame";
 import { type ChartCardCommonProps } from "./cartesian";
+import { tooltipBoxStyle, useChartTooltip } from "./charts/tooltip";
+import { type ChartSize } from "./charts/types";
 import { TileBody } from "./states";
 
 export interface FunnelChartCardProps extends ChartCardCommonProps {
@@ -50,13 +47,9 @@ interface FunnelDatum extends Record<string, unknown> {
     fill: string;
 }
 
-interface FunnelTooltipEntry {
-    payload?: unknown;
-}
-
-interface FunnelTooltipProps {
-    active?: boolean;
-    payload?: ReadonlyArray<FunnelTooltipEntry>;
+interface FunnelPlotProps {
+    size: ChartSize;
+    rows: FunnelDatum[];
     showConversion: boolean;
 }
 
@@ -94,7 +87,6 @@ export function FunnelChartCard({
     sort = true,
     showConversion = true,
 }: FunnelChartCardProps) {
-    const theme = useChartTheme();
     const format = resolveFormat(valueFormat);
     const values = data.map((row) => {
         const rawValue = Number(row[valueKey]);
@@ -143,49 +135,130 @@ export function FunnelChartCard({
                 onRetry={onRetry}
             >
                 <ChartFrame height={height} aspect={aspect ?? 1.8}>
-                    <FunnelChart>
-                        <Tooltip
-                            content={
-                                <FunnelTooltip showConversion={showConversion} />
-                            }
+                    {(size) => (
+                        <FunnelPlot
+                            size={size}
+                            rows={rows}
+                            showConversion={showConversion}
                         />
-                        <Funnel
-                            dataKey={valueKey}
-                            nameKey="name"
-                            data={rows}
-                            stroke="var(--color-card)"
-                            strokeWidth={2}
-                            isAnimationActive={false}
-                        >
-                            <LabelList
-                                position="right"
-                                dataKey="name"
-                                fill={theme.foreground}
-                                fontSize={12}
-                            />
-                            <LabelList
-                                position="center"
-                                dataKey="summaryLabel"
-                                fill={theme.foregroundMuted}
-                                fontSize={11}
-                            />
-                        </Funnel>
-                    </FunnelChart>
+                    )}
                 </ChartFrame>
             </TileBody>
         </ChartCard>
     );
 }
 
-function FunnelTooltip({
-    active,
-    payload,
-    showConversion,
-}: FunnelTooltipProps) {
-    if (!active || !payload || payload.length === 0) return null;
-    const row = readDatum(payload[0]?.payload);
-    if (!row) return null;
+function FunnelPlot({ size, rows, showConversion }: FunnelPlotProps) {
+    const theme = useChartTheme();
+    const reduce = useReducedMotion();
+    const tooltip = useChartTooltip();
 
+    const { width, height } = size;
+    const margin = { top: 8, right: 64, bottom: 8, left: 12 };
+    const innerW = width - margin.left - margin.right;
+    const innerH = height - margin.top - margin.bottom;
+    const n = rows.length;
+    if (innerW <= 0 || innerH <= 0 || n === 0) return null;
+
+    const gap = 6;
+    const segH = (innerH - gap * (n - 1)) / n;
+    if (segH <= 0) return null;
+
+    const cx = margin.left + innerW / 2;
+    const maxValue = rows[0]?.value ?? 0;
+    const halfWidth = (index: number) =>
+        maxValue > 0 ? (innerW / 2) * (rows[index].value / maxValue) : 0;
+    const active = tooltip.state;
+    const activeRow = active != null ? rows[active.index] : undefined;
+
+    return (
+        <>
+            <svg
+                width={width}
+                height={height}
+                role="img"
+                className="overflow-visible"
+            >
+                {rows.map((row, index) => {
+                    const top = margin.top + index * (segH + gap);
+                    const bottom = top + segH;
+                    const midY = top + segH / 2;
+                    const topHW = halfWidth(index);
+                    const botHW =
+                        index < n - 1 ? halfWidth(index + 1) : topHW;
+                    const points = [
+                        `${cx - topHW},${top}`,
+                        `${cx + topHW},${top}`,
+                        `${cx + botHW},${bottom}`,
+                        `${cx - botHW},${bottom}`,
+                    ].join(" ");
+
+                    return (
+                        <g key={`${row.name}-${index}`}>
+                            <motion.polygon
+                                points={points}
+                                fill={row.fill}
+                                stroke="var(--color-card)"
+                                strokeWidth={2}
+                                initial={reduce ? false : { opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                transition={{ delay: index * 0.05 }}
+                            />
+                            <text
+                                x={cx}
+                                y={midY}
+                                textAnchor="middle"
+                                dominantBaseline="central"
+                                fontSize={11}
+                                fill={theme.foregroundMuted}
+                                pointerEvents="none"
+                            >
+                                {row.summaryLabel}
+                            </text>
+                            <text
+                                x={margin.left + innerW + 8}
+                                y={midY}
+                                textAnchor="start"
+                                dominantBaseline="central"
+                                fontSize={12}
+                                fill={theme.foreground}
+                            >
+                                {row.name}
+                            </text>
+                            <rect
+                                x={margin.left}
+                                y={top}
+                                width={innerW}
+                                height={segH}
+                                fill="transparent"
+                                onPointerMove={() =>
+                                    tooltip.show(index, cx, midY)
+                                }
+                                onPointerLeave={tooltip.hide}
+                            />
+                        </g>
+                    );
+                })}
+            </svg>
+            {active != null && activeRow && (
+                <div style={tooltipBoxStyle(active.x, active.y, width)}>
+                    <FunnelTooltip
+                        row={activeRow}
+                        showConversion={showConversion}
+                    />
+                </div>
+            )}
+        </>
+    );
+}
+
+function FunnelTooltip({
+    row,
+    showConversion,
+}: {
+    row: FunnelDatum;
+    showConversion: boolean;
+}) {
     return (
         <div
             className={cn(
@@ -213,24 +286,5 @@ function FunnelTooltip({
                 </div>
             )}
         </div>
-    );
-}
-
-function readDatum(payload: unknown): FunnelDatum | undefined {
-    if (isFunnelDatum(payload)) return payload;
-    if (!payload || typeof payload !== "object") return undefined;
-    const nested = (payload as { payload?: unknown }).payload;
-    return isFunnelDatum(nested) ? nested : undefined;
-}
-
-function isFunnelDatum(value: unknown): value is FunnelDatum {
-    if (!value || typeof value !== "object") return false;
-    const record = value as Record<string, unknown>;
-    return (
-        typeof record.name === "string" &&
-        typeof record.value === "number" &&
-        typeof record.valueLabel === "string" &&
-        typeof record.summaryLabel === "string" &&
-        typeof record.fill === "string"
     );
 }
