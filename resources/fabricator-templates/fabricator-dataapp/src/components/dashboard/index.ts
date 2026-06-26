@@ -6,19 +6,21 @@
 //-----------------------------------------------------------------------
 
 /**
- * Dashboard kit — the pick-&-choose component library.
+ * Dashboard kit — a small, spec-first component library.
  *
- * Compose dashboards by importing these components and passing data; you
- * should rarely hand-write SVG or raw JSX. Charts are fully custom (D3 math +
- * SVG, no charting library), slicers + chart clicks share one filter model,
- * and every component reads each other's JSDoc (and the `visuals` skill
- * catalog) for a copy-paste snippet.
+ * The common path: map your DAX result into plain rows, author one Envy
+ * `ChartSpec` (a single JSON object — see the `visuals` skill / Envy spec
+ * reference), and drop it into `<ChartCard spec={…} />`. The card owns the
+ * loading / empty / error states and bridges the app theme. KPIs use
+ * `<KpiCard>`, tabular data uses `<DataTableCard>` (Fabric `DataGrid`), and
+ * slicers / `FilterBar` drive re-queries. `validateSpec` (re-exported from
+ * `envy`) checks a spec before render.
  *
  *   import {
- *     PageShell, BentoGrid, BentoItem, KpiGrid, ChartGrid,
- *     KpiCard, LineChartCard, BarChartCard, ComboChartCard, DataTableCard,
- *     FilterStateProvider, FilterBar, DropdownSlicer, useCrossFilter,
- *     pivotChartData, deriveKpi, ThemeToggle,
+ *     PageShell, KpiGrid, ChartGrid, BentoGrid, BentoItem,
+ *     ChartCard, KpiCard, DataTableCard, ThemeToggle,
+ *     FilterStateProvider, FilterBar, DropdownSlicer,
+ *     toChartData, deriveKpi, validateSpec, type ChartSpec,
  *   } from "@/components/dashboard";
  */
 
@@ -33,10 +35,7 @@ export {
 } from "./PageShell";
 export type { PageShellProps, SectionProps, BentoItemProps } from "./PageShell";
 export { ThemeToggle } from "./ThemeToggle";
-export {
-    SegmentedControl,
-    FilterChips,
-} from "./controls";
+export { SegmentedControl, FilterChips } from "./controls";
 export type {
     SegmentedControlProps,
     SegmentedOption,
@@ -46,55 +45,25 @@ export type {
 
 /* -------------------------------- Cards -------------------------------- */
 export { ChartCard } from "./ChartCard";
-export type { ChartCardProps } from "./ChartCard";
+export type { ChartCardProps, ChartCardCommonProps } from "./ChartCard";
 export { KpiCard } from "./KpiCard";
 export type { KpiCardProps } from "./KpiCard";
 export { DataTableCard } from "./DataTableCard";
 export type { DataTableCardProps } from "./DataTableCard";
 
-/* -------------------------------- Charts ------------------------------- */
+/* ----------------------------- Envy runtime ---------------------------- */
+export { Chart } from "./Chart";
+export type { ChartProps } from "./Chart";
+export { useChart } from "./use-chart";
+export { useEnvyTheme, readEnvyTheme } from "@/lib/envy-theme";
+export { validateSpec } from "envy";
+export type { ChartSpec, ChartInstance } from "envy";
+
+/* ------------------------------ Sparkline ------------------------------ */
 export { Sparkline } from "./Sparkline";
 export type { SparklineProps } from "./Sparkline";
-export { LineChartCard } from "./LineChartCard";
-export type { LineChartCardProps } from "./LineChartCard";
-export { AreaChartCard } from "./AreaChartCard";
-export type { AreaChartCardProps } from "./AreaChartCard";
-export { BarChartCard } from "./BarChartCard";
-export type { BarChartCardProps } from "./BarChartCard";
-export { DonutChartCard, PieChartCard } from "./DonutChartCard";
-export type { DonutChartCardProps } from "./DonutChartCard";
-export { ComboChartCard } from "./ComboChartCard";
-export type { ComboChartCardProps } from "./ComboChartCard";
-export { ScatterChartCard } from "./ScatterChartCard";
-export type { ScatterChartCardProps } from "./ScatterChartCard";
-export { GaugeCard } from "./GaugeCard";
-export type { GaugeCardProps } from "./GaugeCard";
-export { FunnelChartCard } from "./FunnelChartCard";
-export type { FunnelChartCardProps } from "./FunnelChartCard";
-export { BulletChartCard, ProgressBar } from "./BulletChartCard";
-export type { BulletChartCardProps, ProgressBarProps } from "./BulletChartCard";
-export { ChartTooltip } from "./ChartTooltip";
-export type { ChartTooltipProps } from "./ChartTooltip";
 export { AnimatedNumber } from "./AnimatedNumber";
 export type { AnimatedNumberProps } from "./AnimatedNumber";
-export type {
-    SeriesConfig,
-    ChartCardCommonProps,
-    CartesianChartProps,
-} from "./cartesian";
-
-/* --------------------- Responsive frame + legend ----------------------- */
-export {
-    ChartFrame,
-    DEFAULT_ASPECT,
-    MIN_CHART_HEIGHT,
-    MAX_CHART_HEIGHT,
-} from "./ChartFrame";
-export type {
-    ChartFrameProps,
-    LegendItem,
-    LegendPlacement,
-} from "./ChartFrame";
 
 /* -------------------------------- States ------------------------------- */
 export {
@@ -103,6 +72,9 @@ export {
     EmptyTile,
     ErrorTile,
     TileBody,
+    DEFAULT_ASPECT,
+    MIN_CHART_HEIGHT,
+    MAX_CHART_HEIGHT,
 } from "./states";
 export type {
     ChartSkeletonProps,
@@ -150,14 +122,6 @@ export { RangeSlicer } from "./filters/RangeSlicer";
 export type { RangeSlicerProps } from "./filters/RangeSlicer";
 export { FilterBar } from "./filters/FilterBar";
 export type { FilterBarProps } from "./filters/FilterBar";
-
-/* --------------- Coordinated interactions (Tableau-like) --------------- */
-export { DrilldownBreadcrumb } from "./DrilldownBreadcrumb";
-export type { DrilldownBreadcrumbProps } from "./DrilldownBreadcrumb";
-export { useCrossFilter } from "@/hooks/use-cross-filter";
-export type { CrossFilterProps } from "@/hooks/use-cross-filter";
-export { useDrilldown } from "@/hooks/use-drilldown";
-export type { DrilldownApi, DrilldownLevel } from "@/hooks/use-drilldown";
 export { useSlicerOptions } from "@/hooks/use-slicer-options";
 export type {
     SlicerOption,
@@ -177,10 +141,6 @@ export type { DaxFilters } from "@/lib/dax-filters";
 export { quoteFieldRef } from "@/lib/filter-field";
 export type { ParsedFilterField } from "@/lib/filter-field";
 
-/* --------------------- Custom chart core (advanced) -------------------- */
-export { useChartSize } from "./charts/useChartSize";
-export type { ChartSize, Margin, MarkInteraction } from "./charts/types";
-
 /* --------------------------- Helpers (re-exports) ---------------------- */
 export {
     formatNumber,
@@ -198,18 +158,15 @@ export {
     roleColor,
     resolveColor,
     cssVar,
-    useChartTheme,
 } from "@/lib/chartTokens";
-export type { ChartRole, ChartTheme } from "@/lib/chartTokens";
+export type { ChartRole } from "@/lib/chartTokens";
 export { useCssTheme } from "@/lib/use-css-theme";
 export { toDataTable } from "@/lib/to-data-table";
 export type { ColumnMetadataMap } from "@/lib/to-data-table";
 export { toChartData } from "@/lib/to-chart-data";
 export type { ToChartDataOptions } from "@/lib/to-chart-data";
-export { isDateLike, inferXFormat, autoAxisWidth } from "@/lib/auto-format";
-export type { AutoAxisWidthOptions } from "@/lib/auto-format";
 
-/* ----------------------- Data mapping (DAX → cards) -------------------- */
+/* ----------------------- Data mapping (DAX → specs) -------------------- */
 export { pivotChartData } from "@/lib/pivot-chart-data";
 export type {
     PivotChartDataOptions,

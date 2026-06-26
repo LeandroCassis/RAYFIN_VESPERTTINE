@@ -36,9 +36,10 @@ fast as possible.
    Don't enumerate the whole model. (→ `schema-discovery`: Fast path)
 2. **One hero query** — write a single DAX query at the visual's grain,
    quick-test it once, ship it. (→ `dax-authoring` + `query-design`: Fast path)
-3. **One hero visual** — render it with a single kit component (a `KpiCard`,
-   `LineChartCard`/`BarChartCard`, or `DataTableCard`) fed that query — pass the
-   mapped data, don't hand-write chart code. (→ `visuals`: Fast path)
+3. **One hero visual** — render it the simplest way: map the hero query with
+   `toChartData`, author one Envy spec, and pass it to a `ChartCard` (or render a
+   `KpiCard` / `DataTableCard`) — pass the mapped data + `loading`/`error`, don't
+   hand-write chart code. (→ `visuals`: Fast path)
 4. **Sensible default theme** — pick a characterful font pairing + a primary
    color and move on. Do **not** perfect theming yet. (→ `app-design`: Fast path)
 5. **Drop the hero tile into `src/App.tsx`** — replace the starter placeholder

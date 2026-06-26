@@ -10,8 +10,7 @@ import type { DataTable } from "@microsoft/fabric-visuals-core";
 
 import { useCssTheme } from "@/lib/use-css-theme";
 
-import { ChartCard } from "./ChartCard";
-import { type ChartCardCommonProps } from "./cartesian";
+import { ChartCard, type ChartCardCommonProps } from "./ChartCard";
 import { TileBody } from "./states";
 
 export interface DataTableCardProps extends ChartCardCommonProps {

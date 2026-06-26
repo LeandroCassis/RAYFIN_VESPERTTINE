@@ -1,177 +1,39 @@
-# Building a custom chart on the core
+# When the kit lacks your chart — pick the closest Envy type
 
-Use the core only when no kit card fits. Most dashboards should compose
-`LineChartCard`, `BarChartCard`, `ComboChartCard`, `ScatterChartCard`,
-`DonutChartCard`, etc. If you write the same custom chart twice, promote it
-into the kit.
+There is **no custom-chart escape hatch** to maintain anymore: charts are Envy
+specs, and you compose them by choosing a `type` and an `encoding`. When a
+visualization isn't an obvious built-in, don't hand-roll SVG — map it onto the
+nearest Envy type.
 
-## Import surface
+## Map the intent to a type
 
-Public shell/theme imports come from the barrel: `ChartCard`, `ChartFrame`,
-`ChartTooltip`, `useChartTheme`, `seriesColor`, `roleColor`, `useChartSize`,
-and types `MarkInteraction`, `ChartSize`, `Margin`.
+| You want… | Author this |
+|---|---|
+| Ranked / "top N" | `bar` (vertical), rows sorted by value (`topN`) |
+| Progress to goal / actual vs target | two `bar` series (actual + target), or a `KpiCard` with `delta` |
+| Gauge / single value vs max | `KpiCard` (value + delta) — or a one-row `bar` |
+| Funnel / stage conversion | `bar` over ordered stages (sort by stage), label with conversion in the subtitle |
+| Combo (bars + line) | two charts stacked, or a `line` with `points` over the same `x` |
+| Distribution / spread | `box` (raw observations per category) |
+| Flow between nodes | `sankey` (`source` + `target` + `value`) |
+| Values on a map | `choropleth` (`geo` FeatureCollection + `key` + `color`) |
+| Cross-tab / pivot table | `DataTableCard` (Fabric `DataGrid`) |
 
-Advanced chart-core primitives live under `@/components/dashboard/charts/*`:
+`box`, `sankey`, and `choropleth` are valid Envy types — author them as a spec and
+drop them into `ChartCard` like any other (see the
+[spec reference](envy-spec-reference.md)).
 
-```tsx
-import { AxisBottom, AxisLeft, type AxisTick } from "@/components/dashboard/charts/axis";
-import { GridColumns, GridRows } from "@/components/dashboard/charts/grid";
-import { bandScale, pointScale, linearScale, valueDomain, linearTicks, thinLabels, thinTicksByWidth, curveFactory } from "@/components/dashboard/charts/scales";
-import { tooltipBoxStyle, useChartTooltip } from "@/components/dashboard/charts/tooltip";
-import { isInteractive, isSelected, markOpacity } from "@/components/dashboard/charts/types";
-import { arcCentroid, arcPath, compassToRadians, pieSlices } from "@/components/dashboard/charts/arc";
-```
+## If a type genuinely doesn't exist
 
-Axes, grids, scales, tooltip state helpers, arc helpers, and `markOpacity` are
-advanced/internal subpath imports.
+Envy v0.2.1 has no radar, treemap, or waterfall. Options, in order:
 
-## Architecture
+1. **Re-express the question** with a supported type — a treemap is usually a
+   ranked `bar`; a waterfall is often a running-total `bar` or `line`; a radar is a
+   small-multiple of bars. This is almost always the right call.
+2. **A simple bespoke React component** inside a `ChartCard` (children mode) for a
+   truly one-off, non-charty visual (e.g. a custom progress list). Theme it from
+   `src/global.css` tokens and `seriesColor` / `roleColor` so dark mode keeps
+   working — never hardcode hex.
 
-`ChartFrame` owns responsive measurement and legend. Its render prop receives
-the measured plot box:
-
-```tsx
-<ChartCard title="Custom">
-  <ChartFrame legend={[{ label: "Revenue", color: seriesColor(0) }]}>
-    {({ width, height }) => <svg width={width} height={height} />}
-  </ChartFrame>
-</ChartCard>
-```
-
-Or use `useChartSize()` directly when you need your own wrapper. Canonical
-example: `cartesian.tsx` composes margin → scales → grid → axes → marks →
-tooltip → `MarkInteraction`.
-
-## Lollipop chart example
-
-A lollipop chart is a ranked bar with a line stem and circle mark. It is
-responsive, themed, tooltip-enabled, and cross-filterable.
-
-```tsx
-import {
-  ChartCard,
-  ChartFrame,
-  ChartTooltip,
-  seriesColor,
-  useChartTheme,
-  type MarkInteraction,
-} from "@/components/dashboard";
-import { AxisBottom, AxisLeft } from "@/components/dashboard/charts/axis";
-import { GridRows } from "@/components/dashboard/charts/grid";
-import { bandScale, linearScale, linearTicks, thinTicksByWidth, valueDomain } from "@/components/dashboard/charts/scales";
-import { tooltipBoxStyle, useChartTooltip } from "@/components/dashboard/charts/tooltip";
-import { isInteractive, markOpacity } from "@/components/dashboard/charts/types";
-
-interface LollipopChartCardProps extends MarkInteraction {
-  title?: string;
-  data: Array<Record<string, unknown>>;
-  xKey: string;
-  valueKey: string;
-  valueFormat?: (value: number) => string;
-}
-
-export function LollipopChartCard(props: LollipopChartCardProps) {
-  const color = seriesColor(0);
-  return (
-    <ChartCard title={props.title}>
-      <ChartFrame legend={[{ label: props.valueKey, color }]}>
-        {({ width, height }) => <LollipopPlot {...props} width={width} height={height} color={color} />}
-      </ChartFrame>
-    </ChartCard>
-  );
-}
-
-function LollipopPlot({
-  width,
-  height,
-  data,
-  xKey,
-  valueKey,
-  color,
-  valueFormat = (n) => new Intl.NumberFormat().format(n),
-  selectedKeys,
-  onSelect,
-  dimUnselected,
-}: LollipopChartCardProps & { width: number; height: number; color: string }) {
-  const theme = useChartTheme();
-  const tooltip = useChartTooltip();
-  const interaction = { selectedKeys, onSelect, dimUnselected };
-  const margin = { top: 10, right: 18, bottom: 28, left: 64 };
-  const innerW = Math.max(0, width - margin.left - margin.right);
-  const innerH = Math.max(0, height - margin.top - margin.bottom);
-  const categories = data.map((row) => String(row[xKey]));
-  const x = bandScale(categories, innerW, 0.36);
-  const y = linearScale(valueDomain(data, [valueKey]), [innerH, 0]);
-  const yTicks = linearTicks(y, 5);
-  const xTicks = thinTicksByWidth(categories.map((label) => ({
-    key: label,
-    label,
-    pos: (x(label) ?? 0) + x.bandwidth() / 2,
-  })));
-  const active = tooltip.state;
-  const interactive = isInteractive(interaction);
-
-  return (
-    <>
-      <svg width={width} height={height} role="img" className="overflow-visible">
-        <g transform={`translate(${margin.left},${margin.top})`}>
-          <GridRows positions={yTicks.map((tick) => y(tick))} left={0} right={innerW} theme={theme} />
-          <AxisLeft ticks={yTicks.map((tick) => ({ key: String(tick), label: valueFormat(tick), pos: y(tick) }))} right={0} theme={theme} />
-          <AxisBottom ticks={xTicks} top={innerH} theme={theme} />
-          {data.map((row, index) => {
-            const key = String(row[xKey]);
-            const value = Number(row[valueKey]);
-            if (!Number.isFinite(value)) return null;
-            const cx = (x(key) ?? 0) + x.bandwidth() / 2;
-            const cy = y(value);
-            return (
-              <g
-                key={key}
-                opacity={markOpacity(key, interaction)}
-                onPointerEnter={() => tooltip.show(index, margin.left + cx, margin.top + cy)}
-                onPointerLeave={tooltip.hide}
-                onClick={() => onSelect?.(key)}
-                style={{ cursor: interactive ? "pointer" : "default" }}
-              >
-                <line x1={cx} x2={cx} y1={y(0)} y2={cy} stroke={color} strokeWidth={2} />
-                <circle cx={cx} cy={cy} r={5} fill={color} stroke={theme.surface} strokeWidth={2} />
-              </g>
-            );
-          })}
-        </g>
-      </svg>
-      {active != null && data[active.index] && (
-        <div style={tooltipBoxStyle(active.x, active.y, width)}>
-          <ChartTooltip
-            active
-            label={String(data[active.index][xKey])}
-            payload={[{ name: valueKey, dataKey: valueKey, value: Number(data[active.index][valueKey]), color }]}
-            valueFormat={valueFormat}
-          />
-        </div>
-      )}
-    </>
-  );
-}
-```
-
-Wire it to shared cross-filter state exactly like a kit cartesian chart:
-
-```tsx
-import { useCrossFilter } from "@/components/dashboard";
-
-const cross = useCrossFilter("Product[Category]");
-<LollipopChartCard data={rows} xKey="Category" valueKey="Revenue" {...cross} />;
-```
-
-## Core checklist
-
-- Size with `ChartFrame` or `useChartSize`; never hard-code width.
-- Use `useChartTheme()` for axis/grid/text colors and `seriesColor`/`roleColor`
-  for marks.
-- Use `ChartTooltip` with `useChartTooltip()` + `tooltipBoxStyle(...)`.
-- Accept `MarkInteraction` (`selectedKeys`, `onSelect`, `dimUnselected`) and
-  apply `markOpacity(...)` to every selectable mark.
-- If the chart belongs in most apps, add it to the kit and export it from the
-  barrel. Otherwise keep it as a local escape hatch and cross-link back to the
-  visuals `SKILL.md` Escape hatch.
+Don't rebuild a charting core. If you find yourself writing axis/scale math, step
+back and pick a supported Envy type instead.

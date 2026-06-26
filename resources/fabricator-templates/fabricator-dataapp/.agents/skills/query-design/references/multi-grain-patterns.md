@@ -6,7 +6,7 @@ When a component needs data at multiple grains (e.g., region detail + grand tota
 
 - [File Organization](#file-organization) — `.dax` + `.ts` layout per visualization
 - [Component Wiring](#component-wiring) — two hook calls → mapped chart rows or `DataTable`s
-- [Rendering in chart cards](#rendering-in-chart-cards) — pass multiple `series` or `referenceLines`
+- [Rendering in chart cards](#rendering-in-chart-cards) — use `encoding.series` for aligned overlays
 - [Rendering in DataGrid (total row via cellRenderer)](#rendering-in-datagrid-total-row-via-cellrenderer) — styled grand total row
 - [Consistency Rule](#consistency-rule) — shared filters, measures, scope across split-grain queries
 
@@ -46,22 +46,26 @@ const summaryRows = toChartData(summary.data, {
 
 ## Rendering in chart cards
 
-Pass mapped rows to a chart card. Use `referenceLines` for summary values such as average, target, or grand total; use multiple `series` when the second query is aligned to the same x-axis grain.
+Pass mapped rows to a chart card. Keep summary values such as average, target, or grand total in surrounding card UI; use a `series` encoding when the second query is aligned to the same x-axis grain.
 
 ```tsx
 const grandTotal = summaryRows[0]?.Revenue as number | undefined;
 
-<BarChartCard
+<ChartCard
   title="Revenue by region"
-  data={detailRows}
-  xKey="Region"
-  series={[{ key: "Revenue", label: "Revenue", color: "chart-1" }]}
-  valueFormat="currency"
-  referenceLines={grandTotal == null ? undefined : [{ y: grandTotal, label: "Grand total" }]}
+  footer={grandTotal == null ? undefined : `Grand total: ${formatCurrency(grandTotal)}`}
+  spec={{
+    type: "bar",
+    data: detailRows,
+    encoding: {
+      x: { field: "Region", type: "nominal" },
+      y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />
 ```
 
-For overlays such as cross-highlighting, merge the aligned result sets in TypeScript into one row array, then pass baseline and subset as two `series` to one `LineChartCard` / `AreaChartCard` / `BarChartCard`. See the visuals skill's [multi-data input](../../visuals/references/multi-data-input.md) reference.
+For overlays such as cross-highlighting, merge the aligned result sets in TypeScript into one tidy row array, then author one `ChartCard` spec with baseline and subset represented by a `series` encoding. See the visuals skill's [multi-data input](../../visuals/references/multi-data-input.md) reference.
 
 ## Rendering in DataGrid (total row via cellRenderer)
 

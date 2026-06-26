@@ -19,23 +19,25 @@ import {
 /**
  * Starter dashboard — your canvas.
  *
- * This is a real, composed layout built entirely from the dashboard kit
- * (`PageShell` → `KpiGrid` / `ChartGrid` → `KpiCard` / `ChartCard`). Every
- * tile is intentionally empty: the template never ships mock data. To build
- * your dashboard:
+ * Every visual is one **Envy `ChartSpec`** (a single JSON object) dropped into a
+ * `<ChartCard spec={…} />`. The card owns the theme, axes, tooltips, number
+ * formatting, dark mode, and loading/empty/error states — so you author data +
+ * a spec, never chart code. The template ships no mock data, so the tiles below
+ * start empty. To build your dashboard:
  *
  *   1. Declare a connection in `fabric.yaml` and run `npm run build:fabric`.
- *   2. Add a DAX query, fetch it with `useSemanticModelQuery(...)`, and map
- *      the result with `toChartData(...)`.
- *   3. Swap the empty tiles below for kit components, passing your data.
+ *   2. Add a DAX query, fetch it with `useSemanticModelQuery(...)`, and map the
+ *      result to rows with `toChartData(...)`.
+ *   3. Author a `ChartSpec` for each tile and pass it to `<ChartCard spec={…}>`
+ *      (KPIs → `KpiCard`, tabular → `DataTableCard`).
  *
- * See `AGENTS.md` and the `visuals` skill for the full component catalog.
+ * See `AGENTS.md` and the `visuals` skill for the spec reference + examples.
  */
 function App() {
     return (
         <PageShell
             title="Your data app"
-            subtitle="A starter canvas — compose it from the dashboard kit"
+            subtitle="A starter canvas — one JSON spec per visual"
             actions={<ThemeToggle />}
         >
             {/* Onboarding hero — delete once you start building. */}
@@ -43,17 +45,18 @@ function App() {
                 <div className="flex flex-col gap-5 p-6 sm:p-8">
                     <div className="flex flex-col gap-2">
                         <span className="w-fit rounded-full border border-border-strong/60 bg-card/60 px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                            Dashboard kit
+                            Spec-first dashboards
                         </span>
                         <h2 className="max-w-2xl font-display text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">
-                            Build a stunning dashboard — compose it, don&apos;t
+                            Build a stunning dashboard — describe it, don&apos;t
                             hand-code it.
                         </h2>
                         <p className="max-w-2xl text-sm text-muted-foreground">
-                            Pick components from the kit and pass your semantic
-                            model data. The cards own the theme, axes, tooltips,
-                            number formatting, dark mode, and loading/empty
-                            states — so you write data, not chart code.
+                            Each chart is a single JSON spec rendered by Envy. Map
+                            your semantic-model data to rows, write the spec, and
+                            drop it into a card — the card owns the theme, axes,
+                            tooltips, number formatting, dark mode, and
+                            loading/empty states.
                         </p>
                     </div>
 
@@ -96,21 +99,15 @@ function App() {
                 </KpiGrid>
 
                 <ChartGrid>
-                    <ChartCard
-                        title="Trend"
-                        subtitle="LineChartCard / AreaChartCard / ComboChartCard"
-                    >
+                    <ChartCard title="Trend" subtitle="A line or area spec">
                         <EmptyTile
-                            message="Map a time-series query and drop in a LineChartCard"
+                            message="Map a time-series query and pass a line spec to ChartCard"
                             height={260}
                         />
                     </ChartCard>
-                    <ChartCard
-                        title="Breakdown"
-                        subtitle="BarChartCard / DonutChartCard / FunnelChartCard"
-                    >
+                    <ChartCard title="Breakdown" subtitle="A bar or pie spec">
                         <EmptyTile
-                            message="Map a categorical query and drop in a BarChartCard"
+                            message="Map a categorical query and pass a bar spec to ChartCard"
                             height={260}
                         />
                     </ChartCard>
@@ -130,8 +127,8 @@ const STEPS = [
         body: "Fetch rows with useSemanticModelQuery(...) and shape them via toChartData(...).",
     },
     {
-        title: "Compose the kit",
-        body: "Pass your data to KpiCard, LineChartCard, BarChartCard, ComboChartCard, GaugeCard, FunnelChartCard, DataTableCard, and more.",
+        title: "Author a spec",
+        body: "Write one Envy ChartSpec per visual and drop it into <ChartCard spec={…}/>; use KpiCard and DataTableCard for stats and tables.",
     },
 ] as const;
 
@@ -144,20 +141,22 @@ const KPI_PLACEHOLDERS = [
 
 /*
  * ───────────────────────────────────────────────────────────────────────────
- * COPY-PASTE STARTER: one real tile, fully wired (fetch → map → pass).
- * Replace the `App` above with this, then swap the connection alias, DAX, and
- * column names for your model's. This is the entire pattern — no mock data;
- * the cards own the loading / empty / error states.
+ * COPY-PASTE STARTER: one real KPI + two chart specs, fully wired
+ * (fetch → map → spec). Replace the `App` above with this, then swap the
+ * connection alias, DAX, and column names for your model's. This is the entire
+ * pattern — no mock data; the cards own the loading / empty / error states.
  *
- * For multi-series, pivot a long DAX result with `pivotChartData(...)`; for a
- * KPI value + delta + trend in one call use `deriveKpi(...)`; for ranked bars
- * use `topN(...)`. See the `visuals` skill for the full catalog.
+ * Keep DAX results LONG (tidy): one row per category/time point. For multiple
+ * series, add a category column and set `encoding.series` — no client-side
+ * pivot needed. For a KPI value + delta + trend in one call use `deriveKpi(...)`;
+ * for ranked bars use `topN(...)`. See the `visuals` skill for the full
+ * spec reference and examples.
  * ───────────────────────────────────────────────────────────────────────────
  *
  * import { useSemanticModelQuery } from "@/hooks/use-semantic-model-query";
  * import {
  *   PageShell, KpiGrid, ChartGrid, ThemeToggle,
- *   KpiCard, LineChartCard, BarChartCard, toChartData,
+ *   KpiCard, ChartCard, toChartData,
  * } from "@/components/dashboard";
  *
  * const REVENUE_BY_MONTH = `
@@ -175,7 +174,7 @@ const KPI_PLACEHOLDERS = [
  *     query: REVENUE_BY_MONTH,
  *   });
  *
- *   // Map once; the cards key off these names. Explicit aliases = stable keys.
+ *   // Map once; the specs reference these names. Explicit aliases = stable keys.
  *   const rows = toChartData(data, {
  *     columns: { month: "Date[Month]", revenue: "Revenue" },
  *   });
@@ -195,25 +194,33 @@ const KPI_PLACEHOLDERS = [
  *         />
  *       </KpiGrid>
  *       <ChartGrid>
- *         <LineChartCard
+ *         <ChartCard
  *           title="Revenue trend"
- *           data={rows}
- *           xKey="month"
- *           series={[{ key: "revenue", label: "Revenue", color: "chart-1" }]}
- *           valueFormat="currency"
  *           loading={isLoading}
  *           error={error}
  *           onRetry={refetch}
+ *           spec={{
+ *             type: "line",
+ *             data: rows,
+ *             encoding: {
+ *               x: { field: "month", type: "temporal" },
+ *               y: { field: "revenue", type: "quantitative", format: "$,.0f" },
+ *             },
+ *           }}
  *         />
- *         <BarChartCard
+ *         <ChartCard
  *           title="Revenue by month"
- *           data={rows}
- *           xKey="month"
- *           series={[{ key: "revenue", label: "Revenue" }]}
- *           valueFormat="currency"
  *           loading={isLoading}
  *           error={error}
  *           onRetry={refetch}
+ *           spec={{
+ *             type: "bar",
+ *             data: rows,
+ *             encoding: {
+ *               x: { field: "month" },
+ *               y: { field: "revenue", type: "quantitative", format: "$,.0f" },
+ *             },
+ *           }}
  *         />
  *       </ChartGrid>
  *     </PageShell>

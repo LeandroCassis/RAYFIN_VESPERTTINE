@@ -35,16 +35,19 @@ function toNumber(value: unknown): number {
  *
  * @example
  * ```tsx
- * // Ranked horizontal bars — top 8 regions, rest grouped as "Other":
+ * // Ranked bars — top 8 regions, rest grouped as "Other":
  * const ranked = topN(rows, "revenue", 8, { other: true });
  *
- * <BarChartCard
+ * <ChartCard
  *   title="Top regions"
- *   horizontal
- *   data={ranked}
- *   xKey="region"
- *   series={[{ key: "revenue", label: "Revenue" }]}
- *   valueFormat="currency"
+ *   spec={{
+ *     type: "bar",
+ *     data: ranked,
+ *     encoding: {
+ *       x: { field: "region", type: "nominal" },
+ *       y: { field: "revenue", type: "quantitative", format: "$,.0f" },
+ *     },
+ *   }}
  * />
  * ```
  */

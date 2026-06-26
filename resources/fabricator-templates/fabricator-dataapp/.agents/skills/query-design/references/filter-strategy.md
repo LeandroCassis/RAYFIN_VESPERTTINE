@@ -24,19 +24,23 @@ EVALUATE
 ORDER BY 'Region'[Name], 'Product'[Category]
 ```
 
-```typescript
+```tsx
 // TypeScript: instant client-side filtering, producing mapped chart rows
 const rows = toChartData(data, {
   columns: { Region: "Region[Name]", Category: "Product[Category]", Revenue: "Revenue" },
 });
 const filteredRows = rows.filter(row => row.Region === selectedRegion);
 
-<BarChartCard
+<ChartCard
   title="Revenue by category"
-  data={filteredRows}
-  xKey="Category"
-  series={[{ key: "Revenue", color: "chart-1" }]}
-  valueFormat="currency"
+  spec={{
+    type: "bar",
+    data: filteredRows,
+    encoding: {
+      x: { field: "Category", type: "nominal" },
+      y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />
 ```
 

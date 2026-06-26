@@ -59,20 +59,24 @@ const rows: Row[] = [
 <DataGrid columns={columns} data={rows} theme={theme} />
 ```
 
-For chart cards, map detail rows with `toChartData` and pass computed totals through card props such as `referenceLines`:
+For chart cards, map detail rows with `toChartData` and keep computed totals in surrounding card UI such as the footer:
 
 ```tsx
 const rows = toChartData(detail.data, {
   columns: { Region: "Region[Name]", Revenue: "Revenue" },
 });
 
-<BarChartCard
+<ChartCard
   title="Revenue by region"
-  data={rows}
-  xKey="Region"
-  series={[{ key: "Revenue", color: "chart-1" }]}
-  valueFormat="currency"
-  referenceLines={[{ y: total, label: "All regions" }]}
+  footer={`All regions: ${formatCurrency(total)}`}
+  spec={{
+    type: "bar",
+    data: rows,
+    encoding: {
+      x: { field: "Region", type: "nominal" },
+      y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />
 ```
 
@@ -98,7 +102,7 @@ const summary = useSemanticModelQuery({ connection, query: totalQuery });
 const detailTable = toDataTable(detail.data, detailMeta);
 const summaryTable = toDataTable(summary.data, summaryMeta);
 
-// Chart cards: pass multiple `series` or merge result sets in TypeScript before mapping
+// Chart cards: merge aligned result sets into tidy rows and use `encoding.series`
 // DataGrid: append summary row with cellRenderer (same pattern as the derivable case)
 ```
 
@@ -114,7 +118,7 @@ EVALUATE
   SUMMARIZECOLUMNS('Calendar'[Month], "Revenue", FORMAT([Total Revenue], "$#,##0"))
 ```
 
-**Fix:** Return raw values. Format via DataGrid `columnMetadata` or chart card `valueFormat` / `xFormat`.
+**Fix:** Return raw values. Format via DataGrid `columnMetadata` or chart spec field `format` hints.
 
 ```dax
 // ✅ DAX: raw numeric value
@@ -141,7 +145,7 @@ EVALUATE
   SUMMARIZECOLUMNS("Month Label", FORMAT('Calendar'[Date], "MMM YYYY"), "Sales", [Total Sales])
 ```
 
-**Fix:** Return sortable date. Let the chart card `xFormat` format it.
+**Fix:** Return sortable date. Let the chart spec's x-field `format` hint format it.
 
 ```dax
 // ✅ DAX: return the date
@@ -155,12 +159,15 @@ const rows = toChartData(table, {
   columns: { Date: "Calendar[Date]", Sales: "Sales" },
 });
 
-<LineChartCard
-  data={rows}
-  xKey="Date"
-  xFormat={(value) => formatDate(value, "short")}
-  series={[{ key: "Sales", color: "chart-1" }]}
-  valueFormat="currency"
+<ChartCard
+  spec={{
+    type: "line",
+    data: rows,
+    encoding: {
+      x: { field: "Date", type: "temporal", format: "%b %Y" },
+      y: { field: "Sales", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />
 ```
 
@@ -208,7 +215,16 @@ const rows = dimsTable.rows.map(r => ({
   Sales: salesByRegion.get(r[0] as string) ?? 0,
 }));
 
-<BarChartCard data={rows} xKey="Region" series={[{ key: "Sales" }]} valueFormat="currency" />
+<ChartCard
+  spec={{
+    type: "bar",
+    data: rows,
+    encoding: {
+      x: { field: "Region", type: "nominal" },
+      y: { field: "Sales", type: "quantitative", format: "$,.0f" },
+    },
+  }}
+/>
 ```
 
 > **Cardinality guardrail:** This pattern is for bounded axis dimensions (categories, regions, statuses) — not high-cardinality dimensions like customers or transaction IDs.

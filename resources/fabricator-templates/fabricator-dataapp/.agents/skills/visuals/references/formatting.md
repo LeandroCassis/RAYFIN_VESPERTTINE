@@ -1,62 +1,70 @@
-# Visual Formatting & Color
+# Formatting & color
 
-How to format numbers/dates and color series in the kit. **Formatting lives in
-the component layer, never in DAX** — emit raw typed numbers from queries and
-format them here so charts can scale axes and tables can sort.
+Format numbers/dates and color visuals. **Formatting lives in the visual layer,
+never in DAX** — emit raw typed numbers from queries and format them here so charts
+scale axes and tables sort.
 
 ## Where formatting lives
 
 | Surface | How to format |
 |---|---|
-| Chart cards (line/area/bar/donut) + `KpiCard` | the `valueFormat` prop (values) + `xFormat` prop (x-axis ticks) |
+| Envy chart spec | a `format` hint on the `FieldDef` (axis/label/tooltip) — the [mini-language](#format-mini-language) |
+| `KpiCard` | the `valueFormat` prop |
 | `DataTableCard` / `DataGrid` | per-column `format` in `columnMetadata` (a VBA/ECMA-376 string) |
 | Anywhere in JSX | call a formatter from `@/components/dashboard` directly |
 
-## Formatting by default
+## Format mini-language (chart specs)
 
-The kit fills in safe formatting so a chart reads correctly the moment you pass
-data — you only override when you want something specific:
+Inside a spec, format a channel by adding a `format` string to its `FieldDef`. A
+small subset of d3-format (numbers) plus strftime-style dates:
 
-- **Date x-axis** — when the x values are real dates (ISO-like) and you didn't
-  pass `xFormat`, ticks auto-format with `formatDate`. Plain category labels
-  ("Jan", "Q1", a bare year) are deliberately left untouched.
-- **Y-axis width** — sized automatically from the widest formatted tick, so long
-  currency / compact labels never clip (no hand-tuned axis width).
-- **Compact numbers** — the `"number"` default already groups and compacts ≥ 10k
-  on axes.
+```jsonc
+"encoding": {
+  "x": { "field": "month", "type": "temporal", "format": "%b %Y" },  // Jan 2024
+  "y": { "field": "revenue", "type": "quantitative", "format": "$,.0f" } // $84,200
+}
+```
 
-What the kit will **not** do is guess a value's **unit**. Bare numbers can't
-reveal whether `0.42` is a ratio, a count, or 42¢ — so currency / percent / ratio
-stay an explicit one-word `valueFormat`. An explicit `xFormat` / `valueFormat`
-always wins over the inferred default.
+**Numbers** — `[$][,][.precision][type]`:
 
-## `valueFormat` (charts + KPI)
+| Hint | Input | Output | Use for |
+|---|---|---|---|
+| `,d` | `1234567` | `1,234,567` | integers / counts |
+| `.1f` | `3.14159` | `3.1` | fixed decimals |
+| `.0%` | `0.42` | `42%` | ratios (0–1) as percent |
+| `$,.0f` | `5230` | `$5,230` | currency |
+| `.1s` / `.2s` | `1200` / `1234567` | `1.2k` / `1.2M` | compact axis ticks |
 
-Accepts a preset string or a function `(n: number) => string`:
+**Dates** — a hint containing `%` is a date pattern: `%Y %y %m %d %e %B %b %a %H
+%M %p %%`. Example `%b %e, %Y` → `Jan 2, 2024`. (See the
+[Envy spec reference](envy-spec-reference.md#format-mini-language).)
+
+Envy auto-formats axes, sizes the plot responsively, and legends multi-series
+charts by default — you only add a `format` when you want a specific unit (currency
+/ percent / compact) or date pattern.
+
+## `valueFormat` (KpiCard)
+
+`KpiCard` takes a one-word preset or a function `(n: number) => string`:
 
 | value | renders | use for |
 |---|---|---|
 | `"number"` | grouped, compact ≥ 10k | counts, generic scalars (default) |
-| `"compact"` | K / M / B / T | large magnitudes, axis ticks |
+| `"compact"` | K / M / B / T | large magnitudes |
 | `"currency"` | `$1,234.00` | money |
-| `"percent"` | `42.0%` (expects a 0–100 value) | rates already in percent |
-| `"ratio"` | `42%` (expects a 0–1 value) | ratios / shares |
+| `"percent"` | `42.0%` (expects a **0–100** value) | rates already in percent |
+| `"ratio"` | `42%` (expects a **0–1** value) | ratios / shares |
 | `(n) => …` | your own | anything custom |
 
 ```tsx
-<BarChartCard … valueFormat="currency" />
-<KpiCard … valueFormat={(n) => `${formatCompact(n)} CU`} />
+<KpiCard label="Revenue" value={341500} valueFormat="currency" />
+<KpiCard label="Conversion" value={0.051} valueFormat="ratio" />   {/* → 5.1% */}
 ```
 
-`xFormat` formats the x-axis category/tick (commonly dates):
-
-```tsx
-<LineChartCard … xKey="Month" xFormat={(m) => formatDate(m, "short")} />
-```
-
-The standalone formatters the presets are built from are all exported and
-null/NaN-safe (non-finite → em dash): `formatNumber`, `formatCompact`,
-`formatCurrency`, `formatPercent`, `formatDelta`, `formatRatio`, `formatDate`.
+`delta` is a **percent-scale number** (`9.2` → `+9.2%`), not a fraction. The
+standalone formatters are all exported and null/NaN-safe (non-finite → em dash):
+`formatNumber`, `formatCompact`, `formatCurrency`, `formatPercent`, `formatRatio`,
+`formatDelta`, `formatDate`.
 
 ## Table column formats
 
@@ -71,77 +79,49 @@ const data = toDataTable(result, [
 ]);
 ```
 
-- `"#,0"` general integers/counts · `"$#,0.00"` currency · `"0.0%"` percent ·
-  `"mm/dd/yyyy"` dates.
-- A `cellRenderer` **overrides** `format` (it receives the raw value and owns its
-  own formatting) — see [data-grid-visual.md](data-grid-visual.md).
-- **Exception:** values that are numbers but read as identifiers (a year, an ID)
-  should not be number-formatted.
+- `"#,0"` integers · `"$#,0.00"` currency · `"0.0%"` percent · `"mm/dd/yyyy"` dates.
+- A `cellRenderer` **overrides** `format` — see [data-grid-visual.md](data-grid-visual.md).
+- **Exception:** numbers that read as identifiers (a year, an ID) shouldn't be
+  number-formatted.
 
 ## Number rules
 
-- Prefer `"compact"` on axes and KPI heroes so large numbers stay legible; show
+- Prefer `.1s`/`.2s` (compact) on chart axes and `"compact"` on KPI heroes; show
   full grouped values in tooltips and tables.
 - Currency → 2 decimals; counts → 0.
 - Never `FORMAT()` a measure to text in DAX — emit raw numerics. (See
   `query-design`.)
 
-## Colors
+## Color & theme
 
-Series colors come from the **chart token palette**: six tokens
-`--color-chart-1` … `--color-chart-6` defined in `global.css`, plus semantic
-roles. Reference them by token, never raw hex, so charts re-theme in dark mode.
-
-| In a `series` / `colors` prop | resolves to |
-|---|---|
-| `"chart-1"` … `"chart-6"` | the Nth palette token |
-| `"brand"` / `"success"` / `"danger"` / `"warning"` / `"info"` / `"neutral"` | semantic role token |
-| `"--color-…"` or `var(--color-…)` | that CSS variable |
-| `"#rrggbb"` | literal hex (avoid — won't re-theme) |
-
-```tsx
-series={[
-  { key: "Revenue", color: "chart-1" },
-  { key: "Target",  color: "neutral" },
-]}
-```
-
-Omit `color` and series fall back to the palette in order (`seriesColor(i)`).
-
-### Consistent categorical colors
-
-When the same category (a region, a status) appears in more than one visual,
-give it a fixed color so it reads the same everywhere. Discover the distinct
-values first (see `query-design`), then build a `name → token` map and pass it
-through each chart's `series` / `colors`:
-
-```tsx
-const REGION_COLOR = { East: "chart-1", West: "chart-2", North: "chart-3", South: "chart-4" };
-```
-
-Don't rely on incidental row ordering to keep colors stable across charts.
-
-### Accessibility
-
-The six palette tokens are pre-tuned for contrast. If you author a custom
-palette, keep each series ≥ **3:1** against the card background and alternate
-contrast (~±2 ratio) between neighbors so adjacent series never blend.
-
-## Restyling everything at once
-
-Every chart, grid, and card reads its look from CSS custom properties in
-`src/global.css`. Override these to restyle the whole app; put light values in
-the base scope and dark overrides under `.dark`.
+You **never put color in a spec.** `ChartCard` injects the app's theme — a
+resolved palette derived from `src/global.css` tokens — into every Envy chart, so
+charts stay on-brand and dark-mode aware automatically. Restyle the whole app by
+editing the tokens; put light values in the base scope and dark overrides under
+`.dark`.
 
 | What to change | CSS variable(s) |
 |---|---|
-| Accent (one swap recolors charts/links/focus) | `--color-primary`, `--color-chart-1`, `--color-brand`, `--color-ring` |
-| Series palette | `--color-chart-1` … `--color-chart-6` |
-| Chart axes / grid / cursor | `--color-chart-axis`, `--color-chart-grid`, `--color-chart-cursor` |
+| Accent (recolors charts/links/focus) | `--color-primary`, `--color-chart-1`, `--color-brand`, `--color-ring` |
+| Series palette (every chart follows) | `--color-chart-1` … `--color-chart-6` |
+| Chart axes / grid | `--color-chart-axis`, `--color-chart-grid` |
 | Text | `--color-foreground`, `--color-foreground-secondary`, `--color-foreground-muted` |
-| Surfaces / borders | `--color-background`, `--color-card`, `--color-popover`, `--color-border`, `--color-border-strong` |
+| Surfaces / borders | `--color-background`, `--color-card`, `--color-popover`, `--color-border` |
 | Fonts | `--font-display`, `--font-sans`, `--font-mono` |
 | Radius | `--radius-md`, `--radius-lg`, `--radius-xl`, `--radius-2xl` |
 
-Unlike the old theme, the **series palette is fully customizable** — recolor the
-`--color-chart-*` tokens and every chart follows.
+The bridge (`src/lib/envy-theme.ts`) maps these tokens → an Envy `ThemeInput`
+(base light/dark + palette + accent + axis/grid) and re-resolves on theme toggle.
+All tokens are hex/rgba (never `oklch`) so Envy's color parser can derive ramps,
+area fills, and hover tints.
+
+For the **`KpiCard` accent dot** and the small set of places that still take a
+color name (`accent` / `seriesColor`), reference a token, never raw hex:
+`"chart-1"`…`"chart-6"`, a role (`"success" | "danger" | "warning" | "info" |
+"brand" | "neutral"`), `var(--…)`, or a hex string (avoid — won't re-theme).
+
+### Accessibility
+
+The six palette tokens are pre-tuned for contrast. If you author a custom palette,
+keep each series ≥ **3:1** against the card background and alternate contrast
+between neighbors so adjacent series never blend.

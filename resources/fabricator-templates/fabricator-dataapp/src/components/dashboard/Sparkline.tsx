@@ -5,12 +5,9 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import { useId } from "react";
-import { area as d3Area, line as d3Line } from "d3-shape";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 
 import { resolveColor } from "@/lib/chartTokens";
-
-import { useChartSize } from "./charts/useChartSize";
 
 export interface SparklineProps {
     /** A list of numbers, or objects keyed by `dataKey`. */
@@ -26,10 +23,58 @@ export interface SparklineProps {
     className?: string;
 }
 
+/** Measure an element's width with a `ResizeObserver` (0 until first layout). */
+function useElementWidth<T extends HTMLElement>() {
+    const [width, setWidth] = useState(0);
+    const observer = useRef<ResizeObserver | null>(null);
+    const ref = useCallback((node: T | null) => {
+        observer.current?.disconnect();
+        if (!node) return;
+        const ro = new ResizeObserver((entries) => {
+            for (const entry of entries) setWidth(entry.contentRect.width);
+        });
+        ro.observe(node);
+        observer.current = ro;
+    }, []);
+    useEffect(() => () => observer.current?.disconnect(), []);
+    return { ref, width };
+}
+
+/** Build the line + area SVG paths, breaking at non-finite values. */
+function buildPaths(values: number[], width: number, height: number) {
+    const inner = Math.max(0, height - 4);
+    const finite = values.filter((value) => Number.isFinite(value));
+    const min = finite.length ? Math.min(...finite) : 0;
+    const max = finite.length ? Math.max(...finite) : 1;
+    const span = max - min || 1;
+    const xAt = (index: number) =>
+        values.length <= 1 ? width / 2 : (index / (values.length - 1)) * width;
+    const yAt = (value: number) => 2 + (1 - (value - min) / span) * inner;
+
+    let line = "";
+    let area = "";
+    let run: Array<[number, number]> = [];
+    const flush = () => {
+        if (run.length === 0) return;
+        const pts = run.map(([x, y]) => `${x.toFixed(2)} ${y.toFixed(2)}`);
+        line += `M${pts.join("L")}`;
+        const first = run[0];
+        const last = run[run.length - 1];
+        area += `M${first[0].toFixed(2)} ${height}L${pts.join("L")}L${last[0].toFixed(2)} ${height}Z`;
+        run = [];
+    };
+    values.forEach((value, index) => {
+        if (Number.isFinite(value)) run.push([xAt(index), yAt(value)]);
+        else flush();
+    });
+    flush();
+    return { line, area };
+}
+
 /**
- * Compact, axis-less trend line for KPI cards and inline cells — a fully custom
- * SVG sparkline (no charting library). Pass a raw `number[]` (or objects +
- * `dataKey`).
+ * Compact, axis-less trend line for KPI cards and inline cells — a tiny
+ * hand-rolled SVG sparkline (no charting library). Pass a raw `number[]` (or
+ * objects + `dataKey`).
  *
  * @example
  * ```tsx
@@ -46,7 +91,7 @@ export function Sparkline({
 }: SparklineProps) {
     const gradientId = useId().replace(/:/g, "");
     const stroke = resolveColor(color, 0);
-    const { ref, size } = useChartSize();
+    const { ref, width } = useElementWidth<HTMLDivElement>();
 
     const values = (
         typeof data[0] === "number"
@@ -56,37 +101,10 @@ export function Sparkline({
               )
     ).map((value) => (Number.isFinite(value) ? value : Number.NaN));
 
-    const width = size.width;
-    const inner = Math.max(0, height - 4);
-
-    let linePath = "";
-    let areaPath = "";
-    if (width > 0 && values.length > 0) {
-        const finite = values.filter((value) => Number.isFinite(value));
-        const min = finite.length ? Math.min(...finite) : 0;
-        const max = finite.length ? Math.max(...finite) : 1;
-        const span = max - min || 1;
-        const x = (index: number) =>
-            values.length <= 1
-                ? width / 2
-                : (index / (values.length - 1)) * width;
-        const y = (value: number) => 2 + (1 - (value - min) / span) * inner;
-        const points = values.map(
-            (value, index) => [x(index), y(value)] as [number, number],
-        );
-        const defined = (point: [number, number]) => Number.isFinite(point[1]);
-        linePath =
-            d3Line<[number, number]>()
-                .defined(defined)
-                .x((point) => point[0])
-                .y((point) => point[1])(points) ?? "";
-        areaPath =
-            d3Area<[number, number]>()
-                .defined(defined)
-                .x((point) => point[0])
-                .y0(height)
-                .y1((point) => point[1])(points) ?? "";
-    }
+    const { line: linePath, area: areaPath } =
+        width > 0 && values.length > 0
+            ? buildPaths(values, width, height)
+            : { line: "", area: "" };
 
     return (
         <div ref={ref} className={className} style={{ height }}>

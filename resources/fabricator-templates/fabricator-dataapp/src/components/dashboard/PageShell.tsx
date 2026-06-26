@@ -200,7 +200,7 @@ const ROW_SPAN: Record<number, string> = {
  * ```tsx
  * <BentoGrid>
  *   <BentoItem colSpan={8} rowSpan={2}>
- *     <LineChartCard title="Revenue" className="h-full" … />
+ *     <ChartCard title="Revenue" className="h-full" spec={revenueSpec} />
  *   </BentoItem>
  *   <BentoItem colSpan={4}><KpiCard label="MRR" … /></BentoItem>
  *   <BentoItem colSpan={4}><KpiCard label="Churn" … /></BentoItem>

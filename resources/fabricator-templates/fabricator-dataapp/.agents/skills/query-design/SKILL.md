@@ -39,10 +39,10 @@ Read deep references only when a specific design problem demands it; optimize ti
 | Filling dimension gaps | TypeScript (stitch dimension list into sparse results) |
 | Reshaping (pivot, unpivot) | TypeScript |
 | Column display names | `columnMetadata` in factory file |
-| Number/date formatting | Charts: `valueFormat` / `xFormat`; tables: `columnMetadata.format` |
+| Number/date formatting | Charts: field `format` hints in `spec.encoding`; tables: `columnMetadata.format` |
 | User-facing sort order | TypeScript (sort the mapped array) / DataGrid `sort` |
 | Decorative labels, icons | DataGrid `cellRenderer` or derived fields in `toChartData` mapping |
-| Axis labels, legends, series colors | Chart card `xKey` + `series` (`label` / `color`) |
+| Axis labels and legends | Chart `spec.encoding` (`x` / `y` / `series`); `ChartCard` injects theme colors |
 
 ## Rules
 
@@ -58,7 +58,7 @@ Read deep references only when a specific design problem demands it; optimize ti
 
 - `SUMMARIZECOLUMNS` for grouped aggregation — it also drops BLANK-measure rows, keeping payloads small
 - DAX's natural column names (`'Table'[Column]`, `[Measure]`) mapped via `columnMetadata.displayName`
-- Raw typed values from DAX — format via chart `valueFormat` / `xFormat` or DataGrid `columnMetadata.format`, never `FORMAT()`
+- Raw typed values from DAX — format via chart spec field `format` hints or DataGrid `columnMetadata.format`, never `FORMAT()`
 - Model-defined format strings (from `INFO.VIEW.MEASURES()`) over invented ones
 - Multiple lightweight queries over one monolithic query
 - User-facing sort in TypeScript / DataGrid — never re-query for sort
@@ -82,12 +82,12 @@ Need to add something to the query result?
   |     -> Low-cardinality: widen grain, filter mapped rows in TypeScript
   |     -> High-cardinality: push filter to DAX, re-query
   |-- Merging datasets or adding synthetic rows?
-  |     -> Charts: pass multiple series to one chart card, or merge result sets in TypeScript before mapping
+  |     -> Charts: merge aligned result sets in TypeScript into tidy rows, then author one `ChartCard` spec with a `series` encoding
   |     -> Grids: append rows in TypeScript, style via cellRenderer
   |-- Renaming a column for display?
   |     -> columnMetadata in the factory file (displayName)
   |-- Formatting, labeling, or visual styling?
-  |     -> Chart card props (valueFormat / xFormat / series) or DataGrid cellRenderer
+  |     -> Chart spec encoding/format hints or DataGrid cellRenderer
   |-- Decorating values (icons, status badges, null placeholders)?
   |     -> DataGrid cellRenderer or derived fields in toChartData mapping
   |-- Not sure?
@@ -103,7 +103,7 @@ Reports coordinate multiple visuals: a selection in one changes what the others 
 - **Cross-filtering** — a kit control (`SegmentedControl` / `FilterChips`) or click handler updates React state, which constrains the data shown in another visual. The target shows *less*. Applying that constraint is a cost/cardinality tradeoff — widen the grain and filter already-fetched mapped rows client-side, or push the filter into DAX and re-query with `useSemanticModelQuery`. See [Filter strategy](references/filter-strategy.md).
 - **Cross-highlighting** — React state identifies the selected subset to emphasize *within* another visual while the full context stays visible. The target keeps its baseline (dimmed) and draws the selected subset bright on top as a second `series` (or a second area/line) in one chart card, or as two stacked cards. The subset is a separate aggregation aligned to the baseline's grouping, measures, and row set — not a client-side filter of the baseline. See [Highlight queries](references/highlight-queries.md).
 
-For chart overlays, merge aligned result sets in TypeScript into one row array before passing `data` and `series` to `LineChartCard` / `AreaChartCard` / `BarChartCard`; see the visuals skill's [multi-data input](../visuals/references/multi-data-input.md) reference. Fabric `DataGrid` still supports row interaction when needed.
+For chart overlays, merge aligned result sets in TypeScript into one tidy row array, then author one `ChartCard` spec with a `series` encoding; see the visuals skill's [multi-data input](../visuals/references/multi-data-input.md) reference. Fabric `DataGrid` still supports row interaction when needed.
 
 ## Reference Materials
 
@@ -113,10 +113,10 @@ Read these when working on a specific topic:
 - **[Multi-grain patterns](references/multi-grain-patterns.md)** — Open when a single visualization needs data at two grains (e.g., bars + grand-total reference line, region detail + total row, monthly trend + YTD).
 - **[Filter strategy](references/filter-strategy.md)** — Open when adding a user-controlled filter or implementing cross-filtering, and deciding whether to widen the grain (filter client-side) or push the filter into DAX (re-query on each change).
 - **[Highlight queries](references/highlight-queries.md)** — Open when writing the "selected subset" overlay query for a cross-highlight visual: an aligned `CALCULATETABLE` / `TREATAS` query whose rows match the baseline.
-- **[Format strings](references/format-strings.md)** — Open when picking a `columnMetadata.format` value, when a measure has a dynamic format string, or when formatting needs to drive a chart card's `valueFormat` / `xFormat`.
+- **[Format strings](references/format-strings.md)** — Open when picking a `columnMetadata.format` value, when a measure has a dynamic format string, or when formatting needs to drive a chart spec field `format`.
 
 ## Integration with Sibling Skills
 
 - **[schema-discovery](../schema-discovery/SKILL.md)** — Schema exploration; discover tables, columns, and relationships before writing queries.
 - **[dax-authoring](../dax-authoring/SKILL.md)** — DAX syntax, query patterns, and testing workflow. Apply this skill's principles when deciding what DAX should compute.
-- **[visuals](../visuals/SKILL.md)** — The dashboard kit catalog (chart cards + DataGrid). Push formatting/labels into card props (`valueFormat` / `series`) or DataGrid `columnMetadata`, not DAX.
+- **[visuals](../visuals/SKILL.md)** — The dashboard kit catalog (chart cards + DataGrid). Push formatting/labels into the chart spec or DataGrid `columnMetadata`, not DAX.

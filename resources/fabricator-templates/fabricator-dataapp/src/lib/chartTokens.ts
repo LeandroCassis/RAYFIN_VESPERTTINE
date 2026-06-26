@@ -5,15 +5,15 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import { useEffect, useState } from "react";
-
 /**
- * Shared chart-styling tokens for the kit's custom SVG charts.
+ * Chart color tokens.
  *
- * Every color is resolved from the `--color-*` CSS custom properties defined
- * in `src/global.css`, so charts re-theme automatically when the `.dark`
- * class flips on `<html>`. Components should reference these helpers
- * (`seriesColor(0)`, `roleColor("success")`) rather than raw hex.
+ * Every color resolves from the `--color-*` CSS custom properties in
+ * `src/global.css`, so colors re-theme automatically when the `.dark` class
+ * flips on `<html>`. Use these helpers (`seriesColor(0)`, `roleColor("success")`,
+ * `resolveColor("chart-1")`) for the small surfaces the app still styles itself
+ * (KPI accents, sparklines). Envy charts are themed separately via
+ * `lib/envy-theme.ts`, which bridges the same tokens into the Envy runtime.
  */
 
 /** Ordered chart series palette (CSS variable names, without `var()`). */
@@ -74,100 +74,4 @@ export function resolveColor(input?: string, fallbackIndex = 0): string {
     if (/^chart-[1-6]$/.test(input)) return cssVar(`--color-${input}`);
     if (input in ROLE_VARS) return roleColor(input as ChartRole);
     return input;
-}
-
-/* ----------------------- Reactive resolved theme ----------------------- */
-
-export interface ChartTheme {
-    /** Card surface color — used for dot cores / tooltip backgrounds. */
-    surface: string;
-    /** Popover surface color — used for tooltip backgrounds. */
-    popover: string;
-    /** Subtle gridline color. */
-    grid: string;
-    /** Axis label / tick color. */
-    axis: string;
-    /** Tooltip cursor line/band color. */
-    cursor: string;
-    /** Primary body text color. */
-    foreground: string;
-    /** Secondary text color (axis ticks, labels). */
-    foregroundSecondary: string;
-    /** Muted text color (sub-labels, share %). */
-    foregroundMuted: string;
-    /** Default border color. */
-    border: string;
-    /** Stronger border color (tooltip outline). */
-    borderStrong: string;
-    /** Reference-line color (avg / target markers). */
-    reference: string;
-    /** Brand-accent color. */
-    brand: string;
-}
-
-const VARS: Record<keyof ChartTheme, string> = {
-    surface: "--color-card",
-    popover: "--color-popover",
-    grid: "--color-chart-grid",
-    axis: "--color-chart-axis",
-    cursor: "--color-chart-cursor",
-    foreground: "--color-foreground",
-    foregroundSecondary: "--color-foreground-secondary",
-    foregroundMuted: "--color-foreground-muted",
-    border: "--color-border",
-    borderStrong: "--color-border-strong",
-    reference: "--color-border-strong",
-    brand: "--color-primary",
-};
-
-/** Concrete fallback used during SSR / before styles resolve (dark-ish). */
-const FALLBACK: ChartTheme = {
-    surface: "#101216",
-    popover: "#161a20",
-    grid: "rgba(230,232,236,0.06)",
-    axis: "#6b7380",
-    cursor: "rgba(230,232,236,0.08)",
-    foreground: "#e6e8ec",
-    foregroundSecondary: "#9aa3b2",
-    foregroundMuted: "#6b7380",
-    border: "#1f242c",
-    borderStrong: "#2a313b",
-    reference: "#2a313b",
-    brand: "#bef264",
-};
-
-function read(): ChartTheme {
-    if (typeof window === "undefined" || typeof document === "undefined")
-        return FALLBACK;
-    const styles = window.getComputedStyle(document.documentElement);
-    const out = {} as ChartTheme;
-    (Object.keys(VARS) as (keyof ChartTheme)[]).forEach((key) => {
-        out[key] = styles.getPropertyValue(VARS[key]).trim() || FALLBACK[key];
-    });
-    return out;
-}
-
-/**
- * Resolves the chart `--color-*` CSS variables (axis, grid, cursor, reference,
- * tooltip) into concrete color strings, and re-resolves them whenever the
- * `.dark` class on `<html>` flips.
- *
- * The custom SVG charts can also reference `var(--color-chart-n)` directly in
- * `fill` / `stroke`; this hook is for code paths that need a resolved string.
- */
-export function useChartTheme(): ChartTheme {
-    const [theme, setTheme] = useState<ChartTheme>(read);
-    useEffect(() => {
-        if (typeof window === "undefined") return;
-        // Re-resolve whenever the theme flips. The lazy initial state already
-        // read the tokens (global.css is imported before render), so the
-        // observer is the only writer — no synchronous setState in the effect.
-        const observer = new MutationObserver(() => setTheme(read()));
-        observer.observe(document.documentElement, {
-            attributes: true,
-            attributeFilter: ["class", "data-appearance"],
-        });
-        return () => observer.disconnect();
-    }, []);
-    return theme;
 }

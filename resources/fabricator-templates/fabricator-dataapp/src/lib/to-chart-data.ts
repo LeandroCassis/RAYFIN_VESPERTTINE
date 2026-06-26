@@ -80,14 +80,18 @@ function coerceNumber(value: unknown): number | null {
  * const rows = toChartData(data);
  * // rows → [{ Month: "Jan", Revenue: 84200 }, …]
  *
- * <LineChartCard
+ * <ChartCard
  *   title="Revenue"
  *   loading={isLoading}
  *   error={error}
- *   data={rows}
- *   xKey="Month"
- *   series={[{ key: "Revenue", color: "chart-1" }]}
- *   valueFormat="currency"
+ *   spec={{
+ *     type: "line",
+ *     data: rows,
+ *     encoding: {
+ *       x: { field: "Month", type: "temporal" },
+ *       y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+ *     },
+ *   }}
  * />
  * ```
  *

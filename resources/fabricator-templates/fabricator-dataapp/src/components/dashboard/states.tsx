@@ -9,12 +9,14 @@ import type { CSSProperties, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
-import {
-    DEFAULT_ASPECT,
-    MAX_CHART_HEIGHT,
-    MIN_CHART_HEIGHT,
-} from "./ChartFrame";
 import { AlertTriangleIcon, InboxIcon } from "./icons";
+
+/** Default width:height ratio for responsive chart bodies. */
+export const DEFAULT_ASPECT = 2.2;
+/** Lower clamp (px) for responsive chart bodies. */
+export const MIN_CHART_HEIGHT = 200;
+/** Upper clamp (px) for responsive chart bodies. */
+export const MAX_CHART_HEIGHT = 360;
 
 const RESPONSIVE_CHART_STATE_STYLE: CSSProperties = {
     aspectRatio: String(DEFAULT_ASPECT),

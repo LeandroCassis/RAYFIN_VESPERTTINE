@@ -2,194 +2,288 @@
 name: visuals
 description: >
   Use when adding charts, KPIs, tables, slicers, or any visual to a dashboard.
-  This is the dashboard KIT catalog: a curated set of pre-built, themed
-  components you COMPOSE by passing data — you should rarely hand-write SVG or
-  raw JSX. Charts are fully custom (D3 math + SVG, no charting library). Covers
-  KpiCard, the chart cards (line/area/bar/combo/scatter/donut/gauge/funnel/
-  bullet), DataTableCard, slicers (dropdown/list/search/date-range/range +
-  FilterBar) with shared filter state, Tableau-like coordinated interactions
-  (click-to-cross-filter, cross-highlight, drill-down), layout (PageShell/grids/
-  bento), controls, state tiles, the DAX-mapping helpers (toChartData /
-  toDataTable / pivotChartData / topN / deriveKpi), value formatting, color
-  tokens, and the custom-chart escape hatch.
+  Charts are authored as Envy chart specs — one chart = one JSON `ChartSpec`
+  (type + tidy `data` + `encoding`) dropped into `<ChartCard spec={…} />`, which
+  owns loading / empty / error and the app theme. Covers the spec model and the
+  per-type recipes (line/area/bar/scatter/pie/heatmap), the DAX→rows helpers
+  (toChartData / topN / deriveKpi), `KpiCard`, `DataTableCard` (Fabric DataGrid),
+  slicers (dropdown/list/search/date-range/range + FilterBar) with shared filter
+  state, layout (PageShell/grids/bento), value formatting, and color tokens.
 ---
 
-# Visuals — the dashboard kit (compose, don't hand-code)
+# Visuals — author an Envy spec, drop it in a tile
 
-**Pick a component from the kit and pass it data.** The kit lives in
-`src/components/dashboard/` and is exported from a single barrel
-(`@/components/dashboard`). Each card owns its theme, axes, gridlines,
-tooltip, legend, number/date formatting, dark mode, and loading/empty/error
-states — so you write *data*, not chart code. Writing a bespoke SVG chart or a
-hand-rolled `<div>` grid is the slow, expensive, error-prone path; reach
-for it only when nothing in the kit fits (see [Escape hatch](#escape-hatch)).
+**One chart = one JSON spec.** You don't hand-write SVG or wire a charting
+library. You (1) map your DAX result into plain rows, (2) author a single Envy
+[`ChartSpec`](references/envy-spec-reference.md) — a `type`, a tidy `data` array,
+and an `encoding` that names the columns — and (3) drop it into
+`<ChartCard spec={…} />`. The card owns the loading / empty / error states and
+bridges the app theme, so a spec never needs a color or a size.
 
-Charts are **fully custom D3/SVG** (built on `d3-scale`/`d3-shape` math + React
-SVG — no Recharts, no charting library). Tables are the Fabric **DataGrid**.
-There is no Vega-Lite.
+Three things are React components, not Envy specs:
+
+- **KPIs** → `<KpiCard>` (big value + delta pill + sparkline).
+- **Tabular data** → `<DataTableCard>` (the Fabric `DataGrid` — sortable,
+  resizable, themed).
+- **Filters** → the **slicers** (`FilterBar` + `DropdownSlicer`/…) over shared
+  filter state.
+
+Everything is exported from one barrel: **`@/components/dashboard`**.
 
 ## Fast path
 
 Optimize *time to wow*: ship one real tile, deploy, review, iterate.
 
-**Phase 1 — Hero slice:** render ONE compelling, real visual the simplest
-way — a single `KpiCard` or `LineChartCard`/`BarChartCard` fed your hero
-query. Map the DAX result with `toChartData(...)`, pass `loading`/`error`
-straight from the query hook, and you're done. That is enough to deploy.
+**Phase 1 — Hero slice:** render ONE real visual the simplest way — map the hero
+query with `toChartData(...)`, author a spec, pass it to a `ChartCard`. Pass
+`loading` / `error` straight from the query hook. That's enough to deploy.
 
 ```tsx
-import { LineChartCard, toChartData } from "@/components/dashboard";
+import { ChartCard, toChartData } from "@/components/dashboard";
 import { useSemanticModelQuery } from "@/hooks/use-semantic-model-query";
 
 const { data, isLoading, error } = useSemanticModelQuery({ connection, query });
-const rows = toChartData(data); // pass the query result straight in
 
-<LineChartCard
+<ChartCard
   title="Revenue"
+  subtitle="Last 12 months"
   loading={isLoading}
   error={error}
-  data={rows}
-  xKey="Month"
-  series={[{ key: "Revenue", color: "chart-1" }]}
-  valueFormat="currency"
+  spec={{
+    type: "line",
+    data: toChartData(data, { columns: { month: "Date[Month]", revenue: "Total Revenue" } }),
+    points: true,
+    encoding: {
+      x: { field: "month", type: "temporal" },
+      y: { field: "revenue", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />
 ```
 
-**Phase 2 — Breadth:** add the remaining KPIs/charts/table, wrapping them in
-`PageShell` + `KpiGrid`/`ChartGrid`. Deploy + review every 1–2 additions.
+**Phase 2 — Breadth:** add the rest (KPIs, more charts, a `DataTableCard`),
+wrapped in `PageShell` + `KpiGrid`/`ChartGrid`/`BentoGrid`. Deploy + review every
+1–2 additions.
 
-**Phase 3 — Polish:** slicers + cross-filtering (`FilterStateProvider` +
-`FilterBar`/`DropdownSlicer`/…, or click-to-cross-filter via `useCrossFilter`),
-lightweight controls (`SegmentedControl`/`FilterChips`), reference lines,
-sparklines in KPI cards, donut breakdowns, and final formatting.
+**Phase 3 — Polish:** slicers, multi-series, formatting, dark-mode review.
 
-Read the per-component props below only when you reach for that component.
-Every component also carries a JSDoc usage snippet — hover it or open the file.
+## The data flow (map → author → drop in)
 
-## The two-step data flow
-
-Every tile follows the same shape. **Map once, pass to the card.**
+Every tile follows the same shape:
 
 1. **Fetch** with `useSemanticModelQuery({ connection, query })` →
    `{ data, isLoading, error }` (see the `query-design` + `fabric-sdk` skills).
-2. **Map** the DAX result into the shape the card wants. Both helpers accept the
-   query result, a raw `QueryTable`, or `undefined` — no `status` check needed:
-   - **Charts** want an array of row objects → `toChartData(result, options?)`.
+2. **Map** the DAX result into the shape the visual wants. Both helpers accept
+   the query result, a raw `QueryTable`, or `undefined` — no `status` check:
+   - **Charts** want **tidy/long rows** → `toChartData(result, options?)`.
    - **DataGrid** wants a `DataTable` → `toDataTable(result, columnMetadata)`.
-3. **Pass** `data` + `loading` + `error` to the card. Don't pre-render
-   skeletons/empty states yourself — the cards do it.
+3. **Author + pass.** Put the rows in a spec's `data` and hand the spec (or the
+   `DataTable`) to the card with `loading` + `error`. Don't pre-render
+   skeletons/empty states — the cards do it.
 
 ```tsx
 // DAX rows are positional (unknown[][]); toChartData keys them by column
-// (short) name and coerces numeric columns to numbers.
-const rows = toChartData(data);
-// rows → [{ Month: "Jan", Revenue: 84200 }, …]
-
-// Prefer explicit aliases — stable lowercase keys, and the only safe option
-// when two columns share a short name (e.g. Date[Month] + Ship[Month]):
-const rows2 = toChartData(data, {
+// (short) name and coerces numerics. Prefer explicit aliases for stable keys
+// (and when two columns share a short name, e.g. Date[Month] + Ship[Month]):
+const rows = toChartData(data, {
   columns: { month: "Date[Month]", revenue: "Total Revenue" },
 });
-// rows2 → [{ month: "Jan", revenue: 84200 }, …]
+// rows → [{ month: "2024-01", revenue: 84200 }, …]
 ```
 
-### Shape helpers (multi-series · ranked · KPI)
+### Keep data tidy — split with `series`, don't pre-pivot
 
-Three helpers map common DAX result shapes straight into a card's props — so
-you never hand-write a pivot loop, a sort, or a delta calc. All accept the
-query result, a `QueryTable`, or `undefined`.
+Envy wants **long/tidy** data: one row per observation. To show multiple series
+(multi-line, grouped/stacked bars, stacked areas), add a `series` channel that
+points at the category column — **do not** widen the table into one column per
+category.
 
-- **`pivotChartData(result, { x, series, value, order? })`** — reshape a
-  **long** result (`x, category, value` — one row per combo) into **wide**
-  rows AND the matching `series[]` (keys + order). Spread both into a
-  multi-series line/area/bar card. Replaces the manual `Map` pivot.
-- **`topN(rows, valueKey, n, { other?, ascending? })`** — sort + slice already
-  mapped rows for ranked bars / leaderboards, with an optional `"Other"` rollup.
-- **`deriveKpi(result, { valueKey })`** → `{ value, previous, delta, trend }` —
-  one call feeds a `KpiCard`'s value + delta + sparkline from a time series.
+```jsonc
+// ✅ tidy — one row per (quarter, channel); split with series
+[{ "quarter": "Q1", "channel": "Online", "revenue": 210 },
+ { "quarter": "Q1", "channel": "Retail", "revenue": 180 }]
+// encoding: { x:{field:"quarter"}, y:{field:"revenue"}, series:{field:"channel"} }
+```
+
+`toChartData` already returns long rows, so a normal DAX result drops straight in.
+(`pivotChartData` still exists for the rare case you truly need wide rows, but with
+Envy you almost never do.)
+
+## Authoring a spec
+
+A spec is a plain JSON object — no functions, no colors, no sizes:
+
+```jsonc
+{
+  "type": "bar",                       // the discriminator
+  "data": [ /* tidy rows */ ],         // required for every type
+  "encoding": {                        // names the columns → visual channels
+    "x": { "field": "quarter" },
+    "y": { "field": "revenue", "type": "quantitative", "format": "$,.0f" },
+    "series": { "field": "channel" }
+  },
+  "stack": true                        // per-type option
+}
+```
+
+- **`encoding` is required** for `line`/`area`/`bar`/`scatter` (`x`+`y`), `pie`
+  (`theta`+`color`), and `heatmap` (`x`+`y`+`color`). `FieldDef.type` is
+  `quantitative | temporal | ordinal | nominal` (inferred when omitted).
+- **Validate before render** in tricky cases: `validateSpec(spec)` →
+  `{ valid, errors, warnings }` (re-exported from the barrel). `ChartCard`
+  renders whatever you pass, so catch field-name typos here.
+- **Don't author `theme`.** `ChartCard` injects the app's CSS-token theme (brand
+  color + dark mode) automatically. Recolor via `src/global.css` tokens, never
+  per-spec hex.
+
+### Pick a type
+
+| Goal | `type` | Key channels / options |
+|---|---|---|
+| Trend over time | `line` (`area` to emphasize volume) | `x` temporal, `y`, optional `series`; `points`, `curve` |
+| Part-to-whole over time | `area` + `stack: true` | `x`, `y`, `series` |
+| Compare categories | `bar` | `x` category, `y`, optional `series`; `stack` or grouped |
+| Composition of a total | `bar` + `stack`, or `pie`/donut | bar: `series`; pie: `theta` + `color`, `donut` |
+| Correlation / 3rd dim | `scatter` | `x`, `y`, optional `size`, `series` |
+| Density across two categories | `heatmap` | `x`, `y`, `color`, `scheme` |
+| Headline metric | **`KpiCard`** (React) | not an Envy spec — see Cards |
+| Raw / detail records | **`DataTableCard`** (React) | not an Envy spec — see Cards |
+
+Rules of thumb: prefer `bar` over `pie` beyond ~6 slices; `stack` for
+part-to-whole, grouped bars for direct comparison.
+
+### Recipes (mirror the gallery)
+
+```jsonc
+// Multi-series line — points + currency Y, split by metric
+{ "type": "line", "data": rows, "points": true,
+  "encoding": { "x": { "field": "month", "type": "temporal" },
+                "y": { "field": "value", "type": "quantitative", "format": "$,.0f" },
+                "series": { "field": "metric" } } }
+
+// Stacked area — quarterly channel mix
+{ "type": "area", "data": rows, "stack": true,
+  "encoding": { "x": { "field": "quarter", "type": "ordinal" },
+                "y": { "field": "revenue", "type": "quantitative", "format": "$,.0f" },
+                "series": { "field": "channel" } } }
+
+// Grouped bars (drop `stack` for grouped; add it to stack)
+{ "type": "bar", "data": rows, "stack": true,
+  "encoding": { "x": { "field": "quarter" },
+                "y": { "field": "revenue", "type": "quantitative", "format": "$,.0f" },
+                "series": { "field": "channel" } } }
+
+// Ranked bars — sort rows by value first (see "horizontal bars" gotcha)
+{ "type": "bar", "data": topN(rows, "revenue", 8),
+  "encoding": { "x": { "field": "region", "type": "nominal" },
+                "y": { "field": "revenue", "type": "quantitative", "format": "$,.2s" } } }
+
+// Bubble scatter — size = a third measure
+{ "type": "scatter", "data": rows,
+  "encoding": { "x": { "field": "price", "type": "quantitative", "format": "$,.0f" },
+                "y": { "field": "units", "type": "quantitative" },
+                "size": { "field": "margin", "title": "Margin" } } }
+
+// Donut — theta = value, color = category
+{ "type": "pie", "data": rows, "donut": 0.6,
+  "encoding": { "theta": { "field": "value", "type": "quantitative", "format": "$,.0f" },
+                "color": { "field": "category" } } }
+
+// Heatmap — category × category, colored by a measure
+{ "type": "heatmap", "data": rows, "scheme": "teal",
+  "encoding": { "x": { "field": "quarter" }, "y": { "field": "region" },
+                "color": { "field": "revenue", "type": "quantitative", "format": "$,.2s" } } }
+```
+
+Full field-by-field docs + every channel/option:
+[Envy spec reference](references/envy-spec-reference.md).
+
+### Gotchas
+
+- **Horizontal bars aren't available** in this Envy version. `BarSpec` *types*
+  an `orientation` field, but the runtime ignores it — bars always render
+  vertical. For "top N" / ranked breakdowns, use a **vertical** bar and sort the
+  rows by value (`topN(rows, key, n)`); don't set `orientation`.
+- **Temporal fields are ISO strings** (`"2024-01"`, `"2024-01-15"`) or epoch ms —
+  JSON has no `Date`. Mark the field `type: "temporal"` for a time axis.
+- **Empty `data` → empty tile.** A spec with `data: []` makes `ChartCard` show
+  its empty state. Never ship mock/placeholder rows.
+- **No click events.** Envy charts have hover tooltips + crosshair but no
+  click/selection callback — interactivity comes from **slicers** (below), not
+  from clicking a mark.
+
+## Cards
+
+### `ChartCard`
+The card shell — rounded-2xl, hairline border, no shadow — in two modes:
 
 ```tsx
-// Long result → stacked multi-series bars, no pivot loop:
-const { rows, series, xKey } = pivotChartData(data, {
-  x: "Date[Month]", series: "Product[Category]", value: "Revenue",
-  order: "total-desc",
-});
-<BarChartCard title="Revenue by category" data={rows} xKey={xKey}
-  series={series} stacked valueFormat="currency" />
+// Spec mode (the common case): pass an Envy spec + query state.
+<ChartCard title="Revenue" subtitle="Last 12 months"
+  loading={isLoading} error={error} spec={spec} />
 
-// Time series → KPI value + delta + sparkline in one call:
-const kpi = deriveKpi(data, { valueKey: "Revenue" });
-<KpiCard label="Revenue" value={kpi.value ?? undefined} valueFormat="currency"
-  delta={kpi.delta ?? undefined} trend={kpi.trend} deltaLabel="vs last month" />
+// Children mode: own the body (e.g. a slicer, custom content).
+<ChartCard title="Filters"><ListSlicer … /></ChartCard>
 ```
 
-## Import surface
+Props: `title`, `subtitle`, `action` (right-aligned header slot), `spec`,
+`height` (omit for responsive aspect-based height), `isEmpty` (force empty;
+defaults to detecting empty `spec.data`), `footer`, `loading`, `error`,
+`emptyMessage`, `onRetry`, `bodyClassName`, `children`.
+
+### `KpiCard`
+Hero metric tile: big formatted value, colored delta pill, optional accent dot /
+badge / icon, and an inline `trend` sparkline.
 
 ```tsx
-import {
-  // layout
-  PageShell, KpiGrid, ChartGrid, Section, BentoGrid, BentoItem, ThemeToggle,
-  // controls
-  SegmentedControl, FilterChips,
-  // slicers + shared filter state
-  FilterStateProvider, useFilterState, FilterBar,
-  DropdownSlicer, ListSlicer, SearchSlicer, DateRangeSlicer, RangeSlicer,
-  // coordinated interactions (Tableau-like)
-  useCrossFilter, useDrilldown, DrilldownBreadcrumb,
-  useSlicerOptions, applyFilters, toDaxFilters,
-  // cards
-  KpiCard, ChartCard, DataTableCard,
-  // charts
-  LineChartCard, AreaChartCard, BarChartCard, ComboChartCard, ScatterChartCard,
-  DonutChartCard, PieChartCard, GaugeCard, FunnelChartCard, BulletChartCard,
-  ProgressBar, Sparkline, ChartTooltip, ChartFrame, AnimatedNumber,
-  // state tiles
-  EmptyTile, ErrorTile, ChartSkeleton, KpiSkeleton, TileBody,
-  // DAX-mapping helpers
-  toChartData, toDataTable, pivotChartData, topN, deriveKpi,
-  formatNumber, formatCompact, formatCurrency, formatPercent, formatDate,
-  seriesColor, roleColor, useChartTheme,
-} from "@/components/dashboard";
+<KpiCard
+  label="Revenue"
+  data={rows} valueKey="revenue"   // …or a literal `value={341500}`
+  valueFormat="currency"
+  delta={9.2}                       // signed PERCENT-scale number → +9.2% pill
+  deltaLabel="vs last month"
+  trend={rows.map((r) => r.revenue)} // sparkline; auto-derives delta if omitted
+  invertDelta={false}               // true when down-is-good (cost, churn)
+/>
 ```
 
-## Shared conventions
+Pass a literal `value` **or** `data` + `valueKey` (reads the first row). With no
+value it renders the empty state — never a fake `0`. `delta` is a **percent
+number** (`9.2` → `+9.2%`), not a fraction. Use `deriveKpi(result, { valueKey })`
+to get `{ value, previous, delta, trend }` from a time series in one call.
 
-- **`valueFormat`** (charts + KPI): `"number" | "compact" | "currency" |
-  "percent" | "ratio"` or a `(n: number) => string` function. `"percent"`
-  expects a 0–100 value; `"ratio"` expects 0–1.
-- **Colors** accept a chart token (`"chart-1"`…`"chart-6"`), a semantic role
-  (`"success" | "danger" | "warning" | "info" | "brand" | "neutral"`),
-  a `var(--…)`, or a hex string. Prefer tokens so charts re-theme with dark
-  mode. Series default to the palette in order.
-- **State props** (`loading`, `error`, `emptyMessage`, `onRetry`) are shared
-  by every chart/table card. Pass the query hook's `isLoading`/`error`
-  directly; the card renders skeleton → error → empty → content.
-- **Never ship mock/fake data.** A tile with no data shows the empty state.
+> **Empty card with data present?** `valueKey` must match a mapped column name
+> **exactly** (case-sensitive). Alias columns in `toChartData({ columns: … })`
+> for stable keys; in dev the console prints the available keys.
 
-### Responsive, legends & formatting — by default
+### `DataTableCard`
+The Fabric `DataGrid` in the card shell — sortable, filterable, resizable, themed.
 
-The kit handles these three so you rarely configure them — and never burn a
-deploy to discover a chart clipped, squished, or mis-scaled:
+```tsx
+const table = toDataTable(data, [
+  { name: "month", displayName: "Month" },
+  { name: "revenue", displayName: "Revenue", format: "$#,0.00" },
+]);
+<DataTableCard title="Top accounts" loading={isLoading} error={error}
+  data={table} pageSize={10} />
+```
 
-- **Responsive height.** Every chart scales with its container (an aspect ratio,
-  clamped ~200–360px) — short on a phone, taller in a wide bento tile. You rarely
-  set `height`; pass `height={n}` only to pin a fixed pixel height, or `aspect={n}`
-  to tune the shape (lower = taller).
-- **Legends.** Multi-series charts legend automatically. Position with
-  `legendPlacement="top" | "right" | "bottom" | "none"` (default `"top"`; the
-  donut defaults to `"right"`). No prop wiring, no manual `<Legend>`.
-- **Formatting.** Date x-axes auto-format and the Y-axis width auto-sizes to the
-  widest tick, so labels never clip. You still pass `valueFormat` for *units*
-  (currency / percent / ratio) — the kit deliberately never guesses a unit from
-  bare numbers. See [Formatting by default](references/formatting.md#formatting-by-default).
+Props: `data` (a `DataTable`), `height`, `rowHeight`, `pageSize`, plus the shared
+state props. Cell rendering + the `DataTable` shape:
+[data-grid-visual.md](references/data-grid-visual.md) ·
+[data-table.md](references/data-table.md).
 
----
+## Shape helpers (DAX → rows)
+
+- **`toChartData(result, { columns? })`** → tidy rows for a spec's `data`. Alias
+  columns for stable keys.
+- **`topN(rows, valueKey, n, { other?, ascending? })`** — sort + slice mapped
+  rows for ranked bars / leaderboards, with an optional `"Other"` rollup.
+- **`deriveKpi(result, { valueKey })`** → `{ value, previous, delta, trend }` for
+  a `KpiCard`.
+- **`toDataTable(result, columnMetadata)`** → a `DataTable` for `DataTableCard`.
 
 ## Layout
-
-### `PageShell`
-The page frame: sticky blurred header (title / subtitle / actions) over a
-centered, max-width column. Put `<ThemeToggle />` (and filters) in `actions`.
 
 ```tsx
 <PageShell title="Sales overview" subtitle="FY24" actions={<ThemeToggle />}>
@@ -198,452 +292,109 @@ centered, max-width column. Put `<ThemeToggle />` (and filters) in `actions`.
 </PageShell>
 ```
 
-- **`KpiGrid`** — fluid auto-fit grid (~220px min) — any number of KPI cards flow
-  cleanly (3 or 5 no longer leave a ragged gap).
+- **`PageShell`** — sticky blurred header over a centered, max-width column. Put
+  `<ThemeToggle />` (and a `FilterBar`) in `actions`.
+- **`KpiGrid`** — fluid auto-fit grid (~220px min) for KPI cards.
 - **`ChartGrid`** — fluid auto-fit grid (~380px min) for chart cards.
-- **`Section`** — titled grouping (`title`, `subtitle`, `action`) for a band
-  of tiles.
-- **`ThemeToggle`** — light/dark button wired to the app theme context.
-
-### `BentoGrid` / `BentoItem`
-For varied, editorial layouts — a wide hero chart beside a stack of KPIs, a
-tall trend next to short tiles. A 12-column grid on `lg` that collapses to one
-column on small screens; set each item's `colSpan` (1–12) and optional
-`rowSpan` (1–3). Reach for it over `ChartGrid` when you want non-uniform card
-sizes (the `app-design` skill asks for this — avoid a uniform spreadsheet grid).
+- **`Section`** — titled grouping (`title`, `subtitle`, `action`).
+- **`BentoGrid` / `BentoItem`** — editorial 12-col layout for non-uniform sizes
+  (a wide hero chart beside a stack of KPIs). Set each item's `colSpan` (1–12) and
+  optional `rowSpan` (1–3). Reach for it over `ChartGrid` to avoid a uniform
+  spreadsheet grid (the `app-design` skill asks for this).
 
 ```tsx
 <BentoGrid>
-  <BentoItem colSpan={8}><ComboChartCard title="Revenue & margin" … /></BentoItem>
-  <BentoItem colSpan={4}><GaugeCard title="Quota" value={72} target={100} valueFormat="percent" /></BentoItem>
+  <BentoItem colSpan={8}><ChartCard title="Revenue" spec={lineSpec} /></BentoItem>
   <BentoItem colSpan={4}><KpiCard label="MRR" … /></BentoItem>
-  <BentoItem colSpan={4}><KpiCard label="Churn" … /></BentoItem>
-  <BentoItem colSpan={4}><KpiCard label="NRR" … /></BentoItem>
 </BentoGrid>
 ```
 
-## Controls (filters)
+## Controls & slicers (interactivity)
 
-Controlled — own the value in `useState`, then filter your mapped rows (or
-re-query; see `query-design`).
+Envy charts don't emit clicks, so interactivity is **React-state filters** that
+re-query or re-filter the data; the charts just re-render.
+
+**Lightweight controls** — own the value in `useState`, filter your rows:
 
 ```tsx
 const [range, setRange] = useState("30d");
-<SegmentedControl
-  value={range} onChange={setRange}
-  options={[{ label: "7D", value: "7d" }, { label: "30D", value: "30d" }]}
-/>
-
-const [regions, setRegions] = useState<string[]>([]);
-<FilterChips value={regions} onChange={setRegions} options={regionOptions} />
+<SegmentedControl value={range} onChange={setRange}
+  options={[{ label: "7D", value: "7d" }, { label: "30D", value: "30d" }]} />
 ```
 
-- **`SegmentedControl<T>`** — single-select pill group (`size?: "sm" | "md"`).
-- **`FilterChips<T>`** — multi-select chip row (`value` is an array).
+`SegmentedControl<T>` (single-select pills) · `FilterChips<T>` (multi-select chips).
 
-These are **lightweight, self-managed** controls (you own the `useState` and
-filter rows yourself). For **Power BI-style slicers** that auto-share selection
-across the whole dashboard (and drive cross-filtering), use the slicer suite +
-`FilterStateProvider` below instead.
-
----
-
-## Slicers & shared filter state
-
-Slicers are real filter controls wired to one **shared filter model**. Wrap the
-dashboard in `<FilterStateProvider>` once; every slicer (and every chart click)
-reads/writes the same selections. Then **apply** those selections one of two
-ways: `applyFilters(rows, selections)` (instant, client-side) or
+**Power BI-style slicers** — wire one **shared filter model**. Wrap the dashboard
+in `<FilterStateProvider>`; every slicer reads/writes the same selections. Then
+**apply** them with `applyFilters(rows, selections)` (instant, client-side) or
 `toDaxFilters(selections)` (re-query the model — see `query-design`).
 
 ```tsx
-import {
-  FilterStateProvider, useFilterState, FilterBar,
-  DropdownSlicer, DateRangeSlicer, RangeSlicer,
-  applyFilters, BarChartCard, toChartData,
-} from "@/components/dashboard";
-
-function Dashboard() {
-  return (
-    <FilterStateProvider>
-      <FilterBar>
-        <DropdownSlicer label="Category" field="Product[Category]" options={catOptions} />
-        <DateRangeSlicer label="Date" field="Date[Date]" />
-        <RangeSlicer label="Price" field="Product[Price]" min={0} max={1000} />
-      </FilterBar>
-      <RevenueByRegion />
-    </FilterStateProvider>
-  );
-}
-
-function RevenueByRegion() {
-  const { selections } = useFilterState();
-  const rows = applyFilters(toChartData(data), selections); // client-side filter
-  return <BarChartCard data={rows} xKey="Region" series={[{ key: "Revenue" }]} />;
-}
+<FilterStateProvider>
+  <FilterBar>
+    <DropdownSlicer label="Category" field="Product[Category]" options={catOptions} />
+    <DateRangeSlicer label="Date" field="Date[Date]" />
+    <RangeSlicer label="Price" field="Product[Price]" min={0} max={1000} />
+  </FilterBar>
+  <RevenueByRegion />   {/* reads useFilterState() → applyFilters(rows, selections) */}
+</FilterStateProvider>
 ```
 
-Every slicer works **connected** (pass `field` → shared state) OR **controlled**
-(pass `value` + `onChange`). Connected mode is a no-op outside a provider, so a
-single tile stays safe.
+Slicers: `DropdownSlicer`, `ListSlicer`, `SearchSlicer`, `DateRangeSlicer`,
+`RangeSlicer`, `FilterBar`. Fetch distinct values with
+`useSlicerOptions({ connection, field, … })`. Full guide:
+[slicers & filter state](references/slicers.md).
 
-- **`DropdownSlicer`** — popover single/multi-select with search, select-all/
-  clear, and per-value counts. `options: SlicerOption[]` (`{ value, label, count? }`).
-- **`ListSlicer`** — the same list rendered inline (for a sidebar).
-- **`SearchSlicer`** — a text `contains` filter.
-- **`DateRangeSlicer`** — from/to dates + relative presets (Last 7/30/90, MTD, YTD, All).
-- **`RangeSlicer`** — dual-thumb numeric min/max.
-- **`FilterBar`** — toolbar that hosts slicers + shows active-filter chips + "Clear all".
+## Formatting & color
 
-Fetch a slicer's distinct values straight from the model with
-**`useSlicerOptions({ connection, field, measure?, orderBy?, top? })`** →
-`{ options, isLoading, error }` (a `SUMMARIZECOLUMNS` + `TOPN` DAX query).
-Full guide: [slicers & filter state](references/slicers.md).
-
----
-
-## Coordinated interactions (Tableau-like)
-
-Built on the same filter state — clicking a chart mark filters the rest.
-
-**Cross-filter + cross-highlight:** spread `useCrossFilter(field)` onto any
-interactive chart card. A click toggles that category in shared state; selected
-marks stay vivid while the rest dim across every connected card.
-
-```tsx
-const cross = useCrossFilter("Region[Region]");
-<BarChartCard data={rows} xKey="Region" series={[{ key: "Revenue" }]} {...cross} />
-// cross = { selectedKeys, onSelect, dimUnselected }
-```
-
-**Drill-down:** `useDrilldown(id, levels)` advances through a field hierarchy on
-click; pair it with `<DrilldownBreadcrumb>` to climb back up.
-
-```tsx
-const drill = useDrilldown("geo", [{ field: "Geo[Country]" }, { field: "Geo[City]" }]);
-<DrilldownBreadcrumb drilldown={drill} rootLabel="All" />
-<BarChartCard data={rows} xKey={drill.xKey} series={[{ key: "Revenue" }]}
-  onSelect={drill.drillInto} />
-```
-
-Cards expose the interaction contract (`MarkInteraction`: `onSelect`,
-`selectedKeys`, `dimUnselected`) — the cartesian cards (`LineChartCard` /
-`AreaChartCard` / `BarChartCard`) respond to clicks; donut and scatter currently
-show hover tooltips only. Full guide: [coordinated interactions](references/interactions.md).
-
----
-
-## Cards
-
-### `KpiCard`
-Hero metric tile: big formatted value, colored delta pill, optional accent
-dot / badge / icon, and an optional sparkline slot (`children`).
-
-```tsx
-<KpiCard
-  label="Revenue"
-  data={rows}             // derive the value from the first row…
-  valueKey="revenue"      // …reading this column
-  valueFormat="currency"
-  secondary="vs $1.1M last month"   // optional muted sub-value
-  delta={12.4}            // signed % vs baseline → green/red pill
-  deltaLabel="vs last month"
-  accent="chart-1"
-  loading={isLoading}
-  error={error}
-  invertDelta={false}     // set true when down-is-good (cost, churn, latency)
->
-  <Sparkline data={trend} color="chart-1" />
-</KpiCard>
-```
-
-Pass either a literal `value` **or** `data` + `valueKey` (reads the first row).
-With no value and no rows it renders the empty state — never a fake `0`.
-
-> **Empty card with data present?** `valueKey` must match a column name **exactly**
-> (case-sensitive) as it appears in your mapped rows. A mismatch (wrong casing, an
-> un-aliased DAX name like `[Total Revenue]`, or forgetting `toChartData`) makes the
-> card fall back to its empty state. In dev the console prints the available keys —
-> alias columns in `toChartData({ columns: { revenue: "Total Revenue" } })` for stable keys.
-
-Props: `label`, `value` (number→formatted, or string) **or** `data` + `valueKey`,
-`valueFormat`, `secondary`, `delta`, `deltaLabel`, `invertDelta`, `accent`,
-`icon`, `badge`, `loading`, `error`, `emptyMessage`, `onRetry`, `children`.
-
-### `ChartCard`
-Titled card shell (rounded-2xl, hairline border, no shadow) wrapping any
-chart or content. The chart cards below use it internally; use it directly
-only for custom content or the [escape hatch](#escape-hatch).
-
-```tsx
-<ChartCard title="Revenue" subtitle="Last 12 months" action={<FilterChips … />}>
-  {/* any chart or content */}
-</ChartCard>
-```
-
-Props: `title`, `subtitle`, `action`, `footer`, `bodyClassName`, `children`.
-
-### `DataTableCard`
-Fabric `DataGrid` inside the card shell — sortable, filterable, resizable,
-themed for light/dark. See [data-grid-visual.md](references/data-grid-visual.md)
-for custom cell rendering and [data-table.md](references/data-table.md) for
-the `DataTable` shape.
-
-```tsx
-const table = toDataTable(data, columnMetadata); // result → DataTable
-
-<DataTableCard title="Top accounts" loading={isLoading} error={error}
-  data={table} pageSize={10} />
-```
-
-Props: `data` (a `DataTable`), `height`, `rowHeight`, `pageSize`, plus the
-shared state props.
-
----
-
-## Charts
-
-All chart cards share `ChartCardCommonProps` (`title`, `subtitle`, `action`,
-`className`, `loading`, `error`, `emptyMessage`, `onRetry`) and render the
-right state automatically.
-
-### `LineChartCard` / `AreaChartCard`
-Time series, single or multi-series. `AreaChartCard` fills under the line and
-supports `stacked`.
-
-```tsx
-<LineChartCard
-  title="Revenue" subtitle="Last 12 months"
-  loading={isLoading} error={error}
-  data={rows}
-  xKey="Month"
-  xFormat={(m) => formatDate(m, "short")}
-  series={[
-    { key: "Revenue", label: "Revenue", color: "chart-1" },
-    { key: "Target",  label: "Target",  color: "neutral" },
-  ]}
-  valueFormat="currency"
-  referenceLines={[{ y: 1_000_000, label: "Goal" }]}
-/>
-```
-
-### `BarChartCard`
-Grouped or stacked bars (`stacked`), vertical by default. Set `horizontal`
-for ranked horizontal bars (category on the Y axis) — ideal for "top N"
-breakdowns. Bars plot in row order, so sort `rows` by value first.
-
-```tsx
-<BarChartCard title="Revenue by region" data={rows} xKey="Region"
-  series={[{ key: "Revenue" }]} valueFormat="currency" />
-
-// Ranked horizontal bars — categories down the Y axis, sorted by value:
-<BarChartCard title="Top regions" horizontal data={rows} xKey="region"
-  series={[{ key: "revenue", label: "Revenue" }]} valueFormat="currency" />
-```
-
-Cartesian chart props: `data` (mapped rows), `xKey`, `series`
-(`{ key, label?, color?, stackId? }[]`), `height`/`aspect` (responsive by
-default), `valueFormat`, `xFormat` (auto for dates), `showGrid`, `showLegend`,
-`legendPlacement`, `stacked`, `layout`/`horizontal` (bar), `curve` (line/area),
-`referenceLines`.
-
-### `DonutChartCard` / `PieChartCard`
-Categorical share with a value + % legend. The donut center shows the total
-by default.
-
-```tsx
-<DonutChartCard title="Sales by channel" data={rows}
-  nameKey="Channel" valueKey="Sales" valueFormat="currency" />
-```
-
-Props: `data`, `nameKey`, `valueKey`, `colors?`, `height` (max donut size),
-`valueFormat`, `donut`, `centerLabel`, `showLegend`, `legendPlacement`
-(`"top" | "right" | "bottom"`, default `"right"`), plus shared state props.
-
-### `ComboChartCard`
-Bars **plus** line(s), with an optional **dual Y axis** so a different-unit
-trend (a margin %, a conversion rate) overlays value bars without being
-flattened. The classic "revenue bars + margin line" combo.
-
-```tsx
-<ComboChartCard
-  title="Revenue & margin" data={rows} xKey="Month"
-  bars={[{ key: "Revenue", label: "Revenue", color: "chart-1" }]}
-  lines={[{ key: "Margin", label: "Margin %", color: "chart-4" }]}
-  valueFormat="currency"        // left axis (bars)
-  rightValueFormat="percent"    // right axis (lines)
-/>
-```
-
-Props: `data`, `xKey`, `bars` / `lines` (`SeriesConfig[]`), `valueFormat`,
-`rightValueFormat`, `rightAxis?` (default on when both bars+lines present),
-`stacked`, `curve`, `referenceLines`, `xFormat`, `height`/`aspect`,
-`legendPlacement`, plus shared state props.
-
-### `ScatterChartCard`
-X/Y correlation, with optional **bubble** sizing (`sizeKey`) and categorical
-**grouping** (`series` splits points into themed, legended groups).
-
-```tsx
-<ScatterChartCard
-  title="Discount vs margin" data={rows}
-  xKey="DiscountRate" yKey="GrossMargin"
-  sizeKey="Revenue" series="Segment"
-  xFormat="ratio" valueFormat="ratio" sizeName="Revenue"
-/>
-```
-
-Props: `data`, `xKey`, `yKey`, `sizeKey?`, `series?`, `xFormat`, `valueFormat`,
-`sizeName?`, `height`/`aspect`, `showGrid`, `showLegend`, `legendPlacement`,
-plus shared state props.
-
-### `GaugeCard`
-A single metric vs a target (or max) as a radial gauge with a big centered
-value. Pass `thresholds` to color the arc by attainment.
-
-```tsx
-<GaugeCard
-  title="Quota attainment" value={72} target={100} valueFormat="percent"
-  thresholds={[{ at: 0, color: "danger" }, { at: 60, color: "warning" }, { at: 90, color: "success" }]}
-/>
-```
-
-Props: `value`, `target?` **or** `max?`, `valueFormat`, `thresholds?`
-(`{ at, color }[]`, greatest `at ≤ %` wins), `label?`, `height`/`aspect`,
-`startAngle`/`endAngle`, plus shared state props.
-
-### `FunnelChartCard`
-Ordered stage conversion (lead → opportunity → win) sized by value, with
-per-stage conversion labels (% of the first stage). Auto-sorts descending.
-
-```tsx
-<FunnelChartCard title="Pipeline" data={rows}
-  stageKey="Stage" valueKey="Accounts" valueFormat="compact" />
-```
-
-Props: `data`, `stageKey`, `valueKey`, `valueFormat`, `height`/`aspect`, `sort`
-(default true), `showConversion` (default true), plus shared state props.
-
-### `BulletChartCard` / `ProgressBar`
-Compact actual-vs-target bars for "progress to goal" lists (quota, budget
-burn, OKRs). `BulletChartCard` maps rows to a stack of bars; `ProgressBar` is
-the single-bar primitive. A `targetKey`/`target` draws a goal marker and tints
-met bars green.
-
-```tsx
-<BulletChartCard title="Quota attainment" data={rows}
-  labelKey="rep" valueKey="bookings" targetKey="quota" valueFormat="currency" />
-
-<ProgressBar label="Q3 quota" value={82_000} target={100_000} valueFormat="currency" />
-```
-
-`BulletChartCard` props: `data`, `labelKey`, `valueKey`, `targetKey?`,
-`valueFormat`, `max?`, `color?`, `barHeight?`, plus shared state props.
-
-### `Sparkline`
-Compact, axis-less trend for KPI cards / inline cells. Accepts a raw
-`number[]` (or objects + `dataKey`).
-
-```tsx
-<Sparkline data={[12, 18, 9, 22, 17, 25]} color="chart-1" />
-```
-
-### `ChartTooltip`
-The themed tooltip the chart cards wire up automatically. You only touch it in a
-custom chart — render it inside the `tooltipBoxStyle(x, y, width)` overlay driven
-by `useChartTooltip()` (see its JSDoc and `cartesian.tsx`).
+- **In a spec:** format numbers/dates with Envy's
+  [format mini-language](references/formatting.md) on a `FieldDef` —
+  `"$,.0f"`, `",d"`, `".1%"`, `".2s"` (→ `1.2k`), `"%b %e, %Y"` (dates).
+- **KpiCard:** `valueFormat` — `"number" | "compact" | "currency" | "percent"
+  (0–100) | "ratio" (0–1)` or a `(n) => string` function.
+- **DataGrid:** a per-column `format` string (VBA/ECMA-376) in `columnMetadata`.
+- **Color/theme:** never put hex in a spec — `ChartCard` themes every chart from
+  `src/global.css` tokens (`--color-chart-1..6`, accent, dark mode). Restyle by
+  editing those tokens. See [formatting & color](references/formatting.md).
 
 ## State tiles
 
-Used internally by the cards; use directly only in the escape hatch or for
-custom content. `TileBody` is the switchboard (error → loading → empty →
-children).
+Used internally by the cards; use directly only for custom content.
 
-- **`EmptyTile`** (`message`, `icon`, `height`) — friendly no-data state.
-- **`ErrorTile`** (`error`, `title`, `onRetry`, `height`).
-- **`ChartSkeleton`** / **`KpiSkeleton`** — shimmer placeholders.
+- **`EmptyTile`** (`message`, `icon`, `height`) · **`ErrorTile`** (`error`,
+  `title`, `onRetry`, `height`) · **`ChartSkeleton`** / **`KpiSkeleton`** ·
+  **`TileBody`** (error → loading → empty → children switchboard).
 
----
-
-## Escape hatch
-
-If a visualization genuinely isn't in the kit (e.g. radar, treemap, heatmap,
-waterfall), **first consider adding it to the kit** — copy the closest card
-(`cartesian.tsx` is the reference) and reuse the custom chart core. For a true
-one-off, build it on that same core so it stays themed, responsive, and
-dark-mode-correct. There is **no charting library** to fall back on — you draw
-SVG, but the core does the hard parts (sizing, scales, axes, tooltip).
-
-The core: `ChartFrame` measures the plot and hands your render-prop the
-`{ width, height }`; `d3-scale` maps data → pixels; `useChartTheme()` +
-`seriesColor` / `roleColor` give theme-correct colors.
+## Import surface
 
 ```tsx
-import { scaleBand, scaleLinear } from "d3-scale";
-import { ChartCard, ChartFrame, useChartTheme, seriesColor } from "@/components/dashboard";
-
-function LollipopCard({ data }: { data: Array<{ label: string; value: number }> }) {
-  const theme = useChartTheme();
-  const m = { top: 12, right: 16, bottom: 28, left: 8 };
-  return (
-    <ChartCard title="Score by category">
-      <ChartFrame aspect={1.8}>
-        {({ width, height }) => {
-          const iw = width - m.left - m.right;
-          const ih = height - m.top - m.bottom;
-          const x = scaleBand<string>()
-            .domain(data.map((d) => d.label)).range([0, iw]).padding(0.5);
-          const y = scaleLinear()
-            .domain([0, Math.max(0, ...data.map((d) => d.value))]).range([ih, 0]).nice();
-          return (
-            <svg width={width} height={height} role="img">
-              <g transform={`translate(${m.left},${m.top})`}>
-                {y.ticks(4).map((t) => (
-                  <line key={t} x1={0} x2={iw} y1={y(t)} y2={y(t)} stroke={theme.grid} />
-                ))}
-                {data.map((d) => {
-                  const cx = (x(d.label) ?? 0) + x.bandwidth() / 2;
-                  return (
-                    <g key={d.label}>
-                      <line x1={cx} x2={cx} y1={ih} y2={y(d.value)}
-                        stroke={theme.grid} strokeWidth={2} />
-                      <circle cx={cx} cy={y(d.value)} r={5} fill={seriesColor(0)} />
-                      <text x={cx} y={ih + 18} textAnchor="middle" fontSize={11} fill={theme.axis}>
-                        {d.label}
-                      </text>
-                    </g>
-                  );
-                })}
-              </g>
-            </svg>
-          );
-        }}
-      </ChartFrame>
-    </ChartCard>
-  );
-}
+import {
+  // layout + controls
+  PageShell, KpiGrid, ChartGrid, Section, BentoGrid, BentoItem, ThemeToggle,
+  SegmentedControl, FilterChips,
+  // slicers + shared filter state
+  FilterStateProvider, useFilterState, FilterBar,
+  DropdownSlicer, ListSlicer, SearchSlicer, DateRangeSlicer, RangeSlicer,
+  useSlicerOptions, applyFilters, toDaxFilters,
+  // cards + Envy runtime
+  ChartCard, KpiCard, DataTableCard, Chart, validateSpec, type ChartSpec,
+  // state tiles + sparkline
+  EmptyTile, ErrorTile, ChartSkeleton, KpiSkeleton, TileBody, Sparkline,
+  // DAX → rows helpers + formatting/color
+  toChartData, toDataTable, topN, deriveKpi, pivotChartData,
+  formatNumber, formatCompact, formatCurrency, formatPercent, formatDate,
+  seriesColor, roleColor,
+} from "@/components/dashboard";
 ```
 
-Rules for the escape hatch:
-- Size with `ChartFrame` (responsive aspect + clamps, optional `legend` /
-  `legendPlacement`) and its render-prop — never a fixed-height `<svg>`, so your
-  chart scales like the built-in ones.
-- Scale with `d3-scale`; for kit-perfect axes / gridlines / tooltips reuse the
-  core primitives in `@/components/dashboard/charts/*` (`bandScale` / `linearScale`,
-  `AxisBottom` / `AxisLeft`, `GridRows`, `useChartTooltip` + `tooltipBoxStyle` +
-  the `ChartTooltip` component).
-- Color with `useChartTheme()` + `seriesColor` / `roleColor` (or
-  `var(--color-chart-n)`) — never hardcode hex, so dark mode keeps working.
-- Spread `useCrossFilter(field)` (the `MarkInteraction` contract) onto your marks
-  to make a custom chart participate in cross-filtering.
-- If you write the same custom chart twice, promote it into the kit.
+## References
 
-For the full chart-core walkthrough (primitives + how to add a mark), see
-[custom charts](references/custom-charts.md).
-
-For deeper details: [formatting & colors](references/formatting.md),
-[multiple series & overlays](references/multi-data-input.md),
-[slicers & filter state](references/slicers.md),
-[coordinated interactions](references/interactions.md),
-[DataGrid cell rendering](references/data-grid-visual.md),
-[the `DataTable` shape](references/data-table.md).
+- [Envy spec reference](references/envy-spec-reference.md) — every chart type,
+  channel, and option, with copy-paste JSON.
+- [Formatting & color](references/formatting.md) — the format mini-language,
+  `valueFormat`, DataGrid column formats, theme tokens.
+- [Slicers & filter state](references/slicers.md) · [interactions](references/interactions.md).
+- [DataGrid cell rendering](references/data-grid-visual.md) ·
+  [the `DataTable` shape](references/data-table.md) ·
+  [multiple data inputs](references/multi-data-input.md) ·
+  [choosing the closest type](references/custom-charts.md).

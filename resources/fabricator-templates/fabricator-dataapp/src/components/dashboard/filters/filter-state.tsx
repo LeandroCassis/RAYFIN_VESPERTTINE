@@ -81,7 +81,7 @@ export interface FilterStateApi {
     clearAll: () => void;
     /** True when at least one selection is active. */
     isActive: boolean;
-    /** Drill path per drilldown id (used by useDrilldown). */
+    /** Generic per-id path store (e.g. a breadcrumb / drill path). */
     drillPath: (id: string) => Array<string | number>;
     /** Store the drill path for one drilldown id. */
     setDrillPath: (id: string, path: Array<string | number>) => void;

@@ -93,20 +93,22 @@ function SalesByCategoryChart({ selectedRatings }: { selectedRatings: string[] }
   const allRows = toChartData(all);
   const highlightedRows = toChartData(highlighted ?? undefined);
   const highlightedByCategory = new Map(highlightedRows.map(r => [r.Category, r.Sales]));
-  const rows = allRows.map(row => ({
-    ...row,
-    HighlightedSales: highlightedByCategory.get(row.Category) ?? 0,
-  }));
+  const rows = allRows.flatMap(row => [
+    { Category: row.Category, Layer: "All", Sales: row.Sales },
+    { Category: row.Category, Layer: "Selected", Sales: highlightedByCategory.get(row.Category) ?? 0 },
+  ]);
 
   return (
-    <BarChartCard
-      data={rows}
-      xKey="Category"
-      series={[
-        { key: "Sales", label: "All", color: "neutral" },
-        { key: "HighlightedSales", label: "Selected", color: "chart-1" },
-      ]}
-      valueFormat="currency"
+    <ChartCard
+      spec={{
+        type: "bar",
+        data: rows,
+        encoding: {
+          x: { field: "Category", type: "nominal" },
+          y: { field: "Sales", type: "quantitative", format: "$,.0f" },
+          series: { field: "Layer" },
+        },
+      }}
     />
   );
 }
@@ -119,7 +121,7 @@ function SalesByCategoryChart({ selectedRatings }: { selectedRatings: string[] }
 When the baseline query changes, keep the subset query in sync with it:
 
 - Same grouping columns, same order.
-- Same measure name and expression — the baseline and highlighted `series` keys must align.
+- Same measure name and expression — the baseline and highlighted `encoding.series` categories must align.
 - Same outer time / scope filters; the selection adds to them, it doesn't replace them.
 
 Derive both from the same factory: the baseline query is the source; the subset query is `CALCULATETABLE(<baseline aggregation>, <selection predicates>)`.

@@ -28,7 +28,7 @@ export const monthlyRevenue = [
     { month: "2024-12", revenue: 341_500, profit: 95_700, orders: 2_233 },
 ];
 
-/** Revenue by region — for ranked / horizontal bar charts. */
+/** Revenue by region — for ranked (vertical) bar charts. */
 export const regionRevenue = [
     { region: "North America", revenue: 482_000 },
     { region: "Europe", revenue: 364_500 },
@@ -79,3 +79,35 @@ export const productCategories = [
     "Clothing",
     "Components",
 ];
+
+/* ----------------------------------------------------------------------- *
+ * Long / tidy reshapes. Envy reads ONE long table per chart and splits
+ * multiple series via `encoding.series` — so melt wide rows (a column per
+ * series) into `{ category, series, value }` rather than pivoting. DAX
+ * `SUMMARIZECOLUMNS` already returns this shape; these derive it from the wide
+ * samples above for the gallery.
+ * ----------------------------------------------------------------------- */
+
+/** `monthlyRevenue` melted to one row per month × metric — multi-series line. */
+export const revenueProfitLong = monthlyRevenue.flatMap((row) => [
+    { month: row.month, metric: "Revenue", value: row.revenue },
+    { month: row.month, metric: "Profit", value: row.profit },
+]);
+
+/** `channelRevenue` melted to one row per quarter × channel — stacks/groups. */
+export const channelLong = channelRevenue.flatMap((row) => [
+    { quarter: row.quarter, channel: "Online", revenue: row.online },
+    { quarter: row.quarter, channel: "Retail", revenue: row.retail },
+    { quarter: row.quarter, channel: "Wholesale", revenue: row.wholesale },
+]);
+
+/** Region × quarter revenue grid — for the heatmap (x × y → color). */
+export const regionQuarter = regionRevenue.flatMap((row, regionIndex) =>
+    ["Q1", "Q2", "Q3", "Q4"].map((quarter, quarterIndex) => ({
+        region: row.region,
+        quarter,
+        revenue: Math.round(
+            (row.revenue / 4) * (0.78 + 0.14 * ((regionIndex + quarterIndex) % 4)),
+        ),
+    })),
+);

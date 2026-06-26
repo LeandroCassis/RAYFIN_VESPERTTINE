@@ -5,7 +5,10 @@ description: Use when generating chart and data grid visuals. Provides guidance 
 ---
 # Visual Style Recipes
 
-Styling guidance for dashboard kit chart and data grid visuals — theming, dark mode, layout, and chart-specific patterns.
+Styling guidance for dashboard visuals — theming, dark mode, layout, and
+chart-specific patterns. Charts are **Envy specs** rendered by `ChartCard`; KPIs
+use `KpiCard`; tabular data uses `DataTableCard` (Fabric `DataGrid`). For the
+full spec model see the `visuals` skill.
 
 ---
 
@@ -13,64 +16,73 @@ Styling guidance for dashboard kit chart and data grid visuals — theming, dark
 
 ### How theming works
 
-All visual styling flows from CSS custom properties defined in `src/global.css`. Kit components read these variables at runtime — edit `global.css` to theme everything.
+All visual styling flows from CSS custom properties defined in `src/global.css`.
+Kit components and the chart theme bridge read these variables at runtime — edit
+`global.css` to theme everything.
 
 - **Light mode** values go in the `@theme` block
 - **Dark mode** overrides go in the `.dark` block
-- Changes cascade automatically to all charts and grids
+- Changes cascade automatically to all charts, KPIs, and grids
 
-The important tokens are `--color-primary`, `--color-primary-soft`, `--color-background`, `--color-card`, `--color-border`, `--color-ring`, `--color-brand`, `--color-chart-1` through `--color-chart-6`, `--font-display`, `--font-sans`, `--font-mono`, and the radius scale (`--radius-sm` through `--radius-3xl`, plus `--radius-full`).
+The important tokens are `--color-primary`, `--color-primary-soft`,
+`--color-background`, `--color-card`, `--color-border`, `--color-ring`,
+`--color-brand`, `--color-chart-1` through `--color-chart-6`, `--font-display`,
+`--font-sans`, `--font-mono`, and the radius scale (`--radius-sm` through
+`--radius-3xl`, plus `--radius-full`).
 
-### Custom theme colors
+### Charts auto-theme — never put color or theme in a spec
 
-Chart cards auto-theme from the design tokens. Compose the kit and pass mapped data; do not pass a separate chart theme object.
+`ChartCard` bridges the app's CSS tokens into Envy automatically, so an authored
+spec carries **no `theme` and no per-series colors**. Author the data + encoding
+only:
 
 ```tsx
-import { LineChartCard, toChartData } from "@/components/dashboard";
+import { ChartCard, toChartData } from "@/components/dashboard";
 
-const rows = toChartData(data);
-
-<LineChartCard
+<ChartCard
   title="Revenue trend"
   loading={isLoading}
   error={error}
-  data={rows}
-  xKey="Month"
-  series={[{ key: "Revenue", color: "chart-1" }]}
-  valueFormat="currency"
+  spec={{
+    type: "line",
+    data: toChartData(data),
+    encoding: {
+      x: { field: "Month", type: "temporal" },
+      y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />;
 ```
 
-Edit `--color-chart-1` through `--color-chart-6` in `global.css` (and the `.dark` block) to change series and categorical colors. The accent is a single swappable family: recolor `--color-primary`, `--color-primary-soft`, `--color-primary-strong`, `--color-chart-1`, `--color-ring`, and `--color-brand` together.
+Series colors come from `--color-chart-1` through `--color-chart-6` **in series
+order** (first series → `--color-chart-1`, and so on). To recolor charts, edit
+those tokens in `global.css` (and the `.dark` block) — don't hardcode colors in
+the spec. The accent is a single swappable family: recolor `--color-primary`,
+`--color-primary-soft`, `--color-primary-strong`, `--color-chart-1`,
+`--color-ring`, and `--color-brand` together.
 
-### Data color alignment
+### Color that carries meaning (KPIs)
 
-Validate that chart data colors fit the app's current visual theme and design direction. Prefer kit color names in series configs: chart tokens (`"chart-1"`…`"chart-6"`) for ordered series and semantic roles (`"success"`, `"warning"`, `"info"`, `"brand"`, `"neutral"`) when the color carries meaning.
+`KpiCard` accents and semantic roles still take named colors. Prefer chart
+tokens (`"chart-1"`…`"chart-6"`) for ordered metrics and semantic roles
+(`"success"`, `"warning"`, `"info"`, `"brand"`, `"neutral"`) when the color
+carries meaning — never raw hex.
 
 ```tsx
-<BarChartCard
-  title="Revenue by region"
-  data={rows}
-  xKey="Region"
-  series={[
-    { key: "Actual", color: "chart-1" },
-    { key: "Target", color: "neutral" },
-  ]}
-  valueFormat="currency"
-/>;
+<KpiCard label="Revenue" value={revenue} valueFormat="currency" accent="chart-1" />
+<KpiCard label="Churn" value={churn} valueFormat="percent" accent="warning" invertDelta />
 ```
 
 ### Chart typography alignment
 
-Validate that chart text styling fits the app's current theme and typography direction. Kit chart axes, legends, tooltips, and cards inherit from `--font-sans`, `--font-display`, and `--font-mono`; update those tokens rather than styling each chart independently.
+Chart axes, legends, and tooltips inherit the app fonts through the theme
+bridge. Keep type consistent by updating `--font-sans`, `--font-display`, and
+`--font-mono` rather than styling charts individually.
 
 - Keep chart font family aligned with the primary app font choice.
 - Adjust card titles and surrounding layout density to match the type hierarchy.
-- Re-check label legibility after changing theme colors, since typography and color contrast must work together.
-
-### Axis and label color consistency
-
-Axis labels, gridlines, cursors, and tooltip surfaces come from chart tokens such as `--color-chart-axis`, `--color-chart-grid`, `--color-chart-cursor`, `--color-card`, and `--color-foreground-secondary`. Keep those token mappings consistent across all charts to avoid mismatched label colors.
+- Re-check label legibility after changing theme colors, since typography and
+  color contrast must work together.
 
 ---
 
@@ -78,24 +90,20 @@ Axis labels, gridlines, cursors, and tooltip surfaces come from chart tokens suc
 
 ### Chart container sizing
 
-Use `PageShell`, `KpiGrid`, and `ChartGrid` for dashboard structure. Chart cards own their responsive chart container; set the card `height` prop only when a specific visual needs more or less vertical space.
+Use `PageShell`, `KpiGrid`, and `ChartGrid` for dashboard structure. `ChartCard`
+owns a responsive chart body; set the card `height` prop only when a specific
+visual needs more or less vertical space.
 
 ```tsx
 import {
-  PageShell,
-  ThemeToggle,
-  KpiGrid,
-  ChartGrid,
-  KpiCard,
-  LineChartCard,
-  DonutChartCard,
-  DataTableCard,
-  toChartData,
-  toDataTable,
+  PageShell, ThemeToggle, KpiGrid, ChartGrid,
+  KpiCard, ChartCard, DataTableCard,
+  toChartData, toDataTable,
 } from "@/components/dashboard";
 
-const chartRows = toChartData(data);
-const table = toDataTable(data, columnMetadata);
+const trend = toChartData(trendResult);   // long rows: { Month, Revenue }
+const mix = toChartData(mixResult);        // long rows: { Channel, Sales }
+const table = toDataTable(detailResult, columnMetadata);
 
 <PageShell title="Sales overview" actions={<ThemeToggle />}>
   <KpiGrid>
@@ -103,8 +111,29 @@ const table = toDataTable(data, columnMetadata);
     <KpiCard label="Margin" value={margin} valueFormat="percent" accent="success" />
   </KpiGrid>
   <ChartGrid>
-    <LineChartCard title="Revenue trend" data={chartRows} xKey="Month" series={[{ key: "Revenue", color: "chart-1" }]} valueFormat="currency" />
-    <DonutChartCard title="Sales mix" data={chartRows} nameKey="Channel" valueKey="Sales" valueFormat="currency" colors={["chart-1", "chart-2", "chart-3"]} />
+    <ChartCard
+      title="Revenue trend"
+      spec={{
+        type: "line",
+        data: trend,
+        encoding: {
+          x: { field: "Month", type: "temporal" },
+          y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+        },
+      }}
+    />
+    <ChartCard
+      title="Sales mix"
+      spec={{
+        type: "pie",
+        donut: true,
+        data: mix,
+        encoding: {
+          theta: { field: "Sales", type: "quantitative", format: "$,.0f" },
+          color: { field: "Channel", type: "nominal" },
+        },
+      }}
+    />
     <DataTableCard title="Details" data={table} pageSize={10} />
   </ChartGrid>
 </PageShell>;
@@ -112,63 +141,68 @@ const table = toDataTable(data, columnMetadata);
 
 ### Chart container height chain
 
-Charts must fill their card's visible height — no dead space, no cropping. With kit cards, the height chain is mostly handled for you:
+Charts must fill their card's visible height — no dead space, no cropping. With
+`ChartCard` the height chain is mostly handled for you:
 
 1. **Grid/flex cell** → provides the width and placement
-2. **Card wrapper** → `ChartCard`/chart card owns the rounded card shell
+2. **Card wrapper** → `ChartCard` owns the rounded card shell
 3. **Tile body** → state handling reserves the requested height
-4. **Chart renderer** → responsive chart fills that body
+4. **Envy `<Chart>`** → responsive canvas fills that body
 
-If a chart appears squished, first check the surrounding grid or flex parent, then adjust the card `height` prop. Do not wrap chart cards in fixed-height containers unless the whole dashboard section needs that constraint.
+If a chart appears squished, first check the surrounding grid or flex parent,
+then adjust the card `height` prop. Do not wrap chart cards in fixed-height
+containers unless the whole dashboard section needs that constraint.
 
-The kit's `DataTableCard` already wraps the Fabric DataGrid in a rounded, scrollable, themed container.
+The kit's `DataTableCard` already wraps the Fabric DataGrid in a rounded,
+scrollable, themed container.
 
 ### `minHeight` vs `height` for chart containers
 
-Validate that containers provide a definite height when a section relies on full-height cards.
+Validate that containers provide a definite height when a section relies on
+full-height cards.
 
-- `height` creates a definite height and allows full-height wrappers to resolve correctly.
-- `minHeight` alone does not create a definite height for flex/grid children and can lead to squished charts in standalone sections.
+- `height` creates a definite height and allows full-height wrappers to resolve.
+- `minHeight` alone does not create a definite height for flex/grid children and
+  can lead to squished charts in standalone sections.
 
 Use layout-aware checks:
 
-- Grid layouts: `minHeight` on the grid container is generally acceptable because grid tracks provide definite row heights.
-- Standalone full-width chart sections: prefer explicit `height` on the section/container when using full-height card wrappers.
+- Grid layouts: `minHeight` on the grid container is generally acceptable because
+  grid tracks provide definite row heights.
+- Standalone full-width chart sections: prefer explicit `height` on the
+  section/container when using full-height card wrappers.
 
 ### Chart titles in cards
 
-Use the kit card `title` and `subtitle` props for dashboard cards. Scale the surrounding page headings to match the app's type hierarchy.
+Use the card `title` and `subtitle` props (not a `title` inside the spec) for
+dashboard cards. Scale the surrounding page headings to match the app's type
+hierarchy.
 
-- The title should summarize what the chart shows in plain language (e.g., "Monthly Revenue by Region", "Top 10 Products by Units Sold").
-- Derive the title from the data fields and the intent of the visualization — do not use generic titles like "Chart" or "Bar Chart".
-- If the user provides a title, use it as-is. Otherwise, infer a good title from the query and encodings.
+- The title should summarize what the chart shows in plain language (e.g.,
+  "Monthly Revenue by Region", "Top 10 Products by Units Sold").
+- Derive the title from the data fields and the intent of the visualization — do
+  not use generic titles like "Chart" or "Bar Chart".
+- If the user provides a title, use it as-is. Otherwise infer a good title from
+  the query and encodings.
 
-> **Layout creativity**: Consider mixed card spans, a full-width hero row, asymmetric column ratios, or generous negative space between sections. The layout should reinforce the aesthetic direction.
+> **Layout creativity**: Consider mixed card spans, a full-width hero row,
+> asymmetric column ratios, or generous negative space between sections. The
+> layout should reinforce the aesthetic direction.
 
 ---
 
-## Named Styles
+## Named conventions
 
-The kit exposes named color conventions through component props. Use these instead of raw hex values.
+Use named conventions through component props and spec format strings instead of
+raw values.
 
-| Convention | Use case | Effect |
+| Convention | Where | Effect |
 |---|---|---|
-| `color: "chart-1"`…`"chart-6"` | Ordered series / categories | Uses the tokenized chart palette and dark-mode overrides |
-| `color: "success"` | Positive state, healthy KPI, increase | Maps to semantic success colors |
-| `color: "warning"` / `"info"` | Attention or informational series | Keeps meaning consistent across cards |
-| `valueFormat="currency"` / `"percent"` / `"compact"` | Numbers in KPIs, axes, legends, tooltips | Centralized formatting with no per-chart formatter boilerplate |
-
-Usage in a chart card:
-
-```tsx
-<AreaChartCard
-  title="Pipeline coverage"
-  data={rows}
-  xKey="Month"
-  series={[{ key: "Coverage", color: "success" }]}
-  valueFormat="ratio"
-/>;
-```
+| `--color-chart-1`…`--color-chart-6` (token order) | Chart series | Series take palette colors by order; recolor by editing tokens |
+| `accent="chart-1"` / `"success"` / `"warning"` | `KpiCard` | Tokenized accent dot / semantic meaning |
+| `valueFormat="currency"` / `"percent"` / `"ratio"` / `"compact"` | `KpiCard` | Centralized KPI number formatting |
+| `format: "$,.0f"` / `".1%"` / `"%b %Y"` | Spec axis/label channels | Envy format mini-language (see `visuals` → `formatting.md`) |
+| `format` on a `DataGrid` column | `DataTableCard` | Per-column number/date formatting |
 
 ---
 
@@ -178,96 +212,139 @@ These produce good results. Deviate when the design calls for it.
 
 ### Card content spacing
 
-Content areas inside a card should use consistent horizontal padding that matches the card header. The kit cards already do this; keep custom `ChartCard` children aligned with the same rhythm.
+Content inside a card should use consistent horizontal padding that matches the
+card header. `ChartCard` and `KpiCard` already do this; keep any custom children
+aligned with the same rhythm.
 
-### Bar corner radius
+### Bar charts
 
-The kit uses a consistent rounded bar treatment that follows the app's flat, modern radius system. If you use the escape hatch (the custom chart core) for a bespoke bar shape, choose sharp or rounded corners deliberately and apply that choice consistently across all bar charts.
-
-### Grouped bar charts
-
-Use multiple `series` entries for grouped bars. Use `stacked` when the analytic intent is contribution-to-total rather than side-by-side comparison.
+Author a `bar` spec. Bars round their corners via `cornerRadius` in the spec; use
+it consistently across bar charts. **Horizontal/ranked bars are not honored in
+the installed Envy build** — `orientation` is ignored, so for top-N use a
+vertical bar with the rows pre-sorted/limited (`topN(rows, key, n)`).
 
 ```tsx
-<BarChartCard
-  title="Actual vs target"
-  data={rows}
-  xKey="Region"
-  series={[{ key: "Actual", color: "chart-1" }, { key: "Target", color: "chart-2" }]}
-  valueFormat="currency"
+<ChartCard
+  title="Revenue by region"
+  spec={{
+    type: "bar",
+    data: toChartData(data),   // { Region, Revenue }
+    encoding: {
+      x: { field: "Region", type: "nominal" },
+      y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />;
 ```
 
-### Trend cards
+### Grouped / stacked bars
 
-Use `LineChartCard` for precise trend comparison and `AreaChartCard` when the filled shape helps emphasize volume. Add `referenceLines` for goals or thresholds.
+Multi-series comes from **long rows** + `encoding.series` (one row per category ×
+series), not from wide columns. Add `stack: true` when the intent is
+contribution-to-total rather than side-by-side comparison.
 
 ```tsx
-<LineChartCard
+// long rows: { Region, Measure: "Actual" | "Target", Amount }
+<ChartCard
+  title="Actual vs target"
+  spec={{
+    type: "bar",
+    data: rows,
+    encoding: {
+      x: { field: "Region", type: "nominal" },
+      y: { field: "Amount", type: "quantitative", format: "$,.0f" },
+      series: { field: "Measure", type: "nominal" },
+    },
+  }}
+/>;
+```
+
+### Trend lines
+
+Use `line` for precise trend comparison; set `area: true` when the filled shape
+helps emphasize volume. **Envy has no reference lines** — show a goal as a
+constant extra series (a second `Measure` value repeated across x) or state it in
+the card `footer`.
+
+```tsx
+<ChartCard
   title="Monthly recurring revenue"
-  data={rows}
-  xKey="Month"
-  series={[{ key: "MRR", color: "chart-1" }]}
-  valueFormat="currency"
-  referenceLines={[{ y: target, label: "Target" }]}
+  footer={`Target: ${formatCurrency(target)}`}
+  spec={{
+    type: "line",
+    data: toChartData(data),   // { Month, MRR }
+    encoding: {
+      x: { field: "Month", type: "temporal" },
+      y: { field: "MRR", type: "quantitative", format: "$,.0f" },
+    },
+  }}
 />;
 ```
 
 ### Pie / Donut
 
-Use `DonutChartCard` for categorical share with a value + percent legend. Use `colors` only when the default palette needs tighter alignment with the app's direction.
+Use a `pie` spec with `donut: true` for categorical share. Encode `theta` (the
+value) and `color` (the category).
 
 ```tsx
-<DonutChartCard
+<ChartCard
   title="Sales by channel"
-  data={rows}
-  nameKey="Channel"
-  valueKey="Sales"
-  valueFormat="currency"
-  colors={["chart-1", "chart-2", "chart-3", "chart-4"]}
+  spec={{
+    type: "pie",
+    donut: true,
+    data: toChartData(data),   // { Channel, Sales }
+    encoding: {
+      theta: { field: "Sales", type: "quantitative", format: "$,.0f" },
+      color: { field: "Channel", type: "nominal" },
+    },
+  }}
 />;
 ```
 
 ### KPI rows
 
-Use `KpiGrid` with `KpiCard` for a compact metric row. Use `accent` to connect each KPI to the chart palette or a semantic role; use `invertDelta` for down-is-good measures such as churn, cost, or latency.
+Use `KpiGrid` with `KpiCard` for a compact metric row. Use `accent` to connect
+each KPI to the chart palette or a semantic role; use `invertDelta` for
+down-is-good measures such as churn, cost, or latency. `delta` is a
+**percent-scale** number (`12.4` → "+12.4%").
 
 ```tsx
 <KpiGrid>
-  <KpiCard label="Revenue" value={revenue} valueFormat="currency" delta={revenueDelta} deltaLabel="vs prior period" accent="chart-1" />
-  <KpiCard label="Churn" value={churn} valueFormat="percent" delta={churnDelta} deltaLabel="vs prior period" accent="warning" invertDelta />
+  <KpiCard label="Revenue" value={revenue} valueFormat="currency" delta={12.4} deltaLabel="vs prior period" accent="chart-1" />
+  <KpiCard label="Churn" value={churn} valueFormat="percent" delta={-0.6} deltaLabel="vs prior period" accent="warning" invertDelta />
 </KpiGrid>;
 ```
 
 ### Tables
 
-Use `DataTableCard` for Fabric DataGrid output. Map query tables with `toDataTable(table, columnMetadata)`; the card handles theming, scrolling, sorting, filtering, resizing, loading, empty, and error states.
+Use `DataTableCard` for Fabric DataGrid output. Map query tables with
+`toDataTable(table, columnMetadata)`; the card handles theming, scrolling,
+sorting, filtering, resizing, loading, empty, and error states.
 
 ```tsx
 const table = toDataTable(data, columnMetadata);
 
-<DataTableCard
-  title="Top accounts"
-  loading={isLoading}
-  error={error}
-  data={table}
-  pageSize={10}
-/>;
+<DataTableCard title="Top accounts" loading={isLoading} error={error} data={table} pageSize={10} />;
 ```
 
 ---
 
-## Workarounds
+## When Envy lacks a chart type
 
-Most dashboard visuals should be composed from `KpiCard`, `LineChartCard`, `AreaChartCard`, `BarChartCard`, `DonutChartCard`, `DataTableCard`, `PageShell`, `KpiGrid`, and `ChartGrid`.
-
-If a visualization genuinely is not in the kit (radar, treemap, waterfall, heatmap), use the `visuals` skill escape hatch: build it on the kit's chart core inside a `ChartCard` (`ChartFrame` for sizing, `d3-scale` for math, `useChartTheme` + `seriesColor`/`roleColor` for color, `ChartTooltip` for the themed tooltip), and token colors such as `var(--color-chart-1)`. Do not hardcode hex colors.
+There is **no custom-chart escape hatch**. If a visualization isn't an Envy type
+(radar, treemap, waterfall, gauge, funnel…), re-express the *insight* with the
+closest supported type — Envy ships `line`, `area`, `bar`, `scatter`,
+`pie`/donut, `heatmap`, `box`, `sankey`, `choropleth`, plus `kpi`/`table` (the
+app uses `KpiCard` / `DataTableCard` for those). See `visuals` → Gotchas and
+`custom-charts.md` for the mapping table. Never hand-write SVG or pull in another
+chart library.
 
 ---
 
 ## DataGrid
 
-Use the kit wrapper instead of wiring Fabric DataGrid directly. `DataTableCard` reads the CSS theme internally and passes it to the underlying grid.
+Use the kit wrapper instead of wiring Fabric DataGrid directly. `DataTableCard`
+reads the CSS theme internally and passes it to the underlying grid.
 
 ```tsx
 import { DataTableCard, toDataTable } from "@/components/dashboard";
@@ -277,4 +354,5 @@ const table = toDataTable(data, columnMetadata);
 <DataTableCard title="Accounts" data={table} loading={isLoading} error={error} />;
 ```
 
-Font, spacing, border, focus, scrollbar, and dark-mode styles are controlled by CSS variables in `global.css` and cascade automatically.
+Font, spacing, border, focus, scrollbar, and dark-mode styles are controlled by
+CSS variables in `global.css` and cascade automatically.

@@ -1,6 +1,6 @@
 # Slicers & shared filter state
 
-Slicers, chart clicks, and drilldown share one filter model. Wrap the dashboard
+Slicers and filter controls share one filter model. Wrap the dashboard
 subtree in `FilterStateProvider`; read/write it with `useFilterState()`.
 
 ```tsx
@@ -44,8 +44,6 @@ filters.setSearch("Customer[Name]", "contoso");
 filters.clearFilter("Product[Category]");
 filters.clearAll();
 filters.isActive;
-filters.drillPath("geo");              // used by useDrilldown
-filters.setDrillPath("geo", ["West"]);
 ```
 
 Empty `in`, blank `contains`, and fully open ranges are pruned.

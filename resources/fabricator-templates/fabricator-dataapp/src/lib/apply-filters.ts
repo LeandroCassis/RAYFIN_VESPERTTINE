@@ -109,7 +109,16 @@ export function matchesSelection(
  * const { selections } = useFilterState();
  * const filteredRows = applyFilters(rows, selections);
  *
- * <BarChartCard data={filteredRows} xKey="Category" series={[{ key: "Sales" }]} />
+ * <ChartCard
+ *   spec={{
+ *     type: "bar",
+ *     data: filteredRows,
+ *     encoding: {
+ *       x: { field: "Category", type: "nominal" },
+ *       y: { field: "Sales", type: "quantitative" },
+ *     },
+ *   }}
+ * />
  * ```
  */
 export function applyFilters<T extends Record<string, unknown>>(

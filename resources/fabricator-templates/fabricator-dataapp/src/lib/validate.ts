@@ -6,12 +6,12 @@
 //-----------------------------------------------------------------------
 
 /**
- * Shared dev-time guardrail. The single most common mistake when wiring a card
- * is a `xKey` / `valueKey` / `series` key that doesn't match a mapped column
- * (wrong casing, an un-aliased DAX name like `[Total Revenue]`, or forgetting
- * `toChartData`) — which silently renders the card's empty state. This prints
- * one loud, actionable console warning per missing key instead, so the mistake
- * is obvious without a deploy. No-op in production builds.
+ * Shared dev-time guardrail. The single most common mistake when wiring a
+ * visual is a key (a spec `encoding` field name, or a `KpiCard` `valueKey`)
+ * that doesn't match a mapped column (wrong casing, an un-aliased DAX name like
+ * `[Total Revenue]`, or forgetting `toChartData`) — which silently renders the
+ * empty state. This prints one loud, actionable console warning per missing key
+ * instead, so the mistake is obvious without a deploy. No-op in production builds.
  */
 export function warnMissingKeys(
     component: string,

@@ -62,9 +62,9 @@ export interface PivotChartDataResult<
 > {
     /** Wide rows: one object per X value, a property per category. */
     rows: T[];
-    /** Series config ready to spread into a chart card's `series` prop. */
+    /** Discovered series (one per category), in the resolved order. */
     series: PivotSeries[];
-    /** The output key holding the X value — pass as the card's `xKey`. */
+    /** The output key holding the X value (e.g. the spec's x `field`). */
     xKey: string;
     /** Distinct category values, in the resolved series order. */
     categories: string[];
@@ -81,10 +81,15 @@ function resolveSeriesColor(
 }
 
 /**
- * Pivot a long DAX result into wide chart rows plus a ready-to-use `series[]`.
+ * Pivot a long DAX result into wide rows (one column per series value) plus the
+ * discovered `series[]`.
+ *
+ * In the Envy spec model you usually DON'T need this: keep rows long and point
+ * `encoding.series` at the series column. Reach for `pivotChartData` only when a
+ * consumer specifically needs a wide, one-column-per-series shape.
  *
  * @example
- * ```tsx
+ * ```ts
  * // EVALUATE SUMMARIZECOLUMNS('Date'[Month], 'Product'[Category],
  * //   "Revenue", [Total Revenue])
  * const { data, isLoading, error } = useSemanticModelQuery({ connection, query });
@@ -94,17 +99,7 @@ function resolveSeriesColor(
  *   value: "Revenue",
  *   order: "total-desc",
  * });
- *
- * <BarChartCard
- *   title="Revenue by category"
- *   loading={isLoading}
- *   error={error}
- *   data={rows}
- *   xKey={xKey}
- *   series={series}
- *   stacked
- *   valueFormat="currency"
- * />
+ * // rows → [{ Month: "Jan", Bikes: 50, Gear: 20 }, …]; series → ["Bikes", "Gear"]
  * ```
  */
 export function pivotChartData<
