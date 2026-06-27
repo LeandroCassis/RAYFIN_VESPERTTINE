@@ -15,8 +15,10 @@
 import { useEffect, useState } from "react";
 
 import {
+    Card,
     ChartCard,
     ChartSkeleton,
+    DashboardGrid,
     DataTableCard,
     DateRangeSlicer,
     DropdownSlicer,
@@ -28,7 +30,13 @@ import {
     RangeSlicer,
     SearchSlicer,
     SelectionStoreProvider,
+    SidebarShell,
     Sparkline,
+    Stat,
+    StatStrip,
+    SectionBand,
+    PageShell,
+    Tile,
     useFilterState,
     useSelectionFilterBridge,
     useSelectionStore,
@@ -407,6 +415,20 @@ function BridgeDemo() {
 export function Gallery() {
     const { isDark, toggleTheme } = useThemeContext();
     const [showStates, setShowStates] = useState(true);
+    const latestMonth = monthlyRevenue[monthlyRevenue.length - 1];
+    const priorMonth = monthlyRevenue[monthlyRevenue.length - 2];
+    const latestRevenue = latestMonth?.revenue ?? 0;
+    const latestOrders = latestMonth?.orders ?? 0;
+    const priorRevenue = priorMonth?.revenue ?? latestRevenue;
+    const priorOrders = priorMonth?.orders ?? latestOrders;
+    const avgOrder = latestOrders > 0 ? latestRevenue / latestOrders : 0;
+    const conversion =
+        (funnelStages[funnelStages.length - 1]?.count ?? 0) /
+        (funnelStages[0]?.count ?? 1);
+    const revenueDelta =
+        priorRevenue > 0 ? ((latestRevenue - priorRevenue) / priorRevenue) * 100 : 0;
+    const ordersDelta =
+        priorOrders > 0 ? ((latestOrders - priorOrders) / priorOrders) * 100 : 0;
 
     return (
         <div className="min-h-screen bg-background px-6 py-8 text-foreground">
@@ -465,6 +487,259 @@ export function Gallery() {
                                 />
                             }
                         />
+                    </div>
+                </Section>
+
+                <Section title="Layout — metric strip">
+                    <StatStrip>
+                        <Stat
+                            label="Revenue"
+                            value={latestRevenue}
+                            valueFormat="currency"
+                            delta={revenueDelta}
+                            secondary={latestMonth?.month}
+                            accent="chart-1"
+                        />
+                        <Stat
+                            label="Orders"
+                            value={latestOrders}
+                            valueFormat="number"
+                            delta={ordersDelta}
+                            accent="chart-2"
+                        />
+                        <Stat
+                            label="Avg order"
+                            value={avgOrder}
+                            valueFormat="currency"
+                            delta={0.9}
+                            accent="chart-3"
+                        />
+                        <Stat
+                            label="Conversion"
+                            value={conversion}
+                            valueFormat="ratio"
+                            delta={-0.4}
+                            invertDelta
+                            secondary="Renewed / visited"
+                            accent="chart-4"
+                        />
+                    </StatStrip>
+                </Section>
+
+                <Section title="Layout — tile sizes">
+                    <p className="text-sm text-muted-foreground">
+                        One responsive 12-column canvas with a hero tile, supporting
+                        tiles, and a full-width detail row.
+                    </p>
+                    <DashboardGrid>
+                        <Tile size="hero">
+                            <ChartCard
+                                className="h-full"
+                                eyebrow="Hero"
+                                title="Revenue & profit"
+                                subtitle="Tall 8-column tile"
+                                spec={lineSpec}
+                                variant="feature"
+                                accent="chart-1"
+                            />
+                        </Tile>
+                        <Tile size="md">
+                            <ChartCard
+                                title="Region rank"
+                                subtitle="Medium tile"
+                                spec={barRankedSpec}
+                            />
+                        </Tile>
+                        <Tile size="md">
+                            <ChartCard
+                                title="Category mix"
+                                subtitle="Medium tile"
+                                spec={donutSpec}
+                            />
+                        </Tile>
+                        <Tile size="full">
+                            <DataTableCard
+                                title="Region performance"
+                                subtitle="Full-width detail"
+                                spec={perfTableSpec}
+                                height={280}
+                            />
+                        </Tile>
+                    </DashboardGrid>
+                </Section>
+
+                <Section title="Layout — card variants">
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                        <Card
+                            eyebrow="Surface"
+                            title="Default tile"
+                            variant="surface"
+                        >
+                            <p className="text-sm text-muted-foreground">
+                                Bordered card surface for everyday dashboard content.
+                            </p>
+                        </Card>
+                        <Card
+                            eyebrow="Feature"
+                            title="Primary tile"
+                            variant="feature"
+                            accent="chart-1"
+                        >
+                            <p className="text-sm text-muted-foreground">
+                                Stronger surface plus an accent spine for emphasis.
+                            </p>
+                        </Card>
+                        <Card
+                            eyebrow="Outline"
+                            title="Quiet frame"
+                            variant="outline"
+                        >
+                            <p className="text-sm text-muted-foreground">
+                                Transparent fill keeps secondary content light.
+                            </p>
+                        </Card>
+                        <Card eyebrow="Ghost" title="Embedded" variant="ghost">
+                            <p className="text-sm text-muted-foreground">
+                                Frameless content for bands and nested compositions.
+                            </p>
+                        </Card>
+                    </div>
+                    <ChartCard
+                        eyebrow="ChartCard"
+                        title="Feature chart"
+                        subtitle="New card hierarchy props"
+                        spec={areaSpec}
+                        variant="feature"
+                        accent="chart-1"
+                    />
+                </Section>
+
+                <Section title="Layout — section band">
+                    <SectionBand title="This quarter" subtitle="vs. last">
+                        <DashboardGrid>
+                            <Tile size="md">
+                                <ChartCard
+                                    title="Channel mix"
+                                    subtitle="Stacked area"
+                                    spec={areaSpec}
+                                />
+                            </Tile>
+                            <Tile size="md">
+                                <ChartCard
+                                    title="Quarterly bars"
+                                    subtitle="Grouped channel revenue"
+                                    spec={barGroupedSpec}
+                                />
+                            </Tile>
+                        </DashboardGrid>
+                    </SectionBand>
+                </Section>
+
+                <Section title="Layout — shells">
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <div className="relative h-[420px] overflow-auto rounded-2xl border border-border">
+                            <PageShell
+                                eyebrow="Preview"
+                                title="Page shell"
+                                subtitle="Single-column frame"
+                                maxWidth="max-w-none"
+                                actions={
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-border px-2.5 py-1 text-xs text-foreground-secondary"
+                                    >
+                                        Export
+                                    </button>
+                                }
+                                toolbar={
+                                    <FilterBar>
+                                        <DropdownSlicer
+                                            label="Region"
+                                            field="Geography[Region]"
+                                            options={regionOptions}
+                                            multiple={false}
+                                        />
+                                    </FilterBar>
+                                }
+                            >
+                                <StatStrip>
+                                    <Stat
+                                        label="Revenue"
+                                        value={latestRevenue}
+                                        valueFormat="currency"
+                                        accent="chart-1"
+                                    />
+                                    <Stat
+                                        label="Orders"
+                                        value={latestOrders}
+                                        accent="chart-2"
+                                    />
+                                </StatStrip>
+                                <DashboardGrid>
+                                    <Tile size="lg">
+                                        <ChartCard
+                                            title="Revenue trend"
+                                            spec={lineSpec}
+                                        />
+                                    </Tile>
+                                    <Tile size="lg">
+                                        <ChartCard
+                                            title="Category share"
+                                            spec={donutSpec}
+                                        />
+                                    </Tile>
+                                </DashboardGrid>
+                            </PageShell>
+                        </div>
+                        <div className="relative h-[420px] overflow-auto rounded-2xl border border-border">
+                            <SidebarShell
+                                eyebrow="Preview"
+                                title="Sidebar shell"
+                                subtitle="Left rail plus content"
+                                maxWidth="max-w-none"
+                                rail={
+                                    <>
+                                        <div>
+                                            <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-primary-strong">
+                                                Filters
+                                            </span>
+                                            <p className="mt-1 text-sm text-muted-foreground">
+                                                Persistent context rail.
+                                            </p>
+                                        </div>
+                                        <ListSlicer
+                                            label="Category"
+                                            field="Product[Category]"
+                                            options={categoryOptions}
+                                        />
+                                    </>
+                                }
+                                actions={
+                                    <button
+                                        type="button"
+                                        className="rounded-lg border border-border px-2.5 py-1 text-xs text-foreground-secondary"
+                                    >
+                                        Refresh
+                                    </button>
+                                }
+                            >
+                                <DashboardGrid>
+                                    <Tile size="full">
+                                        <ChartCard
+                                            title="Region performance"
+                                            spec={barRankedSpec}
+                                        />
+                                    </Tile>
+                                    <Tile size="full">
+                                        <DataTableCard
+                                            title="Detail table"
+                                            spec={perfTableSpec}
+                                            height={220}
+                                        />
+                                    </Tile>
+                                </DashboardGrid>
+                            </SidebarShell>
+                        </div>
                     </div>
                 </Section>
 

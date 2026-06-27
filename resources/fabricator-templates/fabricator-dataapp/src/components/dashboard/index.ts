@@ -17,7 +17,7 @@
  * `validateSpec` (re-exported from `graphein`) checks a spec before render.
  *
  *   import {
- *     PageShell, KpiGrid, ChartGrid, BentoGrid, BentoItem,
+ *     PageShell, SidebarShell, DashboardGrid, Tile, StatStrip, Stat,
  *     ChartCard, KpiCard, DataTableCard, ThemeToggle,
  *     FilterStateProvider, FilterBar, DropdownSlicer,
  *     toChartData, deriveKpi, validateSpec, type ChartSpec,
@@ -25,15 +25,33 @@
  */
 
 /* ------------------------------- Layout -------------------------------- */
+export { AppShell, PageShell, SidebarShell, Section } from "./AppShell";
+export type {
+    AppShellProps,
+    PageShellProps,
+    SidebarShellProps,
+    SectionProps,
+} from "./AppShell";
 export {
-    PageShell,
+    DashboardGrid,
+    Tile,
+    StatStrip,
+    Stat,
+    SectionBand,
     KpiGrid,
     ChartGrid,
-    Section,
     BentoGrid,
     BentoItem,
-} from "./PageShell";
-export type { PageShellProps, SectionProps, BentoItemProps } from "./PageShell";
+} from "./grid";
+export type {
+    TileProps,
+    TileSize,
+    StatProps,
+    SectionBandProps,
+    BentoItemProps,
+} from "./grid";
+export { Card } from "./Card";
+export type { CardProps, CardVariant } from "./Card";
 export { ThemeToggle } from "./ThemeToggle";
 export { SegmentedControl, FilterChips } from "./controls";
 export type {

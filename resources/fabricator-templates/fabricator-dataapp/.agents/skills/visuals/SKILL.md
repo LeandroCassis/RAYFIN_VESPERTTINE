@@ -61,8 +61,8 @@ const { data, isLoading, error } = useSemanticModelQuery({ connection, query });
 />
 ```
 
-**Phase 2 — Breadth:** add the rest (KPIs, more charts, a `DataTableCard`),
-wrapped in `PageShell` + `KpiGrid`/`ChartGrid`/`BentoGrid`. Deploy + review every
+**Phase 2 — Breadth:** add the rest (metric band, more charts, a `DataTableCard`),
+wrapped in `PageShell` + `StatStrip` + `DashboardGrid`/`Tile`. Deploy + review every
 1–2 additions.
 
 **Phase 3 — Polish:** slicers, interactivity, multi-series, formatting, dark-mode
@@ -239,15 +239,18 @@ The card shell — rounded-2xl, hairline border, no shadow — in two modes:
 <ChartCard title="Filters"><ListSlicer … /></ChartCard>
 ```
 
-Props: `title`, `subtitle`, `action` (right-aligned header slot), `spec`,
-`height` (omit for responsive aspect-based height; table/matrix specs auto-use a
-fixed scroll height), `isEmpty` (force empty; defaults to detecting empty
-`spec.data`), `store`, `onSelectionChange`, `footer`, `loading`, `error`,
-`emptyMessage`, `onRetry`, `bodyClassName`, `children`.
+Props: `eyebrow`, `title`, `subtitle`, `action` (right-aligned header slot),
+`variant` (`"surface" | "feature" | "outline" | "ghost"`), `accent`
+(thin left spine; use chart tokens like `"chart-1"`), `spec`, `height` (omit
+for responsive aspect-based height; table/matrix specs auto-use a fixed scroll
+height), `isEmpty` (force empty; defaults to detecting empty `spec.data`),
+`store`, `onSelectionChange`, `footer`, `loading`, `error`, `emptyMessage`,
+`onRetry`, `bodyClassName`, `children`.
 
 ### `KpiCard`
 Hero metric tile: big formatted value, colored delta pill, optional accent dot /
-badge / icon, and an inline `trend` sparkline.
+badge / icon, an optional `variant`, and an inline `trend` sparkline. Prefer
+`StatStrip` for the top KPI header; use `KpiCard` for standalone metrics.
 
 ```tsx
 <KpiCard
@@ -261,7 +264,8 @@ badge / icon, and an inline `trend` sparkline.
 />
 ```
 
-Pass a literal `value` **or** `data` + `valueKey` (reads the first row). With no
+Pass a literal `value` **or** `data` + `valueKey` (reads **only the first row** — feed a single-row measure result or a
+precomputed `value`, not a multi-row table you expect it to aggregate). With no
 value it renders the empty state — never a fake `0`. `delta` is a **percent
 number** (`9.2` → `+9.2%`), not a fraction. Use `deriveKpi(result, { valueKey })`
 to get `{ value, previous, delta, trend }` from a time series in one call.
@@ -337,29 +341,51 @@ independently DAX-aggregated per tile.
 
 ## Layout
 
+Default to the new flat, non-uniform dashboard path: `PageShell` → `StatStrip` →
+`DashboardGrid` + `Tile`. Build hierarchy with layout, surfaces, borders, accent
+edges, and typography — **no gradients or shadows**.
+
 ```tsx
-<PageShell title="Sales overview" subtitle="FY24" actions={<ThemeToggle />}>
-  <KpiGrid>{/* KpiCards */}</KpiGrid>
-  <ChartGrid>{/* ChartCards */}</ChartGrid>
+import {
+  PageShell, ThemeToggle,
+  StatStrip, Stat,
+  DashboardGrid, Tile,
+  ChartCard, DataTableCard,
+} from "@/components/dashboard";
+
+<PageShell eyebrow="Sales" title="Revenue overview" subtitle="FY24" actions={<ThemeToggle />}>
+  <StatStrip>
+    <Stat label="Revenue" data={rows} valueKey="revenue" valueFormat="currency" accent="chart-1" delta={12.4} />
+    <Stat label="Orders" data={rows} valueKey="orders" delta={3.1} />
+    <Stat label="Avg order" value={84.2} valueFormat="currency" delta={-1.2} />
+  </StatStrip>
+
+  <DashboardGrid>
+    <Tile size="hero"><ChartCard title="Revenue trend" className="h-full" variant="feature" accent="chart-1" spec={lineSpec} /></Tile>
+    <Tile size="md"><ChartCard title="By region" spec={barSpec} /></Tile>
+    <Tile size="md"><ChartCard title="Channel mix" spec={pieSpec} /></Tile>
+    <Tile size="full"><DataTableCard title="Detail" spec={tableSpec} /></Tile>
+  </DashboardGrid>
 </PageShell>
 ```
 
-- **`PageShell`** — sticky blurred header over a centered, max-width column. Put
-  `<ThemeToggle />` (and a `FilterBar`) in `actions`.
-- **`KpiGrid`** — fluid auto-fit grid (~220px min) for KPI cards.
-- **`ChartGrid`** — fluid auto-fit grid (~380px min) for chart cards.
-- **`Section`** — titled grouping (`title`, `subtitle`, `action`).
-- **`BentoGrid` / `BentoItem`** — editorial 12-col layout for non-uniform sizes
-  (a wide hero chart beside a stack of KPIs). Set each item's `colSpan` (1–12) and
-  optional `rowSpan` (1–3). Reach for it over `ChartGrid` to avoid a uniform
-  spreadsheet grid (the `app-design` skill asks for this).
-
-```tsx
-<BentoGrid>
-  <BentoItem colSpan={8}><ChartCard title="Revenue" spec={lineSpec} /></BentoItem>
-  <BentoItem colSpan={4}><KpiCard label="MRR" … /></BentoItem>
-</BentoGrid>
-```
+- **Frames:** `PageShell` is the default; `SidebarShell` adds an in-content
+  filter/context `rail` for filter-heavy analytics; `AppShell` is the flexible
+  lower-level frame for custom mastheads, `toolbar`, or `rail` composition.
+- **Metric header:** `StatStrip` + `Stat` is one bordered, hairline-divided band
+  of 2–5 metrics. Prefer it over four look-alike `KpiCard`s at the top.
+- **Grid:** `DashboardGrid` is the responsive 12-col canvas. Use `Tile size`:
+  `"sm"` 3, `"md"` 4, `"lg"` 6, `"wide"` 8, `"hero"` 8×2, `"full"` 12.
+  Mix sizes for editorial rhythm; do **not** default to a uniform grid. A `hero`
+  tile needs `className="h-full"` on the card inside (it spans 2 rows; without it
+  the card sits at its natural height and leaves the lower row blank). Two `md`
+  tiles right after a `hero` stack to fill its remaining 4-col × 2-row corner.
+- **Zones/cards:** `SectionBand` creates alternate-surface (`surface-2`) zones.
+  `Card`, `ChartCard`, and `KpiCard` use flat variants (`"surface" | "feature" |
+  "outline" | "ghost"`); `Card`/`ChartCard` also take `accent` for a thin left
+  spine. Use chart tokens such as `"chart-1"`, not raw colors.
+- **Legacy:** `KpiGrid`, `ChartGrid`, `BentoGrid`, and `BentoItem` still exist for
+  back-compat, but avoid them by default in new dashboards.
 
 ## Controls & slicers (interactivity)
 
@@ -426,8 +452,10 @@ Used internally by the cards; use directly only for custom content.
 ```tsx
 import {
   // layout + controls
-  PageShell, KpiGrid, ChartGrid, Section, BentoGrid, BentoItem, ThemeToggle,
-  SegmentedControl, FilterChips,
+  AppShell, PageShell, SidebarShell, DashboardGrid, Tile, StatStrip, Stat,
+  SectionBand, Section, Card, ThemeToggle, SegmentedControl, FilterChips,
+  // legacy layout (back-compat; avoid by default)
+  KpiGrid, ChartGrid, BentoGrid, BentoItem,
   // slicers + shared filter state
   FilterStateProvider, useFilterState, FilterBar,
   DropdownSlicer, ListSlicer, SearchSlicer, DateRangeSlicer, RangeSlicer,

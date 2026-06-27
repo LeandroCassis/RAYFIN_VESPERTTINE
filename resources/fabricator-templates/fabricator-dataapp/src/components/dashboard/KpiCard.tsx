@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { warnMissingKeys } from "@/lib/validate";
 
 import { AnimatedNumber } from "./AnimatedNumber";
+import { cardClass, type CardVariant } from "./card-style";
 import { ArrowDownRightIcon, ArrowUpRightIcon } from "./icons";
 import { Sparkline } from "./Sparkline";
 import { EmptyTile, ErrorTile, KpiSkeleton } from "./states";
@@ -39,6 +40,8 @@ export interface KpiCardProps {
     invertDelta?: boolean;
     /** Accent dot color — a chart token, role, `var(--…)`, or hex. */
     accent?: string;
+    /** Flat surface treatment (default `"surface"`). Use `"feature"` for a hero metric. */
+    variant?: CardVariant;
     /** Optional trailing icon. */
     icon?: ReactNode;
     /** Optional small badge by the label. */
@@ -98,6 +101,7 @@ export function KpiCard({
     onRetry,
     className,
     trend,
+    variant,
     children,
 }: KpiCardProps) {
     const derived = data && valueKey ? data[0]?.[valueKey] : undefined;
@@ -116,10 +120,7 @@ export function KpiCard({
     if (error != null)
         return (
             <div
-                className={cn(
-                    "rounded-2xl border border-border bg-card p-5",
-                    className,
-                )}
+                className={cardClass(variant, className)}
             >
                 <ErrorTile
                     error={error}
@@ -132,10 +133,7 @@ export function KpiCard({
     if (isEmpty)
         return (
             <div
-                className={cn(
-                    "rounded-2xl border border-border bg-card p-5",
-                    className,
-                )}
+                className={cardClass(variant, className)}
             >
                 <EmptyTile message={emptyMessage} height={96} />
             </div>
@@ -178,10 +176,7 @@ export function KpiCard({
 
     return (
         <section
-            className={cn(
-                "flex flex-col gap-3 rounded-2xl border border-border bg-card p-5",
-                className,
-            )}
+            className={cn("flex flex-col gap-3", cardClass(variant, className))}
         >
             <div className="flex items-center justify-between gap-2">
                 <div className="flex min-w-0 items-center gap-2">

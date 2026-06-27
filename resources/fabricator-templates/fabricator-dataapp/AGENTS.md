@@ -79,8 +79,9 @@ hand-edit the generated file — edit `fabric.yaml`.
 │   ├── App.tsx                     ← your dashboard (ships a spec-first starter)
 │   ├── main.tsx                    ← entry: fonts, theme, auth provider, auth gate
 │   ├── global.css                  ← design system: tokens, palette, fonts, dark mode
-│   ├── components/dashboard/       ← THE KIT — ChartCard, KpiCard, DataTableCard,
-│   │                                 layout, controls, slicers, states, Graphein <Chart>
+│   ├── components/dashboard/       ← THE KIT — PageShell, StatStrip, DashboardGrid,
+│   │                                 Tile, ChartCard, KpiCard, DataTableCard, controls,
+│   │                                 slicers, states, Graphein <Chart>
 │   │   └── selection.tsx           ← shared Graphein selection store provider/hooks
 │   ├── hooks/
 │   │   ├── use-semantic-model-query.ts   ← run a DAX query → { data, isLoading, error }
@@ -99,8 +100,10 @@ hand-edit the generated file — edit `fabric.yaml`.
 └── package.json
 ```
 
-The kit is exported from one barrel: **`@/components/dashboard`** — `ChartCard`,
-`KpiCard`, `DataTableCard`, layout (`PageShell` / grids / `BentoGrid`), controls,
+The kit is exported from one barrel: **`@/components/dashboard`** — frames
+(`PageShell`, `SidebarShell`, `AppShell`), layout (`StatStrip` / `Stat`,
+`DashboardGrid` / `Tile`, `SectionBand`; legacy grids still exist), `ChartCard`,
+`KpiCard`, `DataTableCard`, controls,
 slicers + filter helpers, `validateSpec` + the `ChartSpec` type (re-exported from
 `graphein`), selection helpers (`createSelectionStore`, `SelectionStoreProvider`,
 `useSelectionStore`, `useSelection`, `useSelectionFilterBridge`,
@@ -172,7 +175,8 @@ Never hand-edit the generated file.
 |---|---|
 | Build a dashboard from scratch | `build-workflow` skill (ship one hero tile, then iterate) |
 | Add a chart | `visuals` skill — map data, author a Graphein spec, drop into `<ChartCard spec={…}>` |
-| Add a KPI / metric tile | `visuals` skill → `KpiCard` (+ `deriveKpi`) |
+| Add a KPI header / metric strip | `visuals` skill → `StatStrip` + `Stat` (one band, 2–5 metrics) |
+| Add a standalone KPI / metric tile | `visuals` skill → `KpiCard` (+ `deriveKpi`) |
 | Add a table | `visuals` skill → `DataTableCard` (+ `toTable`) |
 | Find a metric / explore the model | `dax` skill (progressive discovery, then query authoring) |
 | Write or fix a DAX query | `dax` skill |
@@ -183,7 +187,10 @@ Never hand-edit the generated file.
 | Add chart-click cross-highlight/filter | `visuals` skill → **Interactivity** (`SelectionStoreProvider` + `useSelectionFilterBridge`) |
 | Preview/validate visuals locally without Fabric | run the dev-only component gallery (`npm run gallery`) |
 | Show many series / a target line | `visuals` skill → **Multi-series** (long rows + `encoding.series`; target = a constant series) |
-| Vary card sizes / non-uniform layout | `visuals` skill → `BentoGrid` / `BentoItem` |
+| Add a page frame | `app-design` skill → `PageShell` (or `SidebarShell` for filter-heavy analytics) |
+| Vary card sizes / non-uniform layout | `visuals` skill → `DashboardGrid` + `Tile size="…"` (`hero` cards need `className="h-full"`) |
+| Break a long dashboard into zones | `app-design` skill → `SectionBand` |
+| Update legacy uniform grids | Replace `KpiGrid`/`ChartGrid`/`BentoGrid` with `StatStrip` and `DashboardGrid` + `Tile` where practical |
 | Build a chart Graphein lacks (radar/treemap/…) | `visuals` skill → **Gotchas** — re-express with the closest Graphein type |
 | Wire/connect a semantic model | `fabric-data` skill; edit `fabric.yaml`. If only workspace + item id is known, use `fabric-app-data add <alias> -w <ws> -i <item>`. |
 | Deploy to test | `npm run rayfin:up` (or let Fabricator deploy + screenshot) |

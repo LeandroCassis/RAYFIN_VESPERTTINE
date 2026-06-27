@@ -11,6 +11,7 @@ import type { ChartSpec, SelectionChangeListener, SelectionStore } from "graphei
 
 import { cn } from "@/lib/utils";
 
+import { accentEdgeStyle, cardClass, type CardVariant } from "./card-style";
 import { Chart } from "./Chart";
 import {
     DEFAULT_ASPECT,
@@ -21,12 +22,18 @@ import {
 
 /** Props shared by every card shell (title, header slot, query state). */
 export interface ChartCardCommonProps {
+    /** Small mono kicker above the title (e.g. a metric family or unit). */
+    eyebrow?: ReactNode;
     /** Card title (rendered in the display font). */
     title?: ReactNode;
     /** Optional one-line subtitle under the title. */
     subtitle?: ReactNode;
     /** Right-aligned header slot — filters, a legend, a menu, etc. */
     action?: ReactNode;
+    /** Flat surface treatment (default `"surface"`). Use `"feature"` for a hero tile. */
+    variant?: CardVariant;
+    /** Thin accent spine on the left edge — a chart token, role, `var(--…)`, or hex. */
+    accent?: string;
     className?: string;
     /** Render the loading skeleton. */
     loading?: boolean;
@@ -112,9 +119,12 @@ function specIsEmpty(spec: ChartSpec): boolean {
  * ```
  */
 export function ChartCard({
+    eyebrow,
     title,
     subtitle,
     action,
+    variant,
+    accent,
     footer,
     className,
     bodyClassName,
@@ -129,7 +139,8 @@ export function ChartCard({
     onRetry,
     children,
 }: ChartCardProps) {
-    const hasHeader = title != null || subtitle != null || action != null;
+    const hasHeader =
+        eyebrow != null || title != null || subtitle != null || action != null;
     const empty = isEmpty ?? (spec != null && specIsEmpty(spec));
     const tabular = spec != null && specIsTabular(spec);
     // Virtualized table/matrix specs need a fixed, scrollable host — fall back to
@@ -141,13 +152,19 @@ export function ChartCard({
     return (
         <section
             className={cn(
-                "flex min-w-0 flex-col gap-4 rounded-2xl border border-border bg-card p-5",
-                className,
+                "flex min-w-0 flex-col gap-4",
+                cardClass(variant, className),
             )}
+            style={accentEdgeStyle(accent)}
         >
             {hasHeader && (
                 <header className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
+                        {eyebrow != null && (
+                            <span className="block truncate font-mono text-[11px] uppercase tracking-[0.18em] text-primary-strong">
+                                {eyebrow}
+                            </span>
+                        )}
                         {title != null && (
                             <h3 className="truncate font-display text-[15px] font-semibold tracking-tight text-foreground">
                                 {title}
@@ -172,20 +189,35 @@ export function ChartCard({
                         emptyMessage={emptyMessage}
                         onRetry={onRetry}
                     >
-                        <div
-                            className={
-                                tabular
-                                    ? "overflow-hidden rounded-xl border border-border"
-                                    : undefined
-                            }
-                            style={bodyStyle}
-                        >
-                            <Chart
-                                spec={spec}
-                                store={store}
-                                onSelectionChange={onSelectionChange}
-                            />
-                        </div>
+                        {tabular ? (
+                            <div
+                                className="overflow-hidden rounded-xl border border-border"
+                                style={bodyStyle}
+                            >
+                                <Chart
+                                    spec={spec}
+                                    store={store}
+                                    onSelectionChange={onSelectionChange}
+                                />
+                            </div>
+                        ) : (
+                            // A `position:relative` box of definite width with an
+                            // `absolute inset-0` chart mount. This forces the chart to
+                            // measure the container's WIDTH (never derive width from the
+                            // aspect-ratio + min-height, which overflows narrow tiles).
+                            <div
+                                className="relative w-full overflow-hidden"
+                                style={bodyStyle}
+                            >
+                                <div className="absolute inset-0">
+                                    <Chart
+                                        spec={spec}
+                                        store={store}
+                                        onSelectionChange={onSelectionChange}
+                                    />
+                                </div>
+                            </div>
+                        )}
                     </TileBody>
                 ) : (
                     children

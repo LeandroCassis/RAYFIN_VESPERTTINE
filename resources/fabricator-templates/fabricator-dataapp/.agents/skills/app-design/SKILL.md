@@ -63,29 +63,93 @@ Read these reference files on demand during Phase 2–3 iteration, when refining
 
 These are good defaults for app structure. Adapt them to the specific app's needs.
 
+### Golden path — default dashboard layout
+
+Copy this first, then swap in your queries/specs. It gives the model one clear path:
+one metric band, one varied 12-col canvas, flat hierarchy via surfaces/borders/accent edges/typography — **no gradients or shadows**.
+
+```tsx
+import {
+  PageShell, ThemeToggle,
+  StatStrip, Stat,
+  DashboardGrid, Tile,
+  ChartCard, KpiCard, DataTableCard,
+} from "@/components/dashboard";
+
+<PageShell eyebrow="Sales" title="Revenue overview" subtitle="FY24" actions={<ThemeToggle />}>
+  {/* 1. Metric band — one strip, not four look-alike boxes */}
+  <StatStrip>
+    <Stat label="Revenue" data={rows} valueKey="revenue" valueFormat="currency" accent="chart-1" delta={12.4} />
+    <Stat label="Orders"  data={rows} valueKey="orders"  delta={3.1} />
+    <Stat label="Avg order" value={84.2} valueFormat="currency" delta={-1.2} />
+  </StatStrip>
+
+  {/* 2. Varied grid — mix Tile sizes for editorial rhythm (NOT a uniform grid) */}
+  <DashboardGrid>
+    <Tile size="hero"><ChartCard title="Revenue trend" className="h-full" spec={lineSpec} /></Tile>
+    <Tile size="md"><ChartCard title="By region" spec={barSpec} /></Tile>
+    <Tile size="md"><ChartCard title="Channel mix" spec={pieSpec} /></Tile>
+    <Tile size="full"><DataTableCard title="Detail" spec={tableSpec} /></Tile>
+  </DashboardGrid>
+</PageShell>
+```
+
 ### Page Structure
 
 - The app layout should fill the viewport.
 - On wide screens, constrain the content width so it doesn't stretch uncomfortably. Use responsive breakpoints or multi-column layouts to make good use of available space.
+- **Default frame:** `PageShell({ eyebrow?, title?, subtitle?, actions?, toolbar?, children, maxWidth? })` — single-column masthead + centered content. Put filters in `toolbar`, not crammed beside the title.
+- **Filter-heavy frame:** `SidebarShell({ rail, ...PageShellProps })` — persistent in-content filter/context rail. The app is already embedded in the Fabric portal shell; do **not** turn the rail into full-height route navigation.
+- **Custom frame:** `AppShell` only when the presets do not fit (custom masthead, toolbar, or rail composition).
 
-Don't default to the same layout every time. The structure should serve the aesthetic direction — a sidebar + main content split, a full-width single column, a multi-panel master-detail, an asymmetric split, or something else entirely. These are starting points, not an exhaustive list. Invent a layout that fits the app's purpose and tone.
+Don't default to the same layout every time. The structure should serve the aesthetic direction — a filter rail + main content split, a full-width single column, a multi-panel master-detail, an asymmetric split, or something else entirely. These are starting points, not an exhaustive list. Invent a layout that fits the app's purpose and tone.
 
-The header/toolbar is part of the design language — not every app needs a traditional fixed header. Consider alternatives: a floating command bar, a compact inline toolbar, a branded banner, a collapsible drawer, a minimal top-right action cluster, or no header at all if the content speaks for itself.
+The header/toolbar is part of the design language — not every app needs a traditional fixed header. Consider alternatives: a compact inline toolbar in `toolbar`, a branded banner, a collapsible drawer, a minimal top-right action cluster, or no header at all if the content speaks for itself.
 
 ### Container Sizing
 
 Dashboard kit chart and table cards fill their container — the **container controls their dimensions**. Without constraints, charts, tables, and content stretch to the full viewport width, which produces squished, unreadable visuals on wide screens.
 
-- **Constrain the dashboard wrapper, not individual charts.** Apply a max-width to the outermost content wrapper that holds the dashboard. This single constraint keeps the entire layout proportional on wide monitors. If the app lacks an outer wrapper, create one.
-- **Do not constrain individual chart containers.** Let the wrapper width plus grid columns determine each chart's size naturally.
+- **Constrain the dashboard wrapper, not individual charts.** `PageShell` / `SidebarShell` do this with `maxWidth` by default. If the app lacks an outer wrapper, create one.
+- **Do not constrain individual chart containers.** Let the wrapper width plus `DashboardGrid` / `Tile` columns determine each chart's size naturally.
 - If the user explicitly requests full-width charts, confirm the design choice before proceeding.
 
 ### Dashboard Grid
 
-- Start mobile-first and scale up columns with responsive breakpoints.
-- Support mixed-size cards via span utilities.
+Use `DashboardGrid` + `Tile` for the main canvas. Picking semantic sizes is easier than span math and should be the default.
 
-Avoid uniform grids where every card is the same size — they look like a spreadsheet. Vary card spans to create visual hierarchy: a wide chart spanning two columns next to a tall narrow KPI panel, or a full-width table below a row of smaller cards. Let the data importance guide which elements get more space.
+| `Tile size` | Large-screen span |
+|---|---:|
+| `"sm"` | 3 columns |
+| `"md"` | 4 columns |
+| `"lg"` | 6 columns |
+| `"wide"` | 8 columns |
+| `"hero"` | 8 columns × 2 rows |
+| `"full"` | 12 columns |
+
+- **Vary sizes = the editorial default.** Mix `hero`, `md`, `wide`, and `full` to create hierarchy. Do **not** build a uniform spreadsheet grid unless the data truly demands it.
+- A `hero` tile is 2 rows tall: put `className="h-full"` on the card inside it — otherwise the card keeps its natural height and the lower row renders blank.
+- A `hero` (8×2) leaves a 4-col × 2-row space to its right; two `md` (or `sm`) tiles placed right after it stack to fill that space exactly (as in the recipe above).
+- Use `StatStrip` + `Stat` for the KPI header: one bordered, hairline-divided band of 2–5 metrics. Do not compose four identical `KpiCard`s as the first choice.
+- `KpiGrid`, `ChartGrid`, `BentoGrid`, and `BentoItem` are legacy/back-compat. Existing examples may use them, but new dashboards should use `StatStrip` and `DashboardGrid` + `Tile`.
+
+### Secondary rhythm and hierarchy
+
+- `SectionBand({ title?, subtitle?, action?, children })` — group a long column into alternate-surface (`surface-2`) zones. Nest a `DashboardGrid` inside it to give a themed sub-section its own tile layout:
+
+  ```tsx
+  <SectionBand title="Deep dive" subtitle="Channel & regional detail">
+    <DashboardGrid>
+      <Tile size="lg"><ChartCard title="Channel mix" variant="feature" accent="chart-1" spec={areaSpec} /></Tile>
+      <Tile size="lg"><ChartCard title="Price vs. units" variant="feature" accent="chart-1" spec={scatterSpec} /></Tile>
+      <Tile size="full"><DataTableCard title="Regional performance" spec={tableSpec} /></Tile>
+    </DashboardGrid>
+  </SectionBand>
+  ```
+- `Card({ eyebrow?, title?, subtitle?, action?, variant?, accent?, footer?, children })` — generic flat content tile.
+- `ChartCard` supports `eyebrow`, `variant`, and `accent`; use `variant="feature"` and `accent="chart-1"` to mark the hero tile.
+- `KpiCard` supports `variant`, but prefer `StatStrip` for the top KPI band.
+- Hierarchy comes from layout, surface layering, border weight, accent edges, and typography — **never gradients or drop shadows**.
 
 ### Loading, Empty & Error States
 
