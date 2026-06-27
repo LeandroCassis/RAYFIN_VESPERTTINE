@@ -157,3 +157,13 @@ quoteFieldRef("Category");           // "[Category]"
 - Connected: pass `field`; the slicer reads/writes shared provider state.
 - Controlled: pass `value` and/or `onChange`; the caller owns state.
 - Both use the same value shapes: arrays, text, or `{ min, max }` ranges.
+
+
+## Chart selections as filters
+
+Chart marks can also publish Graphein selections (`params`) and feed the **same**
+shared filter state via `useSelectionFilterBridge(store, { fieldMap })`; see
+[interactions](interactions.md). This lets a chart click drive the existing
+slicer/DAX path while React slicers remain the primary server-side filter surface.
+Graphein also has native slicer specs (`dropdown` / `list` / `search` / `range` /
+`dateRange`) for optional client-only dashboards.

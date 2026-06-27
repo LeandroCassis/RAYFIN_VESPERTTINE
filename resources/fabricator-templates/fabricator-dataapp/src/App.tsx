@@ -19,7 +19,7 @@ import {
 /**
  * Starter dashboard — your canvas.
  *
- * Every visual is one **Envy `ChartSpec`** (a single JSON object) dropped into a
+ * Every visual is one **Graphein `ChartSpec`** (a single JSON object) dropped into a
  * `<ChartCard spec={…} />`. The card owns the theme, axes, tooltips, number
  * formatting, dark mode, and loading/empty/error states — so you author data +
  * a spec, never chart code. The template ships no mock data, so the tiles below
@@ -52,7 +52,7 @@ function App() {
                             hand-code it.
                         </h2>
                         <p className="max-w-2xl text-sm text-muted-foreground">
-                            Each chart is a single JSON spec rendered by Envy. Map
+                            Each chart is a single JSON spec rendered by Graphein. Map
                             your semantic-model data to rows, write the spec, and
                             drop it into a card — the card owns the theme, axes,
                             tooltips, number formatting, dark mode, and
@@ -128,7 +128,7 @@ const STEPS = [
     },
     {
         title: "Author a spec",
-        body: "Write one Envy ChartSpec per visual and drop it into <ChartCard spec={…}/>; use KpiCard and DataTableCard for stats and tables.",
+        body: "Write one Graphein ChartSpec per visual and drop it into <ChartCard spec={…}/>; use KpiCard and DataTableCard for stats and tables.",
     },
 ] as const;
 

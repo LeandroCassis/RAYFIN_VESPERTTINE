@@ -6,17 +6,18 @@
 //-----------------------------------------------------------------------
 
 /**
- * Dev-only component gallery. Renders the kit's visuals — Envy chart specs in
+ * Dev-only component gallery. Renders the kit's visuals — Graphein chart specs in
  * `ChartCard`s, `KpiCard`s, slicers, and the state tiles — with static sample
  * data so the look + behavior can be eyeballed (and AI-reviewed) without a live
  * semantic model. Excluded from the production build — see `gallery.html`.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
     ChartCard,
     ChartSkeleton,
+    DataTableCard,
     DateRangeSlicer,
     DropdownSlicer,
     EmptyTile,
@@ -26,17 +27,28 @@ import {
     ListSlicer,
     RangeSlicer,
     SearchSlicer,
+    SelectionStoreProvider,
     Sparkline,
+    useFilterState,
+    useSelectionFilterBridge,
+    useSelectionStore,
     type ChartSpec,
+    type FilterSelection,
+    type FunnelSpec,
+    type MatrixSpec,
+    type SelectionValue,
     type SlicerOption,
+    type TableSpec,
 } from "@/components/dashboard";
 import { useThemeContext } from "@/hooks/theme.context";
 
 import {
     categoryShare,
     channelLong,
+    funnelStages,
     monthlyRevenue,
     priceVsUnits,
+    regionPerformance,
     regionQuarter,
     regionRevenue,
     revenueProfitLong,
@@ -149,6 +161,114 @@ const heatmapSpec: ChartSpec = {
     },
 };
 
+/* ---------------------- Interactivity (Graphein 0.3) -------------------- *
+ * `params` PUBLISH a selection on click; `highlight` CONSUMES one (emphasize
+ * matches, dim the rest). Sibling cards sharing one `SelectionStore` cross-
+ * interact. Here the bar publishes `region`; both the bar (self) and the
+ * region-series line highlight on it. The pair is seeded below so the static
+ * gallery screenshot shows the highlight without a click.
+ * ------------------------------------------------------------------------ */
+
+const regionBarSpec: ChartSpec = {
+    type: "bar",
+    data: regionRevenue,
+    params: [{ name: "region", select: { type: "point", fields: ["region"] } }],
+    highlight: { param: "region" },
+    encoding: {
+        x: { field: "region", type: "nominal" },
+        y: { field: "revenue", type: "quantitative", format: "$,.2s" },
+    },
+};
+
+const regionTrendSpec: ChartSpec = {
+    type: "line",
+    data: regionQuarter,
+    points: true,
+    highlight: { param: "region" },
+    encoding: {
+        x: { field: "quarter", type: "ordinal" },
+        y: { field: "revenue", type: "quantitative", format: "$,.2s" },
+        series: { field: "region" },
+    },
+};
+
+/** Seed `region` so the linked pair (and the bridge) show a result statically. */
+const seededRegion: SelectionValue = {
+    kind: "point",
+    fields: ["region"],
+    tuples: [["North America"]],
+};
+
+/* -------------------- Formatting (Graphein 0.3) ------------------------- *
+ * A funnel (native), pie callout labels, a `table` with conditional
+ * formatting (data bar / color scale / icon), and a pivot `matrix`.
+ * ------------------------------------------------------------------------ */
+
+const funnelSpec: FunnelSpec = {
+    type: "funnel",
+    data: funnelStages,
+    percent: "first",
+    encoding: {
+        stage: { field: "stage" },
+        value: { field: "count", format: ",.0f" },
+    },
+};
+
+const pieCalloutSpec: ChartSpec = {
+    type: "pie",
+    data: categoryShare,
+    labels: { placement: "outside", content: "category-percent", connector: "slice" },
+    encoding: {
+        theta: { field: "value", type: "quantitative", format: "$,.0f" },
+        color: { field: "category" },
+    },
+};
+
+const perfTableSpec: TableSpec = {
+    type: "table",
+    data: regionPerformance,
+    totals: { label: "Total" },
+    sort: { field: "revenue", order: "desc" },
+    columns: [
+        { field: "region", title: "Region" },
+        {
+            field: "revenue",
+            title: "Revenue",
+            format: "$,.0f",
+            align: "right",
+            total: "sum",
+            conditionalFormat: { type: "bar", showValue: true },
+        },
+        {
+            field: "margin",
+            title: "Margin",
+            format: ".0%",
+            align: "right",
+            total: false,
+            conditionalFormat: { type: "colorScale", scheme: "teal", target: "background" },
+        },
+        {
+            field: "yoy",
+            title: "YoY",
+            format: "+.1%",
+            align: "right",
+            total: false,
+            negativeStyle: "red",
+            conditionalFormat: { type: "icon", set: "arrows" },
+        },
+    ],
+};
+
+const channelMatrixSpec: MatrixSpec = {
+    type: "matrix",
+    data: channelLong,
+    rows: ["channel"],
+    columns: ["quarter"],
+    values: [{ field: "revenue", op: "sum", format: "$,.0s" }],
+    subtotals: false,
+    grandTotals: true,
+};
+
 const categoryOptions: SlicerOption[] = categoryShare.map((row) => ({
     value: row.category,
     label: row.category,
@@ -203,6 +323,87 @@ function SlicersDemo() {
     );
 }
 
+/** Two cards sharing one selection store: the bar publishes, both highlight. */
+function CrossHighlightDemo() {
+    const store = useSelectionStore();
+    return (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartCard
+                title="Revenue by region"
+                subtitle="Click a bar to pick a region · publishes `region`"
+                spec={regionBarSpec}
+                store={store}
+            />
+            <ChartCard
+                title="Quarterly trend"
+                subtitle="Emphasizes the picked region · consumes `region`"
+                spec={regionTrendSpec}
+                store={store}
+            />
+        </div>
+    );
+}
+
+/** Render one active app filter selection as a short, readable line. */
+function describeSelection(sel: FilterSelection): string {
+    switch (sel.kind) {
+        case "in":
+            return `${sel.field} in ${sel.values.join(", ")}`;
+        case "range":
+            return `${sel.field} ∈ [${sel.min ?? "−∞"}, ${sel.max ?? "∞"}]`;
+        case "contains":
+            return `${sel.field} contains “${sel.text}”`;
+    }
+}
+
+/**
+ * Bridge a chart selection into the app's slicer/DAX filter state: clicking a
+ * bar publishes `region`, which `useSelectionFilterBridge` maps to a
+ * `Geography[Region]` slicer filter (re-queried server-side via `toDaxFilters`).
+ * Seeded on mount so the static screenshot shows the bridged filter.
+ */
+function BridgeDemo() {
+    const store = useSelectionStore();
+    useSelectionFilterBridge(store, { fieldMap: { region: "Geography[Region]" } });
+    const { selections } = useFilterState();
+    useEffect(() => {
+        store.set("region", seededRegion);
+    }, [store]);
+
+    const active = Object.values(selections);
+    return (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <ChartCard
+                title="Revenue by region"
+                subtitle="A click re-queries via toDaxFilters (server-side)"
+                spec={regionBarSpec}
+                store={store}
+            />
+            <ChartCard
+                title="Bridged DAX filters"
+                subtitle="useSelectionFilterBridge → useFilterState"
+            >
+                <div className="flex h-[260px] flex-col gap-2 p-1 text-sm">
+                    {active.length === 0 ? (
+                        <p className="text-muted-foreground">
+                            No active filters — click a bar to cross-filter.
+                        </p>
+                    ) : (
+                        active.map((sel) => (
+                            <span
+                                key={sel.field}
+                                className="rounded-lg border border-border bg-card-hover px-2.5 py-1.5 font-mono text-xs text-foreground-secondary"
+                            >
+                                {describeSelection(sel)}
+                            </span>
+                        ))
+                    )}
+                </div>
+            </ChartCard>
+        </div>
+    );
+}
+
 export function Gallery() {
     const { isDark, toggleTheme } = useThemeContext();
     const [showStates, setShowStates] = useState(true);
@@ -216,7 +417,7 @@ export function Gallery() {
                             Data app kit gallery
                         </h1>
                         <p className="mt-1 text-sm text-muted-foreground">
-                            Envy chart specs · KPI cards · slicers · state tiles
+                            Graphein chart specs · KPI cards · slicers · state tiles
                         </p>
                     </div>
                     <button
@@ -328,6 +529,50 @@ export function Gallery() {
                         spec={heatmapSpec}
                         height={280}
                     />
+                </Section>
+
+                <Section title="Interactivity · cross-highlight">
+                    <SelectionStoreProvider initial={{ region: seededRegion }}>
+                        <CrossHighlightDemo />
+                    </SelectionStoreProvider>
+                </Section>
+
+                <Section title="Interactivity · chart → DAX filter bridge">
+                    <SelectionStoreProvider>
+                        <BridgeDemo />
+                    </SelectionStoreProvider>
+                </Section>
+
+                <Section title="Formatting · funnel & pie callouts">
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <ChartCard
+                            title="Conversion funnel"
+                            subtitle="Native funnel · % retained vs first"
+                            spec={funnelSpec}
+                        />
+                        <ChartCard
+                            title="Category share"
+                            subtitle="Pie · outside callout labels"
+                            spec={pieCalloutSpec}
+                        />
+                    </div>
+                </Section>
+
+                <Section title="Tables · Graphein table & matrix">
+                    <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+                        <DataTableCard
+                            title="Region performance"
+                            subtitle="Conditional formatting · bar / scale / icon"
+                            spec={perfTableSpec}
+                            height={300}
+                        />
+                        <DataTableCard
+                            title="Revenue by channel × quarter"
+                            subtitle="Pivot matrix · grand totals"
+                            spec={channelMatrixSpec}
+                            height={300}
+                        />
+                    </div>
                 </Section>
 
                 <Section title="States">

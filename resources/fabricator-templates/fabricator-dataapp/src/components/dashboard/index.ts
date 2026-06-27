@@ -8,13 +8,13 @@
 /**
  * Dashboard kit — a small, spec-first component library.
  *
- * The common path: map your DAX result into plain rows, author one Envy
- * `ChartSpec` (a single JSON object — see the `visuals` skill / Envy spec
+ * The common path: map your DAX result into plain rows, author one Graphein
+ * `ChartSpec` (a single JSON object — see the `visuals` skill / Graphein spec
  * reference), and drop it into `<ChartCard spec={…} />`. The card owns the
  * loading / empty / error states and bridges the app theme. KPIs use
- * `<KpiCard>`, tabular data uses `<DataTableCard>` (Fabric `DataGrid`), and
- * slicers / `FilterBar` drive re-queries. `validateSpec` (re-exported from
- * `envy`) checks a spec before render.
+ * `<KpiCard>`, tabular data uses `<DataTableCard>` (a Graphein `table` / `matrix`
+ * spec via `toTable`), and slicers / `FilterBar` drive re-queries.
+ * `validateSpec` (re-exported from `graphein`) checks a spec before render.
  *
  *   import {
  *     PageShell, KpiGrid, ChartGrid, BentoGrid, BentoItem,
@@ -51,13 +51,51 @@ export type { KpiCardProps } from "./KpiCard";
 export { DataTableCard } from "./DataTableCard";
 export type { DataTableCardProps } from "./DataTableCard";
 
-/* ----------------------------- Envy runtime ---------------------------- */
+/* --------------------------- Graphein runtime -------------------------- */
 export { Chart } from "./Chart";
 export type { ChartProps } from "./Chart";
 export { useChart } from "./use-chart";
-export { useEnvyTheme, readEnvyTheme } from "@/lib/envy-theme";
-export { validateSpec } from "envy";
-export type { ChartSpec, ChartInstance } from "envy";
+export type { UseChartOptions } from "./use-chart";
+export { useGrapheinTheme, readGrapheinTheme } from "@/lib/graphein-theme";
+export { validateSpec, createSelectionStore } from "graphein";
+export type {
+    ChartSpec,
+    ChartInstance,
+    SelectionStore,
+    SelectionValue,
+    SelectionChangeListener,
+    SelectionParam,
+    SelectionDef,
+    HighlightConfig,
+    FilterClause,
+    PointSelection,
+    SetSelection,
+    RangeSelection,
+    TextSelection,
+    TableSpec,
+    TableColumn,
+    MatrixSpec,
+    MatrixValueDef,
+    ConditionalFormat,
+    FunnelSpec,
+    PieLabels,
+} from "graphein";
+
+/* ------------------- Selection store + interactivity ------------------- */
+export {
+    SelectionStoreProvider,
+    useSelectionStore,
+    useSelection,
+} from "./selection";
+export {
+    selectionToFilters,
+    filterToSelection,
+    useSelectionFilterBridge,
+} from "@/lib/selection-bridge";
+export type {
+    FieldMap,
+    SelectionFilterBridgeOptions,
+} from "@/lib/selection-bridge";
 
 /* ------------------------------ Sparkline ------------------------------ */
 export { Sparkline } from "./Sparkline";
@@ -160,9 +198,8 @@ export {
     cssVar,
 } from "@/lib/chartTokens";
 export type { ChartRole } from "@/lib/chartTokens";
-export { useCssTheme } from "@/lib/use-css-theme";
-export { toDataTable } from "@/lib/to-data-table";
-export type { ColumnMetadataMap } from "@/lib/to-data-table";
+export { toTable } from "@/lib/to-table";
+export type { TableColumnDef, ToTableOptions } from "@/lib/to-table";
 export { toChartData } from "@/lib/to-chart-data";
 export type { ToChartDataOptions } from "@/lib/to-chart-data";
 

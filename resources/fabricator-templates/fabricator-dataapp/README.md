@@ -2,8 +2,8 @@
 
 A **Fabric Analytics** React + Vite app: connect a Power BI semantic model,
 query it with DAX, and **compose stunning dashboards from a pre-built component
-kit** (custom D3/SVG charts + the Fabric `DataGrid`) — tuned for the **Rayfin
-Fabricator** deploy-to-test workflow.
+kit** powered by Graphein specs (charts plus `table` / `matrix`) — tuned for the
+**Rayfin Fabricator** deploy-to-test workflow.
 
 > This is a Fabricator template: there is **no local backend, dev server, or
 > test harness**. You build your app and deploy it to a Fabric test workspace —
@@ -13,27 +13,29 @@ Fabricator** deploy-to-test workflow.
 ## The dashboard kit
 
 You rarely hand-write chart code. The kit in `src/components/dashboard/` gives
-you ready-made, themed building blocks — you **pick a component and pass it
-data**:
+you ready-made, themed building blocks — you **author specs and pass them to
+cards**:
 
 - **Cards** — `KpiCard`, `ChartCard`, `DataTableCard`
-- **Charts** (custom D3/SVG) — `LineChartCard`, `AreaChartCard`, `BarChartCard`,
-  `ComboChartCard`, `ScatterChartCard`, `DonutChartCard` / `PieChartCard`,
-  `GaugeCard`, `FunnelChartCard`, `BulletChartCard`, `Sparkline`
+- **Graphein visuals** — `line`, `area`, `bar`, `scatter`, `pie` / donut,
+  `heatmap`, `funnel`, `table`, `matrix`, plus specialty specs like `box`,
+  `sankey`, and `choropleth`
 - **Slicers** (shared filter state) — `FilterStateProvider`, `FilterBar`,
   `DropdownSlicer`, `ListSlicer`, `SearchSlicer`, `DateRangeSlicer`, `RangeSlicer`
-- **Interactions** (Tableau-like) — `useCrossFilter` (click-to-cross-filter),
-  `useDrilldown` + `DrilldownBreadcrumb`
-- **Layout** — `PageShell`, `KpiGrid`, `ChartGrid`, `Section`, `ThemeToggle`
+- **Interactions** — Graphein selections with a shared `SelectionStore`, plus
+  `useSelectionFilterBridge` to feed chart clicks into the slicer/DAX path
+- **Layout** — `PageShell`, `KpiGrid`, `ChartGrid`, `BentoGrid`, `Section`, `ThemeToggle`
 - **Controls** — `SegmentedControl`, `FilterChips`
 - **State tiles** — `EmptyTile`, `ErrorTile`, `ChartSkeleton`, `KpiSkeleton`
-- **Helpers** — `toChartData` / `toDataTable` (map DAX results), `formatNumber` /
+- **Helpers** — `toChartData` / `toTable` (map DAX results), `formatNumber` /
   `formatCurrency` / … , and chart color tokens
 
 Everything is exported from one barrel: `@/components/dashboard`. Each card owns
 its theme, axes, tooltip, dark mode, and loading/empty/error states — so you
-write *data*, not chart code. Start at the kit catalog skill
-(`.agents/skills/visuals/SKILL.md`).
+write *data + specs*, not chart code. Start at the kit catalog skill
+(`.agents/skills/visuals/SKILL.md`). Graphein is installed from npm as
+`graphein` (`^0.3.0`); the app uses its own thin React `<Chart>` wrapper instead
+of `@graphein/react`.
 
 ## Getting started
 
@@ -64,7 +66,7 @@ so it is meant to be opened from a deployed Fabric workspace (not `localhost`).
 │   ├── App.tsx             # Your dashboard — ships a kit-composed starter
 │   ├── global.css          # Design system: tokens, palette, fonts, dark mode
 │   ├── components/
-│   │   ├── dashboard/      # The dashboard kit (cards, charts, layout, states)
+│   │   ├── dashboard/      # The dashboard kit (cards, Graphein wrapper, layout, states)
 │   │   └── auth-gate.component.tsx  # Blocks use outside the Fabric portal
 │   ├── hooks/
 │   │   ├── use-auth.tsx / auth.context.ts   # Fabric auth context
@@ -74,10 +76,11 @@ so it is meant to be opened from a deployed Fabric workspace (not `localhost`).
 │   │   ├── fabric client module     # connections from fabric.generated.ts
 │   │   ├── rayfin-client.ts        # Rayfin client singleton
 │   │   ├── to-chart-data.ts        # Map a query result → chart row objects
-│   │   ├── to-data-table.ts        # Map a query result → DataGrid DataTable
+│   │   ├── to-table.ts             # Map a query result → Graphein table spec
+│   │   ├── selection-bridge.ts     # Graphein selections → slicer state
+│   │   ├── graphein-theme.ts       # CSS-token theme bridge for Graphein
 │   │   ├── chartTokens.ts          # Chart color / theme helpers
 │   │   ├── format.ts               # Number / date / percent formatters
-│   │   ├── use-css-theme.ts        # CSS-derived theme for the DataGrid
 │   │   └── utils.ts                # cn()
 │   └── services/
 │       └── rayfin-auth.service.ts  # Reads VITE_* env, builds Fabric auth
@@ -92,8 +95,8 @@ so it is meant to be opened from a deployed Fabric workspace (not `localhost`).
 3. **Write DAX queries** with `use-semantic-model-query`, aggregated to the
    visual's grain.
 4. **Compose the kit** — map each result with `toChartData` (charts) or
-   `toDataTable` (tables), then drop it into a kit card inside `PageShell` +
-   `KpiGrid` / `ChartGrid`. Pass data, not chart code.
+   `toTable` (tables), then drop the spec into a kit card inside `PageShell` +
+   `KpiGrid` / `ChartGrid`. Pass specs and query state, not chart code.
 5. **Make `src/App.tsx` yours** — replace the starter placeholder grid with your
    real tiles.
 
@@ -102,12 +105,13 @@ so it is meant to be opened from a deployed Fabric workspace (not `localhost`).
 
 ## Charts vs. tables
 
-- **Charts are custom D3/SVG** (no charting library), wrapped by the kit's chart
-  cards — pass `data` + a declarative `series`. Need something exotic (radar,
-  treemap, waterfall)? Build it on the chart core via the escape hatch inside a
-  `ChartCard` (see the `visuals` skill).
-- **Tables are the Fabric `DataGrid`**, wrapped by `DataTableCard` — map results
-  with `toDataTable(table, columnMetadata)`.
+- **Charts are Graphein specs**, rendered by the kit's `<Chart>` wrapper inside
+  `ChartCard`. Need something exotic (radar, treemap, waterfall)? Re-express it
+  with the closest supported Graphein type or use `ChartCard` children mode for a
+  truly one-off React visual (see the `visuals` skill).
+- **Tables are Graphein `table` / `matrix` specs**, wrapped by `DataTableCard` —
+  map detail results with `toTable(result, { columns })`, or author a `matrix`
+  spec over `toChartData(result)` rows for a pivot/cross-tab.
 
 ## Scripts
 
@@ -117,4 +121,3 @@ so it is meant to be opened from a deployed Fabric workspace (not `localhost`).
 | `npm run build:fabric` | Build for Fabric deployment (entrypoint for `rayfin up`) |
 | `npm run lint` | Lint with ESLint |
 | `npm run rayfin:up` | Deploy the app to a Fabric test workspace |
-

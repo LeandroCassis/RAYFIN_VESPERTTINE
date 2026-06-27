@@ -12,8 +12,8 @@
  * `src/global.css`, so colors re-theme automatically when the `.dark` class
  * flips on `<html>`. Use these helpers (`seriesColor(0)`, `roleColor("success")`,
  * `resolveColor("chart-1")`) for the small surfaces the app still styles itself
- * (KPI accents, sparklines). Envy charts are themed separately via
- * `lib/envy-theme.ts`, which bridges the same tokens into the Envy runtime.
+ * (KPI accents, sparklines). Graphein charts are themed separately via
+ * `lib/graphein-theme.ts`, which bridges the same tokens into the Graphein runtime.
  */
 
 /** Ordered chart series palette (CSS variable names, without `var()`). */

@@ -1,13 +1,13 @@
 ---
 name: visual-style-recipes
-description: Use when generating chart and data grid visuals. Provides guidance for consistent, polished data visualizations.
+description: Use when generating chart and table visuals. Provides guidance for consistent, polished data visualizations.
 
 ---
 # Visual Style Recipes
 
 Styling guidance for dashboard visuals — theming, dark mode, layout, and
-chart-specific patterns. Charts are **Envy specs** rendered by `ChartCard`; KPIs
-use `KpiCard`; tabular data uses `DataTableCard` (Fabric `DataGrid`). For the
+chart-specific patterns. Charts are **Graphein specs** rendered by `ChartCard`; KPIs
+use `KpiCard`; tabular data uses `DataTableCard` with Graphein `table` / `matrix` specs. For the
 full spec model see the `visuals` skill.
 
 ---
@@ -22,7 +22,7 @@ Kit components and the chart theme bridge read these variables at runtime — ed
 
 - **Light mode** values go in the `@theme` block
 - **Dark mode** overrides go in the `.dark` block
-- Changes cascade automatically to all charts, KPIs, and grids
+- Changes cascade automatically to all charts, KPIs, and tables
 
 The important tokens are `--color-primary`, `--color-primary-soft`,
 `--color-background`, `--color-card`, `--color-border`, `--color-ring`,
@@ -32,7 +32,7 @@ The important tokens are `--color-primary`, `--color-primary-soft`,
 
 ### Charts auto-theme — never put color or theme in a spec
 
-`ChartCard` bridges the app's CSS tokens into Envy automatically, so an authored
+`ChartCard` bridges the app's CSS tokens into Graphein automatically, so an authored
 spec carries **no `theme` and no per-series colors**. Author the data + encoding
 only:
 
@@ -98,12 +98,17 @@ visual needs more or less vertical space.
 import {
   PageShell, ThemeToggle, KpiGrid, ChartGrid,
   KpiCard, ChartCard, DataTableCard,
-  toChartData, toDataTable,
+  toChartData, toTable,
 } from "@/components/dashboard";
 
 const trend = toChartData(trendResult);   // long rows: { Month, Revenue }
 const mix = toChartData(mixResult);        // long rows: { Channel, Sales }
-const table = toDataTable(detailResult, columnMetadata);
+const table = toTable(detailResult, {
+  columns: [
+    { field: "Account", source: "Customer[Account]", title: "Account" },
+    { field: "Revenue", source: "Revenue", title: "Revenue", format: "$,.0f", align: "right" },
+  ],
+});
 
 <PageShell title="Sales overview" actions={<ThemeToggle />}>
   <KpiGrid>
@@ -134,7 +139,7 @@ const table = toDataTable(detailResult, columnMetadata);
         },
       }}
     />
-    <DataTableCard title="Details" data={table} pageSize={10} />
+    <DataTableCard title="Details" spec={table} />
   </ChartGrid>
 </PageShell>;
 ```
@@ -147,13 +152,13 @@ Charts must fill their card's visible height — no dead space, no cropping. Wit
 1. **Grid/flex cell** → provides the width and placement
 2. **Card wrapper** → `ChartCard` owns the rounded card shell
 3. **Tile body** → state handling reserves the requested height
-4. **Envy `<Chart>`** → responsive canvas fills that body
+4. **Graphein `<Chart>`** → responsive canvas fills that body
 
 If a chart appears squished, first check the surrounding grid or flex parent,
 then adjust the card `height` prop. Do not wrap chart cards in fixed-height
 containers unless the whole dashboard section needs that constraint.
 
-The kit's `DataTableCard` already wraps the Fabric DataGrid in a rounded,
+The kit's `DataTableCard` wraps Graphein `table` / `matrix` specs in a rounded,
 scrollable, themed container.
 
 ### `minHeight` vs `height` for chart containers
@@ -201,8 +206,8 @@ raw values.
 | `--color-chart-1`…`--color-chart-6` (token order) | Chart series | Series take palette colors by order; recolor by editing tokens |
 | `accent="chart-1"` / `"success"` / `"warning"` | `KpiCard` | Tokenized accent dot / semantic meaning |
 | `valueFormat="currency"` / `"percent"` / `"ratio"` / `"compact"` | `KpiCard` | Centralized KPI number formatting |
-| `format: "$,.0f"` / `".1%"` / `"%b %Y"` | Spec axis/label channels | Envy format mini-language (see `visuals` → `formatting.md`) |
-| `format` on a `DataGrid` column | `DataTableCard` | Per-column number/date formatting |
+| `format: "$,.0f"` / `".1%"` / `"%b %Y"` | Spec axis/label channels | Graphein format mini-language (see `visuals` → `formatting.md`) |
+| `format` / `conditionalFormat` on table or matrix fields | `DataTableCard` | Per-column number/date formatting and visual emphasis |
 
 ---
 
@@ -220,7 +225,7 @@ aligned with the same rhythm.
 
 Author a `bar` spec. Bars round their corners via `cornerRadius` in the spec; use
 it consistently across bar charts. **Horizontal/ranked bars are not honored in
-the installed Envy build** — `orientation` is ignored, so for top-N use a
+the installed Graphein build** — `orientation` is ignored, so for top-N use a
 vertical bar with the rows pre-sorted/limited (`topN(rows, key, n)`).
 
 ```tsx
@@ -262,7 +267,7 @@ contribution-to-total rather than side-by-side comparison.
 ### Trend lines
 
 Use `line` for precise trend comparison; set `area: true` when the filled shape
-helps emphasize volume. **Envy has no reference lines** — show a goal as a
+helps emphasize volume. **Graphein has no reference lines** — show a goal as a
 constant extra series (a second `Measure` value repeated across x) or state it in
 the card `footer`.
 
@@ -317,42 +322,48 @@ down-is-good measures such as churn, cost, or latency. `delta` is a
 
 ### Tables
 
-Use `DataTableCard` for Fabric DataGrid output. Map query tables with
-`toDataTable(table, columnMetadata)`; the card handles theming, scrolling,
-sorting, filtering, resizing, loading, empty, and error states.
+Use `DataTableCard` for Graphein `table` / `matrix` specs. Map detail query tables with
+`toTable(result, { columns })`; the card handles theming, scrolling, sorting,
+conditional formatting, totals, loading, empty, and error states.
 
 ```tsx
-const table = toDataTable(data, columnMetadata);
+const table = toTable(data, {
+  columns: [
+    { field: "Account", source: "Customer[Account]", title: "Account" },
+    { field: "Revenue", source: "Revenue", title: "Revenue", format: "$,.0f", align: "right",
+      conditionalFormat: { type: "bar", showValue: true } },
+  ],
+});
 
-<DataTableCard title="Top accounts" loading={isLoading} error={error} data={table} pageSize={10} />;
+<DataTableCard title="Top accounts" loading={isLoading} error={error} spec={table} />;
 ```
 
 ---
 
-## When Envy lacks a chart type
+## When Graphein lacks a chart type
 
-There is **no custom-chart escape hatch**. If a visualization isn't an Envy type
-(radar, treemap, waterfall, gauge, funnel…), re-express the *insight* with the
-closest supported type — Envy ships `line`, `area`, `bar`, `scatter`,
-`pie`/donut, `heatmap`, `box`, `sankey`, `choropleth`, plus `kpi`/`table` (the
-app uses `KpiCard` / `DataTableCard` for those). See `visuals` → Gotchas and
+There is **no custom-chart escape hatch**. If a visualization is not a Graphein type
+(radar, treemap, waterfall, gauge…), re-express the *insight* with the
+closest supported type — Graphein ships `line`, `area`, `bar`, `scatter`,
+`pie`/donut, `heatmap`, `funnel`, `box`, `sankey`, `choropleth`, plus `table`/`matrix` (the
+app uses `KpiCard` for KPIs and `DataTableCard` for tables). See `visuals` → Gotchas and
 `custom-charts.md` for the mapping table. Never hand-write SVG or pull in another
 chart library.
 
 ---
 
-## DataGrid
+## Tables and matrices
 
-Use the kit wrapper instead of wiring Fabric DataGrid directly. `DataTableCard`
-reads the CSS theme internally and passes it to the underlying grid.
+Use the kit wrapper instead of wiring a table manually. `DataTableCard` renders a
+Graphein `table` or `matrix` spec and receives the CSS-token theme automatically.
 
 ```tsx
-import { DataTableCard, toDataTable } from "@/components/dashboard";
+import { DataTableCard, toTable } from "@/components/dashboard";
 
-const table = toDataTable(data, columnMetadata);
+const table = toTable(data, { columns });
 
-<DataTableCard title="Accounts" data={table} loading={isLoading} error={error} />;
+<DataTableCard title="Accounts" spec={table} loading={isLoading} error={error} />;
 ```
 
-Font, spacing, border, focus, scrollbar, and dark-mode styles are controlled by
-CSS variables in `global.css` and cascade automatically.
+Font, spacing, border, focus, scrollbar, conditional formatting, and dark-mode
+styles are controlled by CSS variables in `global.css` and cascade automatically.

@@ -37,6 +37,15 @@ export const regionRevenue = [
     { region: "Middle East", revenue: 98_600 },
 ];
 
+/** Region performance grid — for the Graphein `table` with conditional formatting. */
+export const regionPerformance = [
+    { region: "North America", revenue: 482_000, margin: 0.32, yoy: 0.124 },
+    { region: "Europe", revenue: 364_500, margin: 0.28, yoy: 0.061 },
+    { region: "Asia Pacific", revenue: 298_700, margin: 0.35, yoy: 0.187 },
+    { region: "Latin America", revenue: 142_300, margin: 0.21, yoy: -0.043 },
+    { region: "Middle East", revenue: 98_600, margin: 0.3, yoy: 0.092 },
+];
+
 /** Revenue split across product lines — for stacked bars / areas. */
 export const channelRevenue = [
     { quarter: "Q1", online: 142_000, retail: 98_000, wholesale: 61_000 },
@@ -81,7 +90,7 @@ export const productCategories = [
 ];
 
 /* ----------------------------------------------------------------------- *
- * Long / tidy reshapes. Envy reads ONE long table per chart and splits
+ * Long / tidy reshapes. Graphein reads ONE long table per chart and splits
  * multiple series via `encoding.series` — so melt wide rows (a column per
  * series) into `{ category, series, value }` rather than pivoting. DAX
  * `SUMMARIZECOLUMNS` already returns this shape; these derive it from the wide

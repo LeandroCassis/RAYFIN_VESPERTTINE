@@ -7,7 +7,7 @@
 
 import type { CSSProperties, ReactNode } from "react";
 
-import type { ChartSpec } from "envy";
+import type { ChartSpec, SelectionChangeListener, SelectionStore } from "graphein";
 
 import { cn } from "@/lib/utils";
 
@@ -40,8 +40,8 @@ export interface ChartCardCommonProps {
 
 export interface ChartCardProps extends ChartCardCommonProps {
     /**
-     * The Envy chart spec to render — the common case. Author one JSON object
-     * (see the `visuals` skill / Envy spec reference) and pass it here; the card
+     * The Graphein chart spec to render — the common case. Author one JSON object
+     * (see the `visuals` skill / Graphein spec reference) and pass it here; the card
      * owns the loading / empty / error states and bridges the app theme.
      */
     spec?: ChartSpec;
@@ -49,11 +49,19 @@ export interface ChartCardProps extends ChartCardCommonProps {
     height?: number;
     /** Force the empty state (defaults to detecting an empty `spec.data`). */
     isEmpty?: boolean;
+    /**
+     * Shared selection bus (Graphein 0.3+). Pass the same store to several cards (via
+     * `SelectionStoreProvider` / `useSelectionStore`) so clicking a mark in one
+     * cross-highlights / cross-filters the others. Only meaningful in spec mode.
+     */
+    store?: SelectionStore;
+    /** Fired whenever a selection this card's chart publishes or consumes changes. */
+    onSelectionChange?: SelectionChangeListener;
     /** Optional footer (separated by a hairline rule). */
     footer?: ReactNode;
     /** Extra classes for the body wrapper. */
     bodyClassName?: string;
-    /** Arbitrary content (e.g. a `DataGrid`) when not using `spec`. */
+    /** Arbitrary content (escape hatch) when not using `spec`. */
     children?: ReactNode;
 }
 
@@ -62,6 +70,14 @@ const RESPONSIVE_BODY_STYLE: CSSProperties = {
     minHeight: MIN_CHART_HEIGHT,
     maxHeight: MAX_CHART_HEIGHT,
 };
+
+/** Default body height (px) for virtualized `table` / `matrix` specs. */
+const DEFAULT_TABLE_HEIGHT = 360;
+
+/** True when a spec is a virtualized tabular view that owns its own scroll. */
+function specIsTabular(spec: ChartSpec): boolean {
+    return spec.type === "table" || spec.type === "matrix";
+}
 
 /** True when a spec carries an explicitly empty `data` array. */
 function specIsEmpty(spec: ChartSpec): boolean {
@@ -75,10 +91,10 @@ function specIsEmpty(spec: ChartSpec): boolean {
  *
  * Two modes:
  *  - **Spec mode** (the common case): pass `spec` (+ `loading` / `error` /
- *    `data`-driven empty). The card renders an Envy `<Chart>` and the matching
- *    state tile for you.
- *  - **Children mode**: pass arbitrary `children` (e.g. a Fabric `DataGrid`)
- *    and own the body yourself.
+ *    `data`-driven empty). The card renders a Graphein `<Chart>` and the matching
+ *    state tile for you. A `table` / `matrix` spec is auto-sized to a fixed,
+ *    scrollable height; everything else uses a responsive aspect ratio.
+ *  - **Children mode**: pass arbitrary `children` and own the body yourself.
  *
  * @example
  * ```tsx
@@ -107,13 +123,20 @@ export function ChartCard({
     loading,
     error,
     isEmpty,
+    store,
+    onSelectionChange,
     emptyMessage,
     onRetry,
     children,
 }: ChartCardProps) {
     const hasHeader = title != null || subtitle != null || action != null;
     const empty = isEmpty ?? (spec != null && specIsEmpty(spec));
-    const bodyStyle = height != null ? { height } : RESPONSIVE_BODY_STYLE;
+    const tabular = spec != null && specIsTabular(spec);
+    // Virtualized table/matrix specs need a fixed, scrollable host — fall back to
+    // a sensible height instead of the chart aspect ratio when none is given.
+    const effectiveHeight = height ?? (tabular ? DEFAULT_TABLE_HEIGHT : undefined);
+    const bodyStyle =
+        effectiveHeight != null ? { height: effectiveHeight } : RESPONSIVE_BODY_STYLE;
 
     return (
         <section
@@ -145,12 +168,23 @@ export function ChartCard({
                         loading={loading}
                         error={error}
                         isEmpty={empty}
-                        height={height}
+                        height={effectiveHeight}
                         emptyMessage={emptyMessage}
                         onRetry={onRetry}
                     >
-                        <div style={bodyStyle}>
-                            <Chart spec={spec} />
+                        <div
+                            className={
+                                tabular
+                                    ? "overflow-hidden rounded-xl border border-border"
+                                    : undefined
+                            }
+                            style={bodyStyle}
+                        >
+                            <Chart
+                                spec={spec}
+                                store={store}
+                                onSelectionChange={onSelectionChange}
+                            />
                         </div>
                     </TileBody>
                 ) : (

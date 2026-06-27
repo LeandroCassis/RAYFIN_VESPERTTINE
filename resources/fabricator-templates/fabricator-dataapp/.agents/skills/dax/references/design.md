@@ -12,14 +12,14 @@ DAX computes and fetches. TypeScript maps and renders. Use this reference when a
 | TopN and payload reduction | DAX |
 | Filters and slicers | DAX or TypeScript; see strategy below |
 | Debug/diff row ordering | DAX `ORDER BY` |
-| User-facing sorting | TypeScript / DataGrid sort |
+| User-facing sorting | TypeScript / Graphein table sort |
 | Merging aligned result sets | TypeScript |
 | Totals derivable from detail rows (SUM, COUNT, MIN, MAX) | TypeScript |
 | Non-derivable totals (DISTINCTCOUNT, ratios, AVERAGEX, complex measures) | DAX summary query |
 | Filling bounded dimension gaps | TypeScript stitch of dimension list + sparse result |
 | Reshaping (pivot/unpivot) | TypeScript |
-| Display names | `columnMetadata` / mapping |
-| Formatting | Chart spec `format`, card formatter, or DataGrid metadata |
+| Display names | `toChartData` aliases / `toTable` columns |
+| Formatting | Chart spec `format`, card formatter, or table/matrix `format` |
 | Labels, icons, badges, null placeholders | Component rendering / mapped display fields |
 
 ## Filter strategy
@@ -145,9 +145,9 @@ Power BI semantic models store `FormatString` on columns and measures. Honor mod
 
 | Source | How to use |
 |---|---|
-| Static `FormatString` from `INFO.VIEW.COLUMNS()` / `INFO.VIEW.MEASURES()` | Copy VBA/ECMA-376 format into DataGrid `columnMetadata.format`; choose matching chart spec/card formatter. |
+| Static `FormatString` from `INFO.VIEW.COLUMNS()` / `INFO.VIEW.MEASURES()` | Convert model formats to the closest Graphein table/matrix `format` or chart spec/card formatter. |
 | Dynamic format string measure | Query resolved format alongside raw value using `IGNORE(...)`; apply per-row in TypeScript when needed. |
-| Chart axes/tooltips | Use Envy spec `format` such as `$,.0f`, `.1%`, `%b %Y`. |
+| Chart axes/tooltips | Use Graphein spec `format` such as `$,.0f`, `.1%`, `%b %Y`. |
 
 ```dax
 EVALUATE
@@ -160,11 +160,13 @@ ORDER BY [Measure]
 ```
 
 ```ts
-export const columnMetadata = {
-  "[Total Revenue]": { name: "Total Revenue", displayName: "Revenue", format: "$#,##0.00" },
-  "[Margin %]": { name: "Margin", displayName: "Margin", format: "0.00%" },
-  "'Calendar'[Date]": { name: "CalendarDate", displayName: "Date", format: "yyyy-mm-dd" },
-};
+const table = toTable(data, {
+  columns: [
+    { field: "Revenue", source: "Total Revenue", title: "Revenue", format: "$,.0f" },
+    { field: "Margin", source: "Margin %", title: "Margin", format: ".1%" },
+    { field: "CalendarDate", source: "Calendar[Date]", title: "Date", type: "temporal", format: "%Y-%m-%d" },
+  ],
+});
 ```
 
 ```dax
@@ -202,7 +204,7 @@ Problem: strings cannot sort/chart as numbers or dates.
 EVALUATE SUMMARIZECOLUMNS('Calendar'[Month], "Revenue", FORMAT([Revenue], "$#,##0"))
 ```
 
-Fix: return raw values; format via metadata or spec.
+Fix: return raw values; format via the visual spec or card props.
 
 ### Complex DAX to force dimension completeness
 
@@ -214,13 +216,13 @@ Fix: fetch sparse detail plus a bounded dimension list and stitch in TypeScript.
 
 Problem: emoji/prefixes/concatenated labels put presentation in the data layer.
 
-Fix: return raw status/value fields and decorate with `cellRenderer` or mapped display fields.
+Fix: return raw status/value fields and decorate with mapped display fields or table/matrix conditional formatting.
 
 ### `SELECTCOLUMNS` only for friendly names
 
-Problem: cosmetic renaming duplicates `columnMetadata` and can break `ORDER BY` references.
+Problem: cosmetic renaming duplicates display mapping and can break `ORDER BY` references.
 
-Fix: return natural names and map display names in metadata. Use `SELECTCOLUMNS` for projection, computed columns, or reshaping—not cosmetic aliases.
+Fix: return natural names and map display names in `toChartData` aliases or `toTable` columns. Use `SELECTCOLUMNS` for projection, computed columns, or reshaping—not cosmetic aliases.
 
 ### Converting BLANK to placeholders
 

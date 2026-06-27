@@ -17,12 +17,11 @@
  * The whole palette lives in `@theme static` so every `--color-*` is
  * emitted as a real CSS variable (not tree-shaken). This is required:
  * the custom SVG charts read `var(--color-chart-n)` straight from the SVG, the
- * chart helpers read the vars via `getComputedStyle`, and the Fabric DataGrid
- * reads the bridged vars below through `readCssTheme()`.
+ * chart helpers read the vars via `getComputedStyle`.
  * `.dark` then flips every token.
  *
  * Accent is a single swappable token — recolor `--color-primary*`
- * (+ `--color-chart-1`, `--color-ring`, `--color-brand`) to rebrand.
+ * (+ `--color-chart-1`, `--color-ring`) to rebrand.
  * ------------------------------------------------------------------ */
 
 @theme static {
@@ -111,14 +110,6 @@
   --color-chart-grid: rgba(10, 14, 22, 0.06);
   --color-chart-axis: #94a3b8;
   --color-chart-cursor: rgba(10, 14, 22, 0.08);
-
-  /* ---------- Bridged tokens for the Fabric DataGrid ----------
-     DataGrid reads these CSS vars at runtime via `readCssTheme()` (from
-     @microsoft/fabric-visuals-core) and projects them into a JS theme.
-     Keep them aligned with the brand + surface tokens above. */
-  --color-brand: #bef264; /* selection / active accents */
-  --color-brand-foreground: #3f6212; /* branded text on light surfaces */
-  --color-hover: #f3f3f0; /* row / cell hover surface */
 
   /* ---------- Spacing — 4px baseline grid (p-*, m-*, gap-*) ----------
      NOTE: do NOT add a `--spacing-none` key here. Tailwind v4 folds the
@@ -234,11 +225,6 @@
   --color-chart-grid: rgba(230, 232, 236, 0.06);
   --color-chart-axis: #6b7380;
   --color-chart-cursor: rgba(230, 232, 236, 0.08);
-
-  /* Bridged DataGrid tokens (dark) */
-  --color-brand: #d9f99d;
-  --color-brand-foreground: #1a2e05;
-  --color-hover: #1c2129;
 }
 
 @utility icon-size-* {

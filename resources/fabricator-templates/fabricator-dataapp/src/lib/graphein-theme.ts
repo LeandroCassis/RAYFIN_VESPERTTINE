@@ -7,20 +7,20 @@
 
 import { useEffect, useState } from "react";
 
-import type { ThemeColors, ThemeInput } from "envy";
+import type { ThemeColors, ThemeInput } from "graphein";
 
 /**
- * Bridge from the app's CSS design tokens to an Envy `ThemeInput`.
+ * Bridge from the app's CSS design tokens to a Graphein `ThemeInput`.
  *
- * Envy paints to a `<canvas>`, which cannot resolve CSS `var(...)` — so we read
- * the concrete `--color-*` values via `getComputedStyle` and hand Envy a fully
- * resolved palette. This keeps every chart on-brand and dark-mode aware without
- * the agent ever touching a color: restyle by editing `src/global.css` tokens,
- * not by hardcoding hex in a spec.
+ * Graphein paints to a `<canvas>`, which cannot resolve CSS `var(...)` — so we
+ * read the concrete `--color-*` values via `getComputedStyle` and hand Graphein
+ * a fully resolved palette. This keeps every chart on-brand and dark-mode aware
+ * without the agent ever touching a color: restyle by editing `src/global.css`
+ * tokens, not by hardcoding hex in a spec.
  *
- * The map below is the single source of truth for which token feeds which Envy
- * color role. All tokens are hex / rgba (never `oklch`) so Envy's color parser
- * can derive ramps, area fills, and hover tints from them.
+ * The map below is the single source of truth for which token feeds which
+ * Graphein color role. All tokens are hex / rgba (never `oklch`) so Graphein's
+ * color parser can derive ramps, area fills, and hover tints from them.
  */
 
 const PALETTE_VARS = [
@@ -70,8 +70,8 @@ function resolveColors(styles: CSSStyleDeclaration): ThemeColors {
     };
 }
 
-/** Read the current Envy theme from the live CSS tokens (non-reactive). */
-export function readEnvyTheme(): ThemeInput {
+/** Read the current Graphein theme from the live CSS tokens (non-reactive). */
+export function readGrapheinTheme(): ThemeInput {
     if (typeof window === "undefined" || typeof document === "undefined") {
         return { base: "dark", color: FALLBACK_COLORS };
     }
@@ -83,16 +83,18 @@ export function readEnvyTheme(): ThemeInput {
 }
 
 /**
- * Reactive Envy theme: resolves the CSS tokens into an Envy `ThemeInput` and
- * re-resolves whenever the `.dark` class on `<html>` flips, so charts re-theme
- * with the rest of the app. `Chart` injects this automatically — most code
- * never calls it directly.
+ * Reactive Graphein theme: resolves the CSS tokens into a Graphein `ThemeInput`
+ * and re-resolves whenever the `.dark` class on `<html>` flips, so charts
+ * re-theme with the rest of the app. `Chart` injects this automatically — most
+ * code never calls it directly.
  */
-export function useEnvyTheme(): ThemeInput {
-    const [theme, setTheme] = useState<ThemeInput>(readEnvyTheme);
+export function useGrapheinTheme(): ThemeInput {
+    const [theme, setTheme] = useState<ThemeInput>(readGrapheinTheme);
     useEffect(() => {
         if (typeof window === "undefined") return;
-        const observer = new MutationObserver(() => setTheme(readEnvyTheme()));
+        const observer = new MutationObserver(() =>
+            setTheme(readGrapheinTheme()),
+        );
         observer.observe(document.documentElement, {
             attributes: true,
             attributeFilter: ["class", "data-appearance"],

@@ -37,8 +37,8 @@ fast as possible.
 2. **One hero query** — write a single DAX query at the visual's grain,
    quick-test it once, ship it. (→ `dax`: Fast path)
 3. **One hero visual** — render it the simplest way: map the hero query with
-   `toChartData`, author one Envy spec, and pass it to a `ChartCard` (or render a
-   `KpiCard` / `DataTableCard`) — pass the mapped data + `loading`/`error`, don't
+   `toChartData`, author one Graphein spec, and pass it to a `ChartCard` (or render a
+   `KpiCard` / `DataTableCard` with a `table` / `matrix` spec) — pass the mapped spec + `loading`/`error`, don't
    hand-write chart code. (→ `visuals`: Fast path)
 4. **Sensible default theme** — pick a characterful font pairing + a primary
    color and move on. Do **not** perfect theming yet. (→ `app-design`: Fast path)
@@ -49,7 +49,7 @@ Stop and look at the deployed result before going further.
 
 ### Phase 2 — Breadth
 
-Add the rest of what the user asked for — more KPIs, charts, a grid, filters.
+Add the rest of what the user asked for — more KPIs, charts, table/matrix specs, filters.
 **Deploy + review every 1–2 additions**, not once at the end. Pull in
 interactivity (cross-filtering / cross-highlighting) only when the user actually
 needs it. (→ `dax`, `visuals`)

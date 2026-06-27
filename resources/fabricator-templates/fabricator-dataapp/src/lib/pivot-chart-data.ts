@@ -84,7 +84,7 @@ function resolveSeriesColor(
  * Pivot a long DAX result into wide rows (one column per series value) plus the
  * discovered `series[]`.
  *
- * In the Envy spec model you usually DON'T need this: keep rows long and point
+ * In the Graphein spec model you usually DON'T need this: keep rows long and point
  * `encoding.series` at the series column. Reach for `pivotChartData` only when a
  * consumer specifically needs a wide, one-column-per-series shape.
  *

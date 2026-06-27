@@ -215,7 +215,7 @@ These are often left unstyled — don't. They should match the aesthetic directi
 
 Use thin, theme-aware scrollbars globally, using the border color token for the thumb and a transparent track.
 
-Apply the same on any scrollable container (DataGrid wrappers, sidebars, etc.).
+Apply the same on any scrollable container (table wrappers, sidebars, etc.).
 
 ### Any element not listed
 

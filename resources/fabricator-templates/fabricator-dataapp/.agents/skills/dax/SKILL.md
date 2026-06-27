@@ -20,7 +20,7 @@ Use this skill for every data-shape decision: find the model objects, decide the
 2. **Pick one visual grain** — one DAX query should return exactly the rows the hero visual needs.
 3. **Prefer model measures** — use `[Measure]` before re-aggregating raw columns.
 4. **Write and quick-test one query** — `npx fabric-app-data query <alias> --query '<DAX>'`; fix blocking syntax/data-shape errors only.
-5. **Map in TypeScript** — DAX computes/fetches; `toChartData` / `toDataTable` maps positional rows; the visual spec handles display.
+5. **Map in TypeScript** — DAX computes/fetches; `toChartData` / `toTable` maps positional rows; the visual spec handles display.
 
 Do not enumerate the whole model, implement full interaction strategy, or perfect edge-case time intelligence before the first deployed visual.
 
@@ -66,8 +66,8 @@ Rules:
 | Deterministic debug ordering | DAX `ORDER BY` |
 | Merging multiple result sets, safe totals from fetched detail (SUM/COUNT/MIN/MAX), reshaping/pivoting | TypeScript |
 | Non-additive totals (DISTINCTCOUNT, ratios, AVERAGEX, complex measures) | DAX separate summary query |
-| Column display names | `columnMetadata` / mapping |
-| Number/date formatting | Chart spec `format`, card props, or DataGrid metadata |
+| Column display names | `toChartData` aliases / `toTable` columns |
+| Number/date formatting | Chart spec `format`, card props, or table/matrix `format` |
 | Decorative labels/icons/null placeholders | Component rendering or mapped display fields |
 
 Decision check: if it changes data meaning, filter context, measure definition, or grain, do it in DAX. If it only changes presentation, do it in TypeScript or the visual spec.

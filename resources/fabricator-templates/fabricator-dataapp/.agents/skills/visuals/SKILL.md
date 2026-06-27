@@ -2,31 +2,31 @@
 name: visuals
 description: >
   Use when adding charts, KPIs, tables, slicers, or any visual to a dashboard.
-  Charts are authored as Envy chart specs — one chart = one JSON `ChartSpec`
+  Charts are authored as Graphein chart specs — one chart = one JSON `ChartSpec`
   (type + tidy `data` + `encoding`) dropped into `<ChartCard spec={…} />`, which
   owns loading / empty / error and the app theme. Covers the spec model and the
-  per-type recipes (line/area/bar/scatter/pie/heatmap), the DAX→rows helpers
-  (toChartData / topN / deriveKpi), `KpiCard`, `DataTableCard` (Fabric DataGrid),
-  slicers (dropdown/list/search/date-range/range + FilterBar) with shared filter
-  state, layout (PageShell/grids/bento), value formatting, and color tokens.
+  per-type recipes (line/area/bar/scatter/pie/heatmap/funnel/table/matrix), the
+  DAX→rows helpers (toChartData / toTable / topN / deriveKpi), `KpiCard`,
+  `DataTableCard` (Graphein table/matrix), slicers (dropdown/list/search/date-range/range + FilterBar)
+  with shared filter state, interactivity, layout, value formatting, and color tokens.
 ---
 
-# Visuals — author an Envy spec, drop it in a tile
+# Visuals — author a Graphein spec, drop it in a tile
 
 **One chart = one JSON spec.** You don't hand-write SVG or wire a charting
-library. You (1) map your DAX result into plain rows, (2) author a single Envy
-[`ChartSpec`](references/envy-spec-reference.md) — a `type`, a tidy `data` array,
-and an `encoding` that names the columns — and (3) drop it into
+library. You (1) map your DAX result into plain rows, (2) author a single Graphein
+[`ChartSpec`](references/graphein-spec-reference.md) — a `type`, a tidy `data`
+array, and an `encoding` that names the columns — and (3) drop it into
 `<ChartCard spec={…} />`. The card owns the loading / empty / error states and
 bridges the app theme, so a spec never needs a color or a size.
 
-Three things are React components, not Envy specs:
+Three things are React surfaces around Graphein specs or state:
 
 - **KPIs** → `<KpiCard>` (big value + delta pill + sparkline).
-- **Tabular data** → `<DataTableCard>` (the Fabric `DataGrid` — sortable,
-  resizable, themed).
+- **Tabular data** → `<DataTableCard spec={tableOrMatrixSpec}>` (Graphein
+  `table` / `matrix` — virtualized, sortable, conditional formatting, totals).
 - **Filters** → the **slicers** (`FilterBar` + `DropdownSlicer`/…) over shared
-  filter state.
+  filter state; chart selections can bridge into the same state.
 
 Everything is exported from one barrel: **`@/components/dashboard`**.
 
@@ -65,7 +65,8 @@ const { data, isLoading, error } = useSemanticModelQuery({ connection, query });
 wrapped in `PageShell` + `KpiGrid`/`ChartGrid`/`BentoGrid`. Deploy + review every
 1–2 additions.
 
-**Phase 3 — Polish:** slicers, multi-series, formatting, dark-mode review.
+**Phase 3 — Polish:** slicers, interactivity, multi-series, formatting, dark-mode
+review.
 
 ## The data flow (map → author → drop in)
 
@@ -73,13 +74,13 @@ Every tile follows the same shape:
 
 1. **Fetch** with `useSemanticModelQuery({ connection, query })` →
    `{ data, isLoading, error }` (see the `dax` + `fabric-data` skills).
-2. **Map** the DAX result into the shape the visual wants. Both helpers accept
-   the query result, a raw `QueryTable`, or `undefined` — no `status` check:
+2. **Map** the DAX result into the shape the visual wants. Helpers accept the
+   query result, a raw `QueryTable`, or `undefined` — no `status` check:
    - **Charts** want **tidy/long rows** → `toChartData(result, options?)`.
-   - **DataGrid** wants a `DataTable` → `toDataTable(result, columnMetadata)`.
-3. **Author + pass.** Put the rows in a spec's `data` and hand the spec (or the
-   `DataTable`) to the card with `loading` + `error`. Don't pre-render
-   skeletons/empty states — the cards do it.
+   - **Tables** want a Graphein `table` spec → `toTable(result, { columns })`.
+     Hand-author a `matrix` spec over `toChartData(result)` rows for pivots.
+3. **Author + pass.** Put rows in a spec's `data` and hand the spec to the card
+   with `loading` + `error`. Don't pre-render skeletons/empty states — the cards do it.
 
 ```tsx
 // DAX rows are positional (unknown[][]); toChartData keys them by column
@@ -93,10 +94,10 @@ const rows = toChartData(data, {
 
 ### Keep data tidy — split with `series`, don't pre-pivot
 
-Envy wants **long/tidy** data: one row per observation. To show multiple series
-(multi-line, grouped/stacked bars, stacked areas), add a `series` channel that
-points at the category column — **do not** widen the table into one column per
-category.
+Graphein wants **long/tidy** data: one row per observation. To show multiple
+series (multi-line, grouped/stacked bars, stacked areas), add a `series` channel
+that points at the category column — **do not** widen the table into one column
+per category.
 
 ```jsonc
 // ✅ tidy — one row per (quarter, channel); split with series
@@ -107,7 +108,7 @@ category.
 
 `toChartData` already returns long rows, so a normal DAX result drops straight in.
 (`pivotChartData` still exists for the rare case you truly need wide rows, but with
-Envy you almost never do.)
+Graphein you almost never do.)
 
 ## Authoring a spec
 
@@ -127,8 +128,8 @@ A spec is a plain JSON object — no functions, no colors, no sizes:
 ```
 
 - **`encoding` is required** for `line`/`area`/`bar`/`scatter` (`x`+`y`), `pie`
-  (`theta`+`color`), and `heatmap` (`x`+`y`+`color`). `FieldDef.type` is
-  `quantitative | temporal | ordinal | nominal` (inferred when omitted).
+  (`theta`+`color`), `heatmap` (`x`+`y`+`color`), and `funnel` (`stage`+`value`).
+  `FieldDef.type` is `quantitative | temporal | ordinal | nominal` (inferred when omitted).
 - **Validate before render** in tricky cases: `validateSpec(spec)` →
   `{ valid, errors, warnings }` (re-exported from the barrel). `ChartCard`
   renders whatever you pass, so catch field-name typos here.
@@ -143,11 +144,13 @@ A spec is a plain JSON object — no functions, no colors, no sizes:
 | Trend over time | `line` (`area` to emphasize volume) | `x` temporal, `y`, optional `series`; `points`, `curve` |
 | Part-to-whole over time | `area` + `stack: true` | `x`, `y`, `series` |
 | Compare categories | `bar` | `x` category, `y`, optional `series`; `stack` or grouped |
-| Composition of a total | `bar` + `stack`, or `pie`/donut | bar: `series`; pie: `theta` + `color`, `donut` |
+| Stage conversion | `funnel` | `stage`, `value`, optional `percent: "first" | "previous"` |
+| Composition of a total | `bar` + `stack`, or `pie`/donut | bar: `series`; pie: `theta` + `color`, `donut`, `labels` |
 | Correlation / 3rd dim | `scatter` | `x`, `y`, optional `size`, `series` |
 | Density across two categories | `heatmap` | `x`, `y`, `color`, `scheme` |
-| Headline metric | **`KpiCard`** (React) | not an Envy spec — see Cards |
-| Raw / detail records | **`DataTableCard`** (React) | not an Envy spec — see Cards |
+| Headline metric | **`KpiCard`** (React) | not a Graphein chart spec — see Cards |
+| Raw / detail records | **`DataTableCard`** with `table` spec | `toTable(result, { columns })`; see Cards |
+| Pivot / cross-tab | **`DataTableCard`** with `matrix` spec | `rows`, `columns`, `values`, totals, conditional formatting |
 
 Rules of thumb: prefer `bar` over `pie` beyond ~6 slices; `stack` for
 part-to-whole, grouped bars for direct comparison.
@@ -189,6 +192,17 @@ part-to-whole, grouped bars for direct comparison.
   "encoding": { "theta": { "field": "value", "type": "quantitative", "format": "$,.0f" },
                 "color": { "field": "category" } } }
 
+// Pie with outside callout labels
+{ "type": "pie", "data": rows,
+  "labels": { "placement": "outside", "content": "category-percent", "minShare": 0.03, "connector": "muted" },
+  "encoding": { "theta": { "field": "value", "type": "quantitative", "format": "$,.0f" },
+                "color": { "field": "category" } } }
+
+// Funnel — ordered stage conversion, labels show % vs previous stage
+{ "type": "funnel", "data": rows, "labels": true, "percent": "previous",
+  "encoding": { "stage": { "field": "stage" },
+                "value": { "field": "users", "type": "quantitative", "format": ",d" } } }
+
 // Heatmap — category × category, colored by a measure
 { "type": "heatmap", "data": rows, "scheme": "teal",
   "encoding": { "x": { "field": "quarter" }, "y": { "field": "region" },
@@ -196,21 +210,20 @@ part-to-whole, grouped bars for direct comparison.
 ```
 
 Full field-by-field docs + every channel/option:
-[Envy spec reference](references/envy-spec-reference.md).
+[Graphein spec reference](references/graphein-spec-reference.md).
 
 ### Gotchas
 
-- **Horizontal bars aren't available** in this Envy version. `BarSpec` *types*
+- **Horizontal bars aren't available** in this Graphein version. `BarSpec` *types*
   an `orientation` field, but the runtime ignores it — bars always render
   vertical. For "top N" / ranked breakdowns, use a **vertical** bar and sort the
   rows by value (`topN(rows, key, n)`); don't set `orientation`.
+- **No dual-axis / combo chart.** Split it across two stacked `ChartCard`s, or use
+  a `line` with `points` over the same x when one axis is enough.
 - **Temporal fields are ISO strings** (`"2024-01"`, `"2024-01-15"`) or epoch ms —
   JSON has no `Date`. Mark the field `type: "temporal"` for a time axis.
 - **Empty `data` → empty tile.** A spec with `data: []` makes `ChartCard` show
   its empty state. Never ship mock/placeholder rows.
-- **No click events.** Envy charts have hover tooltips + crosshair but no
-  click/selection callback — interactivity comes from **slicers** (below), not
-  from clicking a mark.
 
 ## Cards
 
@@ -218,7 +231,7 @@ Full field-by-field docs + every channel/option:
 The card shell — rounded-2xl, hairline border, no shadow — in two modes:
 
 ```tsx
-// Spec mode (the common case): pass an Envy spec + query state.
+// Spec mode (the common case): pass a Graphein spec + query state.
 <ChartCard title="Revenue" subtitle="Last 12 months"
   loading={isLoading} error={error} spec={spec} />
 
@@ -227,8 +240,9 @@ The card shell — rounded-2xl, hairline border, no shadow — in two modes:
 ```
 
 Props: `title`, `subtitle`, `action` (right-aligned header slot), `spec`,
-`height` (omit for responsive aspect-based height), `isEmpty` (force empty;
-defaults to detecting empty `spec.data`), `footer`, `loading`, `error`,
+`height` (omit for responsive aspect-based height; table/matrix specs auto-use a
+fixed scroll height), `isEmpty` (force empty; defaults to detecting empty
+`spec.data`), `store`, `onSelectionChange`, `footer`, `loading`, `error`,
 `emptyMessage`, `onRetry`, `bodyClassName`, `children`.
 
 ### `KpiCard`
@@ -257,31 +271,69 @@ to get `{ value, previous, delta, trend }` from a time series in one call.
 > for stable keys; in dev the console prints the available keys.
 
 ### `DataTableCard`
-The Fabric `DataGrid` in the card shell — sortable, filterable, resizable, themed.
+A Graphein `table` / `matrix` in the card shell — virtualized, sortable, themed,
+with conditional formatting, groups, and totals. Build a table spec with
+`toTable(result, { columns })`; hand-author a `matrix` over `toChartData(result)`
+rows for a pivot/cross-tab.
 
 ```tsx
-const table = toDataTable(data, [
-  { name: "month", displayName: "Month" },
-  { name: "revenue", displayName: "Revenue", format: "$#,0.00" },
-]);
+const table = toTable(data, {
+  columns: [
+    { field: "account", source: "Customer[Account]", title: "Account" },
+    { field: "revenue", source: "Revenue", title: "Revenue", format: "$,.0f", align: "right",
+      conditionalFormat: { type: "bar", showValue: true } },
+  ],
+  sort: { field: "revenue", order: "desc" },
+  totals: { label: "Total" },
+});
+
 <DataTableCard title="Top accounts" loading={isLoading} error={error}
-  data={table} pageSize={10} />
+  spec={table} height={420} />
 ```
 
-Props: `data` (a `DataTable`), `height`, `rowHeight`, `pageSize`, plus the shared
-state props. Cell rendering + the `DataTable` shape:
-[data-grid-visual.md](references/data-grid-visual.md) ·
-[data-table.md](references/data-table.md).
+Props: `spec` (`TableSpec | MatrixSpec`), `height` (default `360`), `store`,
+`onSelectionChange`, `isEmpty`, plus the shared card state props (`title`,
+`subtitle`, `action`, `loading`, `error`, `emptyMessage`, `onRetry`). See
+[formatting & color](references/formatting.md) and the
+[Graphein spec reference](references/graphein-spec-reference.md) for table/matrix
+fields.
 
-## Shape helpers (DAX → rows)
+## Interactivity
+
+Graphein specs can publish and consume named selections:
+
+- `params` publishes a `point` or `interval` selection (click marks or brush).
+- `highlight` consumes a selection by emphasizing matches and dimming the rest.
+- `filter` consumes selections or literal predicates by subsetting rows.
+
+```jsonc
+// Bar publishes a region pick; line consumes it as a highlight.
+{ "type":"bar", "data":rows,
+  "params":[{ "name":"pick", "select":{ "type":"point", "fields":["region"] } }],
+  "encoding":{ "x":{"field":"region"}, "y":{"field":"revenue"} } }
+{ "type":"line", "data":rows, "highlight":{ "param":"pick" },
+  "encoding":{ "x":{"field":"month","type":"temporal"}, "y":{"field":"revenue"}, "series":{"field":"region"} } }
+```
+
+Use `SelectionStoreProvider` / `useSelectionStore()` and pass the same `store` to
+several `ChartCard`s or `DataTableCard`s for cross-highlight/cross-filter. To turn
+a chart click into the app's existing server-side path, call
+`useSelectionFilterBridge(store, { fieldMap })`: it maps Graphein selections into
+`useFilterState`, which drives `applyFilters` and `toDaxFilters`. React slicers +
+DAX re-query remain the primary filter path because this app's tiles are
+independently DAX-aggregated per tile.
+
+## Shape helpers (DAX → rows/specs)
 
 - **`toChartData(result, { columns? })`** → tidy rows for a spec's `data`. Alias
   columns for stable keys.
+- **`toTable(result, { columns, sort, totals, density, striped, numeric, text })`**
+  → a Graphein `table` spec for `DataTableCard`. `columns` are Graphein table
+  columns plus optional `source` (full `Table[Col]`, short name, or index).
 - **`topN(rows, valueKey, n, { other?, ascending? })`** — sort + slice mapped
   rows for ranked bars / leaderboards, with an optional `"Other"` rollup.
 - **`deriveKpi(result, { valueKey })`** → `{ value, previous, delta, trend }` for
   a `KpiCard`.
-- **`toDataTable(result, columnMetadata)`** → a `DataTable` for `DataTableCard`.
 
 ## Layout
 
@@ -311,8 +363,9 @@ state props. Cell rendering + the `DataTable` shape:
 
 ## Controls & slicers (interactivity)
 
-Envy charts don't emit clicks, so interactivity is **React-state filters** that
-re-query or re-filter the data; the charts just re-render.
+Chart specs can now publish selections, but React slicers remain the primary
+server-side filter path in this app: they update shared filter state, which then
+re-filters client rows or re-queries DAX.
 
 **Lightweight controls** — own the value in `useState`, filter your rows:
 
@@ -347,12 +400,15 @@ Slicers: `DropdownSlicer`, `ListSlicer`, `SearchSlicer`, `DateRangeSlicer`,
 
 ## Formatting & color
 
-- **In a spec:** format numbers/dates with Envy's
+- **In a spec:** format numbers/dates with Graphein's
   [format mini-language](references/formatting.md) on a `FieldDef` —
   `"$,.0f"`, `",d"`, `".1%"`, `".2s"` (→ `1.2k`), `"%b %e, %Y"` (dates).
+- **Pie labels:** use `labels` (`placement: "outside"` for callouts,
+  `content: "category-percent"`, etc.).
 - **KpiCard:** `valueFormat` — `"number" | "compact" | "currency" | "percent"
   (0–100) | "ratio" (0–1)` or a `(n) => string` function.
-- **DataGrid:** a per-column `format` string (VBA/ECMA-376) in `columnMetadata`.
+- **Table/matrix:** column/value `format` plus `conditionalFormat` (`bar`, `icon`,
+  `colorScale`, `rules`).
 - **Color/theme:** never put hex in a spec — `ChartCard` themes every chart from
   `src/global.css` tokens (`--color-chart-1..6`, accent, dark mode). Restyle by
   editing those tokens. See [formatting & color](references/formatting.md).
@@ -376,12 +432,15 @@ import {
   FilterStateProvider, useFilterState, FilterBar,
   DropdownSlicer, ListSlicer, SearchSlicer, DateRangeSlicer, RangeSlicer,
   useSlicerOptions, applyFilters, toDaxFilters,
-  // cards + Envy runtime
-  ChartCard, KpiCard, DataTableCard, Chart, validateSpec, type ChartSpec,
+  // cards + Graphein runtime
+  ChartCard, KpiCard, DataTableCard, Chart, validateSpec, createSelectionStore,
+  SelectionStoreProvider, useSelectionStore, useSelection, type ChartSpec,
+  // selection bridge
+  useSelectionFilterBridge, selectionToFilters, filterToSelection,
   // state tiles + sparkline
   EmptyTile, ErrorTile, ChartSkeleton, KpiSkeleton, TileBody, Sparkline,
-  // DAX → rows helpers + formatting/color
-  toChartData, toDataTable, topN, deriveKpi, pivotChartData,
+  // DAX → rows/spec helpers + formatting/color
+  toChartData, toTable, topN, deriveKpi, pivotChartData,
   formatNumber, formatCompact, formatCurrency, formatPercent, formatDate,
   seriesColor, roleColor,
 } from "@/components/dashboard";
@@ -389,12 +448,10 @@ import {
 
 ## References
 
-- [Envy spec reference](references/envy-spec-reference.md) — every chart type,
-  channel, and option, with copy-paste JSON.
+- [Graphein spec reference](references/graphein-spec-reference.md) — every chart/table
+  type, channel, and option, with copy-paste JSON.
 - [Formatting & color](references/formatting.md) — the format mini-language,
-  `valueFormat`, DataGrid column formats, theme tokens.
+  `valueFormat`, table/matrix formats, conditional formatting, theme tokens.
 - [Slicers & filter state](references/slicers.md) · [interactions](references/interactions.md).
-- [DataGrid cell rendering](references/data-grid-visual.md) ·
-  [the `DataTable` shape](references/data-table.md) ·
-  [multiple data inputs](references/multi-data-input.md) ·
+- [Multiple data inputs](references/multi-data-input.md) ·
   [choosing the closest type](references/custom-charts.md).

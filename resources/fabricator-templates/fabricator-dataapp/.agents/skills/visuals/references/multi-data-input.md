@@ -1,15 +1,15 @@
 # Multiple series & overlays
 
-Multi-series in Envy is **one `series` channel over long/tidy rows** — not a
+Multi-series in Graphein is **one `series` channel over long/tidy rows** — not a
 `series[]` prop and not a pre-pivot. Keep one row per observation, point
-`encoding.series` at the category column, and Envy splits it into multiple lines /
+`encoding.series` at the category column, and Graphein splits it into multiple lines /
 grouped-or-stacked bars / stacked areas.
 
 ## Long result → series channel (the common case)
 
 A DAX result that groups by a category (e.g.
 `SUMMARIZECOLUMNS('Date'[Month], 'Product'[Category], "Revenue", [Total Revenue])`
-→ `(Month, Category, Revenue)`) is **already** the shape Envy wants. Map it and
+→ `(Month, Category, Revenue)`) is **already** the shape Graphein wants. Map it and
 point `series` at the category — no pivot:
 
 ```tsx
@@ -74,7 +74,7 @@ const rows = [
 
 ## Target / reference value
 
-Envy v0.2.1 has no built-in reference-line option. To draw a goal or average, add
+Graphein has no built-in reference-line option. To draw a goal or average, add
 it as an extra **series** — a constant value repeated across every x — so it plots
 as its own flat line:
 
@@ -105,7 +105,7 @@ subset is a separate aligned DAX aggregation — see the `dax` skill's design re
 
 ## Keeping every category on the axis
 
-Envy only plots the x values present in the rows. If a sparse measure would drop
+Graphein only plots the x values present in the rows. If a sparse measure would drop
 categories, left-join the full dimension list onto the measure rows in TS (fill
 missing measures with `0`/`null`) before mapping — so every category keeps its slot.
 
@@ -121,7 +121,7 @@ array — not multi-series:
                 color: { field: "channel" } } }} />
 ```
 
-## Combos & marks Envy lacks
+## Combos & marks Graphein lacks
 
 There is **no dual-axis combo** and no radar/treemap/waterfall in this version.
 Re-express the question with a supported type, or split it across two stacked

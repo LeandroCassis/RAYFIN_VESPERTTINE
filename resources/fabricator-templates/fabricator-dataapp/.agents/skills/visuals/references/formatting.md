@@ -8,9 +8,9 @@ scale axes and tables sort.
 
 | Surface | How to format |
 |---|---|
-| Envy chart spec | a `format` hint on the `FieldDef` (axis/label/tooltip) — the [mini-language](#format-mini-language) |
+| Graphein chart spec | a `format` hint on the `FieldDef` (axis/label/tooltip) — the [mini-language](#format-mini-language) |
 | `KpiCard` | the `valueFormat` prop |
-| `DataTableCard` / `DataGrid` | per-column `format` in `columnMetadata` (a VBA/ECMA-376 string) |
+| `DataTableCard` table/matrix spec | column/value `format` plus `conditionalFormat` |
 | Anywhere in JSX | call a formatter from `@/components/dashboard` directly |
 
 ## Format mini-language (chart specs)
@@ -37,9 +37,9 @@ small subset of d3-format (numbers) plus strftime-style dates:
 
 **Dates** — a hint containing `%` is a date pattern: `%Y %y %m %d %e %B %b %a %H
 %M %p %%`. Example `%b %e, %Y` → `Jan 2, 2024`. (See the
-[Envy spec reference](envy-spec-reference.md#format-mini-language).)
+[Graphein spec reference](graphein-spec-reference.md#format-mini-language).)
 
-Envy auto-formats axes, sizes the plot responsively, and legends multi-series
+Graphein auto-formats axes, sizes the plot responsively, and legends multi-series
 charts by default — you only add a `format` when you want a specific unit (currency
 / percent / compact) or date pattern.
 
@@ -66,38 +66,58 @@ standalone formatters are all exported and null/NaN-safe (non-finite → em dash
 `formatNumber`, `formatCompact`, `formatCurrency`, `formatPercent`, `formatRatio`,
 `formatDelta`, `formatDate`.
 
-## Table column formats
+## Table / matrix formats
 
-`DataTableCard` / `DataGrid` format each cell from that column's `format`
-(VBA/ECMA-376) string in `columnMetadata`:
+`DataTableCard` renders a Graphein `table` or `matrix` spec. Use `toTable(result,
+{ columns })` for detail tables, or hand-author a `matrix` over `toChartData(result)`
+rows for a pivot/cross-tab.
 
 ```tsx
-const data = toDataTable(result, [
-  { name: "month", displayName: "Month" },
-  { name: "revenue", displayName: "Revenue", format: "$#,0.00" },
-  { name: "margin", displayName: "Margin", format: "0.0%" },
-]);
+const table = toTable(result, {
+  columns: [
+    { field: "month", source: "Date[Month]", title: "Month", type: "temporal", format: "%b %Y" },
+    { field: "revenue", source: "Revenue", title: "Revenue", format: "$,.0f", align: "right",
+      conditionalFormat: { type: "bar", showValue: true } },
+    { field: "margin", source: "Margin %", title: "Margin", format: ".1%", align: "right",
+      conditionalFormat: { type: "icon", set: "trafficLights" } },
+  ],
+  totals: { label: "Total" },
+});
 ```
 
-- `"#,0"` integers · `"$#,0.00"` currency · `"0.0%"` percent · `"mm/dd/yyyy"` dates.
-- A `cellRenderer` **overrides** `format` — see [data-grid-visual.md](data-grid-visual.md).
-- **Exception:** numbers that read as identifiers (a year, an ID) shouldn't be
-  number-formatted.
+Conditional formatting options live in the spec:
+
+- `colorScale` — sequential or diverging background/text ramps.
+- `bar` — in-cell data bars with optional negative color and baseline.
+- `icon` — arrows, triangles, dots, or traffic lights.
+- `rules` — value rules (`gt`, `gte`, `lt`, `lte`, `eq`, `ne`, `between`) that set
+  background, text color, weight, or an icon.
+
+`MatrixSpec` uses `rows`, optional `columns`, and `values` with the same `format`,
+`conditionalFormat`, `prefix`, `suffix`, `negativeStyle`, and `showAs` options.
+
+## Other spec formatting
+
+- **Pie/donut labels:** `labels` can be `true` or a `PieLabels` object. Use
+  `placement: "outside"` with `connector: "slice" | "muted"` for leader-line
+  callouts; `content` can be `percent`, `value`, `category`, `category-percent`,
+  or `category-value`.
+- **Funnel:** `percent: "first" | "previous"` controls conversion labels (retained
+  vs first stage, or vs previous stage).
 
 ## Number rules
 
 - Prefer `.1s`/`.2s` (compact) on chart axes and `"compact"` on KPI heroes; show
   full grouped values in tooltips and tables.
 - Currency → 2 decimals; counts → 0.
-- Never `FORMAT()` a measure to text in DAX — emit raw numerics. (See
-  `dax`.)
+- Never `FORMAT()` a measure to text in DAX — emit raw numerics. (See `dax`.)
 
 ## Color & theme
 
 You **never put color in a spec.** `ChartCard` injects the app's theme — a
-resolved palette derived from `src/global.css` tokens — into every Envy chart, so
-charts stay on-brand and dark-mode aware automatically. Restyle the whole app by
-editing the tokens; put light values in the base scope and dark overrides under
+resolved palette derived from `src/global.css` tokens — into every Graphein chart,
+so charts stay on-brand and dark-mode aware automatically. Restyle the whole app
+by editing the tokens; put light values in the base scope and dark overrides under
 `.dark`.
 
 | What to change | CSS variable(s) |
@@ -110,10 +130,10 @@ editing the tokens; put light values in the base scope and dark overrides under
 | Fonts | `--font-display`, `--font-sans`, `--font-mono` |
 | Radius | `--radius-md`, `--radius-lg`, `--radius-xl`, `--radius-2xl` |
 
-The bridge (`src/lib/envy-theme.ts`) maps these tokens → an Envy `ThemeInput`
-(base light/dark + palette + accent + axis/grid) and re-resolves on theme toggle.
-All tokens are hex/rgba (never `oklch`) so Envy's color parser can derive ramps,
-area fills, and hover tints.
+The bridge (`src/lib/graphein-theme.ts`) maps these tokens → a Graphein
+`ThemeInput` (base light/dark + palette + accent + axis/grid) and re-resolves on
+theme toggle. All tokens are hex/rgba (never `oklch`) so Graphein's color parser
+can derive ramps, area fills, and hover tints.
 
 For the **`KpiCard` accent dot** and the small set of places that still take a
 color name (`accent` / `seriesColor`), reference a token, never raw hex:
