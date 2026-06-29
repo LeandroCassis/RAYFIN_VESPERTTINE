@@ -1174,6 +1174,18 @@ function rollbackInterjection(
   return segments
 }
 
+/**
+ * Settle any tools still `running` to a terminal state. A `tool-end` can be
+ * dropped when a turn is interrupted/cancelled mid-command, which would leave
+ * its tile spinning forever (settled turns never re-render). Resolving them
+ * when the turn ends keeps the UI honest. Returns the same array if nothing
+ * was running, so memoized rows keep their identity.
+ */
+function settleRunningTools(tools: ChatToolCall[], to: 'success' | 'error'): ChatToolCall[] {
+  if (!tools.some((t) => t.state === 'running')) return tools
+  return tools.map((t) => (t.state === 'running' ? { ...t, state: to } : t))
+}
+
 function reduce(msg: UIChatMessage, ev: ChatEvent): UIChatMessage {
   switch (ev.type) {
     case 'delta':
@@ -1206,6 +1218,7 @@ function reduce(msg: UIChatMessage, ev: ChatEvent): UIChatMessage {
         error: ev.text,
         pending: false,
         notice: undefined,
+        tools: settleRunningTools(msg.tools, 'error'),
         elapsedMs: msg.startedAt ? Date.now() - msg.startedAt : msg.elapsedMs
       }
     case 'result':
@@ -1213,6 +1226,7 @@ function reduce(msg: UIChatMessage, ev: ChatEvent): UIChatMessage {
         ...msg,
         pending: false,
         notice: undefined,
+        tools: settleRunningTools(msg.tools, ev.ok ? 'success' : 'error'),
         elapsedMs: msg.startedAt ? Date.now() - msg.startedAt : msg.elapsedMs
       }
     case 'plan-proposed':
@@ -1870,7 +1884,7 @@ export default function ChatPanel({
       onChange((prev) =>
         prev.map((m) =>
           m.turnId === turnId
-            ? { ...m, pending: false, elapsedMs: m.elapsedMs ?? (m.startedAt ? Date.now() - m.startedAt : undefined) }
+            ? { ...m, pending: false, tools: settleRunningTools(m.tools, 'success'), elapsedMs: m.elapsedMs ?? (m.startedAt ? Date.now() - m.startedAt : undefined) }
             : m
         )
       )
@@ -1920,7 +1934,7 @@ export default function ChatPanel({
       onChange((prev) =>
         prev.map((m) =>
           m.turnId === turnId
-            ? { ...m, pending: false, elapsedMs: m.elapsedMs ?? (m.startedAt ? Date.now() - m.startedAt : undefined) }
+            ? { ...m, pending: false, tools: settleRunningTools(m.tools, 'success'), elapsedMs: m.elapsedMs ?? (m.startedAt ? Date.now() - m.startedAt : undefined) }
             : m
         )
       )

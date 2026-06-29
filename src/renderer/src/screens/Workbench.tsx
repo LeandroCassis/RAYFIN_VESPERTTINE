@@ -60,18 +60,23 @@ function toUi(m: ChatMessage): UIChatMessage {
  *  keeps the marker until it's resumed (which removes the message). */
 function toStored(messages: UIChatMessage[]): ChatMessage[] {
   return messages.map(
-    ({ id, role, text, tools, segments, error, attachments, attachmentThumbs, pending, interrupted, elapsedMs }) => ({
-      id,
-      role,
-      text,
-      tools,
-      segments,
-      error,
-      attachments,
-      attachmentThumbs,
-      elapsedMs,
-      interrupted: (role === 'assistant' && pending) || interrupted ? true : undefined
-    })
+    ({ id, role, text, tools, segments, error, attachments, attachmentThumbs, pending, interrupted, elapsedMs }) => {
+      const cutOff = (role === 'assistant' && pending) || interrupted
+      return {
+        id,
+        role,
+        text,
+        // A turn cut off mid-command leaves a tool 'running'; settle it so the
+        // reloaded transcript shows a finished (errored) tile, not a spinner.
+        tools: cutOff ? tools.map((t) => (t.state === 'running' ? { ...t, state: 'error' } : t)) : tools,
+        segments,
+        error,
+        attachments,
+        attachmentThumbs,
+        elapsedMs,
+        interrupted: cutOff ? true : undefined
+      }
+    }
   )
 }
 
