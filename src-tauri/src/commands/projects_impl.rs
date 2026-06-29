@@ -24,9 +24,9 @@ use crate::types::{
 const CREATE_CHANNEL: &str = "create:project";
 
 /// The default preview mode a project scaffolded from `template` should adopt.
-/// The Data App is Fabric-auth-only and renders correctly only inside the Fabric
-/// portal shell, so it opens in the embedded Fabric preview by default; every
-/// other template uses the direct app view (`None`). Returned as `Some("fabric")`
+/// The Data App and Dashboard are Fabric-auth-only and render correctly only inside
+/// the Fabric portal shell, so they open in the embedded Fabric preview by default;
+/// every other template uses the direct app view (`None`). Returned as `Some("fabric")`
 /// to match `StudioProject::preview_mode`.
 pub fn fabricator_default_preview_mode(template: &str) -> Option<String> {
   match template {
@@ -35,13 +35,13 @@ pub fn fabricator_default_preview_mode(template: &str) -> Option<String> {
   }
 }
 
-/// The built-in template set shown in New Project: only the two bundled Fabricator
-/// variants (`fabricator-dataapp` / `fabricator-todoapp`, under
-/// `resources/fabricator-templates`), which strip the local-testing surface for the
-/// deploy-to-test workflow. Their metadata ships with the app, so the list is
-/// constant — no registry / `--list-templates` discovery is needed, and New Project
-/// opens instantly and offline. The Data App carries `default_preview_mode = "fabric"`
-/// so it opens in the embedded Fabric portal preview.
+/// The built-in template set shown in New Project: the two bundled Fabricator
+/// variants (`fabricator-todoapp` / `fabricator-dataapp`,
+/// under `resources/fabricator-templates`), which strip the local-testing surface
+/// for the deploy-to-test workflow. Their metadata ships with the app, so the list
+/// is constant — no registry / `--list-templates` discovery is needed, and New
+/// Project opens instantly and offline. The Data App carries
+/// `default_preview_mode = "fabric"` so it opens in the embedded Fabric portal preview.
 fn bundled_templates() -> Vec<TemplateInfo> {
   vec![
     TemplateInfo {
@@ -64,7 +64,7 @@ fn bundled_templates() -> Vec<TemplateInfo> {
 }
 
 /// List the built-in (bundled) templates shown in New Project. The set is constant
-/// (the two bundled Fabricator variants), so this is instant and works offline.
+/// (the three bundled Fabricator variants), so this is instant and works offline.
 pub async fn list_templates() -> Vec<TemplateInfo> {
   bundled_templates()
 }
@@ -366,7 +366,10 @@ pub async fn create_project(app: &AppHandle, input: CreateProjectInput) -> Proje
   //   - community/URL templates       -> the URL (+ optional --template-name),
   //   - upstream built-in names       -> the bare name (the scaffolder resolves
   //     it against its bundled set).
-  let is_fabricator = matches!(template.as_str(), "fabricator-dataapp" | "fabricator-todoapp");
+  let is_fabricator = matches!(
+    template.as_str(),
+    "fabricator-dataapp" | "fabricator-todoapp"
+  );
   let template_source = if is_fabricator {
     let tmpl_dir = crate::services::paths::fabricator_templates_dir(app).join(&template);
     if !tmpl_dir.is_dir() {
@@ -662,10 +665,7 @@ entries:
 
   #[test]
   fn fabricator_default_preview_mode_only_fabric_for_data_app() {
-    assert_eq!(
-      fabricator_default_preview_mode("fabricator-dataapp").as_deref(),
-      Some("fabric")
-    );
+    assert_eq!(fabricator_default_preview_mode("fabricator-dataapp").as_deref(), Some("fabric"));
     assert_eq!(fabricator_default_preview_mode("fabricator-todoapp"), None);
     assert_eq!(fabricator_default_preview_mode("blankapp"), None);
     assert_eq!(fabricator_default_preview_mode("anything-else"), None);
