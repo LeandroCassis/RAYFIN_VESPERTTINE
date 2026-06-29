@@ -109,10 +109,14 @@ export {
     selectionToFilters,
     filterToSelection,
     useSelectionFilterBridge,
+    selectionsExcept,
+    crossHighlightParams,
+    useCrossHighlight,
 } from "@/lib/selection-bridge";
 export type {
     FieldMap,
     SelectionFilterBridgeOptions,
+    CrossHighlight,
 } from "@/lib/selection-bridge";
 
 /* ------------------------------ Sparkline ------------------------------ */

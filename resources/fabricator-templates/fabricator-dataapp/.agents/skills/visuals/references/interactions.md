@@ -99,6 +99,28 @@ function DashboardInteractions() {
 }
 ```
 
+## Power BI–style cross-filter (default): source dims, page filters
+
+This is the wired default in the starter: clicking a mark **cross-filters every
+other tile** (server-side DAX re-query) while the **source visual only dims its
+own unpicked marks instead of hiding them**. Three helpers compose it:
+
+- `useCrossHighlight(field)` — bridges this chart's click into shared slicer state
+  (others re-query) and returns `{ store, params, highlight, own }`.
+- `crossHighlightParams(param, fields)` — spec fragment giving the source a `point`
+  param **and** a self-`highlight`, so it dims (never hides) its unpicked marks.
+- `selectionsExcept(selections, field)` (via `pick.own`) — strips the source's own
+  field so its query keeps every mark; the rest of the page sees the full filter.
+
+```tsx
+const pick = useCrossHighlight("Geography[Region]");
+const dax = toDaxFilters(filters.selections);                 // others filter
+const rows = toChartData(useSemanticModelQuery({ ..., filters: dax }).data, { columns });
+const barRows = applyFilters(rows, pick.own(filters.selections)); // source keeps all bars
+<ChartCard store={pick.store} spec={{ type:"bar", data: barRows, encoding,
+  ...crossHighlightParams("Geography[Region]", ["Geography[Region]"]) }} />
+```
+
 Graphein also has native slicer specs (`dropdown` / `list` / `search` / `range` /
 `dateRange`) and a `dashboard` spec (`interactions: "auto"`) rendered with
 `renderDashboard`. Treat those as optional client-only paths here: auto-wiring

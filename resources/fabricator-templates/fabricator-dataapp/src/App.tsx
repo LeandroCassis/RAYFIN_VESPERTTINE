@@ -16,6 +16,7 @@ import {
     FilterStateProvider,
     PageShell,
     Section,
+    SelectionStoreProvider,
     Stat,
     StatStrip,
     ThemeToggle,
@@ -38,7 +39,9 @@ import {
  *     actions) with a `toolbar` row that already holds the **slicers**. Use
  *     `SidebarShell` for a filter-heavy app with a persistent rail.
  *   - **`FilterStateProvider` + `FilterBar` + slicers** — one shared filter
- *     model every tile can read; ships wired by default.
+ *     model every tile can read; ships wired by default. `SelectionStoreProvider`
+ *     adds Power BI–style cross-filtering: a chart click dims that chart's own
+ *     unpicked marks and re-queries every other tile (see the wired copy-paste).
  *   - **`StatStrip` + `Stat`** — one hairline-divided metric band (not four
  *     look-alike KPI boxes).
  *   - **`DashboardGrid` + `Tile size="…"`** — a 12-col canvas; vary tile sizes
@@ -204,8 +207,8 @@ const STEPS = [
         body: "Fetch rows with useSemanticModelQuery(...) and shape them via toChartData(...).",
     },
     {
-        title: "Author & filter",
-        body: "Write one Graphein ChartSpec per visual, drop it into <ChartCard spec={…}/>, and let the toolbar slicers filter every tile via shared state.",
+        title: "Author & cross-filter",
+        body: "Write one Graphein ChartSpec per visual, drop it into <ChartCard spec={…}/>. Slicers filter every tile; clicking a chart dims its own marks and cross-filters the rest (Power BI–style).",
     },
 ] as const;
 
@@ -219,7 +222,9 @@ const KPI_PLACEHOLDERS = [
 function App() {
     return (
         <FilterStateProvider>
-            <Dashboard />
+            <SelectionStoreProvider>
+                <Dashboard />
+            </SelectionStoreProvider>
         </FilterStateProvider>
     );
 }
@@ -227,10 +232,10 @@ function App() {
 /*
  * ───────────────────────────────────────────────────────────────────────────
  * COPY-PASTE STARTER: the golden-path layout, fully wired (fetch → map → spec)
- * with slicers over shared filter state. Replace the `Dashboard`/`App` above
- * with this, then swap the connection alias, DAX, and column names for your
- * model's. The cards own the loading / empty / error states; vary `Tile size`
- * for an editorial layout instead of a uniform grid.
+ * with slicers over shared filter state AND Power BI–style cross-filtering on by
+ * default — clicking a bar dims that chart's unpicked marks while every OTHER
+ * tile re-queries (server-side DAX) for the click. Replace the connection alias,
+ * DAX, and column names for your model's. The cards own loading/empty/error.
  *
  * Keep DAX results LONG (tidy): one row per category/time point. For multiple
  * series, add a category column and set `encoding.series` — no client-side
@@ -242,89 +247,63 @@ function App() {
  * import { useSemanticModelQuery } from "@/hooks/use-semantic-model-query";
  * import {
  *   PageShell, ThemeToggle, StatStrip, Stat,
- *   DashboardGrid, Tile, ChartCard, toChartData,
+ *   DashboardGrid, Tile, ChartCard, toChartData, applyFilters,
  *   FilterStateProvider, FilterBar, DropdownSlicer, DateRangeSlicer,
- *   useFilterState, useSlicerOptions, applyFilters, // toDaxFilters,
+ *   SelectionStoreProvider, useFilterState, useSlicerOptions,
+ *   useCrossHighlight, crossHighlightParams, toDaxFilters,
  * } from "@/components/dashboard";
  *
- * const REVENUE_BY_MONTH = `
+ * const REGION = "Geography[Region]";
+ * const REVENUE_BY_REGION = `
  *   EVALUATE
- *   SUMMARIZECOLUMNS(
- *     'Date'[Month],
- *     "Revenue", [Total Revenue],
- *     "Orders", [Order Count]
- *   )
- *   ORDER BY 'Date'[Month]
+ *   SUMMARIZECOLUMNS('Geography'[Region], "Revenue", [Total Revenue], "Orders", [Order Count])
+ *   ORDER BY 'Geography'[Region]
  * `;
  *
  * function Dashboard() {
  *   const filters = useFilterState();
- *   // Populate slicer options from the model (distinct values per field):
- *   const region = useSlicerOptions({ connection: "sales", field: "Geography[Region]" });
+ *   const region = useSlicerOptions({ connection: "sales", field: REGION });
+ *   // Power BI–style source: clicks dim THIS chart's bars, cross-filter the rest.
+ *   const pick = useCrossHighlight(REGION);
  *
+ *   // OTHER tiles filter to the click + slicers (server-side DAX re-query).
+ *   const dax = toDaxFilters(filters.selections);
  *   const { data, isLoading, error, refetch } = useSemanticModelQuery({
- *     connection: "sales",                 // a profile from fabric.yaml
- *     query: REVENUE_BY_MONTH,
- *     // Re-query server-side as slicers change: filters: toDaxFilters(filters.selections),
+ *     connection: "sales", query: REVENUE_BY_REGION, filters: dax,
  *   });
- *
- *   // Map once; the specs reference these names. Explicit aliases = stable keys.
- *   const rows = toChartData(data, {
- *     columns: { month: "Date[Month]", revenue: "Revenue", orders: "Orders" },
- *   });
- *   // …or filter client-side instead of re-querying:
- *   const view = useMemo(() => applyFilters(rows, filters.selections), [rows, filters.selections]);
+ *   const rows = toChartData(data, { columns: { Region: REGION, revenue: "Revenue", orders: "Orders" } });
+ *   // The SOURCE bar keeps ALL bars (dims unpicked) — exclude its own field:
+ *   const barRows = useMemo(() => applyFilters(rows, pick.own(filters.selections)), [rows, filters.selections]);
  *
  *   return (
- *     <PageShell
- *       eyebrow="Sales" title="Revenue overview" subtitle="FY24"
+ *     <PageShell eyebrow="Sales" title="Revenue overview" subtitle="FY24"
  *       actions={<ThemeToggle />}
  *       toolbar={
  *         <FilterBar>
- *           <DropdownSlicer label="Region" field="Geography[Region]"
+ *           <DropdownSlicer label="Region" field={REGION}
  *             options={region.options} isLoading={region.isLoading} error={region.error} />
  *           <DateRangeSlicer label="Date" field="Date[Date]" />
  *         </FilterBar>
  *       }
  *     >
  *       <StatStrip>
- *         <Stat label="Revenue" data={view} valueKey="revenue" valueFormat="currency" accent="chart-1" loading={isLoading} />
- *         <Stat label="Orders" data={view} valueKey="orders" loading={isLoading} />
+ *         <Stat label="Revenue" data={rows} valueKey="revenue" valueFormat="currency" accent="chart-1" loading={isLoading} />
+ *         <Stat label="Orders" data={rows} valueKey="orders" loading={isLoading} />
  *       </StatStrip>
  *
  *       <DashboardGrid>
  *         <Tile size="hero">
- *           <ChartCard
- *             title="Revenue trend"
- *             className="h-full"
- *             loading={isLoading}
- *             error={error}
- *             onRetry={refetch}
- *             spec={{
- *               type: "line",
- *               data: view,
- *               encoding: {
- *                 x: { field: "month", type: "temporal" },
- *                 y: { field: "revenue", type: "quantitative", format: "$,.0f" },
- *               },
- *             }}
- *           />
+ *           <ChartCard title="Revenue by region" className="h-full" store={pick.store}
+ *             loading={isLoading} error={error} onRetry={refetch}
+ *             spec={{ type: "bar", data: barRows,
+ *               encoding: { x: { field: "Region" }, y: { field: "revenue", type: "quantitative", format: "$,.0f" } },
+ *               ...crossHighlightParams(REGION, [REGION]) }} />
  *         </Tile>
  *         <Tile size="md">
- *           <ChartCard
- *             title="Orders by month"
- *             loading={isLoading}
- *             error={error}
- *             onRetry={refetch}
- *             spec={{
- *               type: "bar",
- *               data: view,
- *               encoding: {
- *                 x: { field: "month" },
- *                 y: { field: "orders", type: "quantitative" },
- *               },
- *             }}
- *           />
+ *           <ChartCard title="Orders by region" store={pick.store}
+ *             loading={isLoading} error={error} onRetry={refetch}
+ *             spec={{ type: "bar", data: rows,
+ *               encoding: { x: { field: "Region" }, y: { field: "orders", type: "quantitative" } } }} />
  *         </Tile>
  *       </DashboardGrid>
  *     </PageShell>
@@ -334,7 +313,9 @@ function App() {
  * function App() {
  *   return (
  *     <FilterStateProvider>
- *       <Dashboard />
+ *       <SelectionStoreProvider>
+ *         <Dashboard />
+ *       </SelectionStoreProvider>
  *     </FilterStateProvider>
  *   );
  * }

@@ -5,10 +5,16 @@
 // </copyright>
 //-----------------------------------------------------------------------
 
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
-import type { SelectionStore, SelectionValue } from "graphein";
+import type {
+    HighlightConfig,
+    SelectionParam,
+    SelectionStore,
+    SelectionValue,
+} from "graphein";
 
+import { useSelectionStore } from "@/components/dashboard/selection";
 import {
     useFilterState,
     type FilterField,
@@ -214,4 +220,91 @@ export function useSelectionFilterBridge(
             lastFields.set(name, nextFields);
         });
     }, [store]);
+}
+
+/**
+ * Drop the owner field(s) from a selection map. The clicked **source** tile uses
+ * this so its own pick never *filters* itself — it keeps every mark and merely
+ * dims the unpicked ones (Power BI–style), while the rest of the page filters.
+ *
+ * @example
+ * ```ts
+ * const own = "Product[Category]";
+ * const rows = toChartData(data, { columns });        // source keeps all rows
+ * const view = applyFilters(rows, selectionsExcept(selections, own));
+ * // …other tiles use toDaxFilters(selections) (full set) instead.
+ * ```
+ */
+export function selectionsExcept(
+    selections: Record<FilterField, FilterSelection>,
+    fields: FilterField | readonly FilterField[],
+): Record<FilterField, FilterSelection> {
+    const drop = new Set(Array.isArray(fields) ? fields : [fields]);
+    const out: Record<FilterField, FilterSelection> = {};
+    for (const [field, selection] of Object.entries(selections)) {
+            if (!drop.has(field)) out[field] = selection;
+    }
+    return out;
+}
+
+/**
+ * Spec fragment that makes a chart a self-dimming cross-filter source: it
+ * publishes a `point` selection on click **and** highlights that same param, so
+ * its unpicked marks dim instead of disappearing. Spread it into the spec.
+ *
+ * @example
+ * ```ts
+ * spec={{ type: "bar", data: rows, encoding,
+ *         ...crossHighlightParams("region", ["region"]) }}
+ * ```
+ */
+export function crossHighlightParams(
+    param: string,
+    fields: readonly string[],
+): { params: SelectionParam[]; highlight: HighlightConfig } {
+    return {
+            params: [{ name: param, select: { type: "point", on: "click", fields: [...fields] } }],
+            highlight: { param },
+    };
+}
+
+/** Result of {@link useCrossHighlight}: spread `params`+`highlight` into the source spec. */
+export interface CrossHighlight {
+    /** Shared bus to pass as `<ChartCard store={…} />` on every linked tile. */
+    store: SelectionStore;
+    /** `point` selection the source publishes on click. */
+    params: SelectionParam[];
+    /** Self-highlight so the source dims (not hides) its unpicked marks. */
+    highlight: HighlightConfig;
+    /** Active selections minus this source's own field — feed the SOURCE's query. */
+    own: (selections: Record<FilterField, FilterSelection>) => Record<FilterField, FilterSelection>;
+}
+
+/**
+ * One-liner Power BI–style cross-filter source. Wraps the chart→slicer bridge so a
+ * click on this chart cross-filters every OTHER tile (server-side DAX re-query),
+ * while the source self-dims the unpicked marks. Wrap the page in
+ * `SelectionStoreProvider` + `FilterStateProvider` first.
+ *
+ * @example
+ * ```tsx
+ * const x = useCrossHighlight("Geography[Region]");
+ * // source bar: dims on click, others re-query
+ * <ChartCard store={x.store}
+ *   spec={{ type:"bar", data: applyFilters(rows, x.own(selections)), encoding,
+ *           ...crossHighlightParams("Geography[Region]", ["Geography[Region]"]) }} />
+ * // other tiles fetch with toDaxFilters(selections) — they filter, source dims.
+ * ```
+ */
+export function useCrossHighlight(field: FilterField, fieldMap?: FieldMap): CrossHighlight {
+    const store = useSelectionStore();
+    useSelectionFilterBridge(store, fieldMap ? { fieldMap } : undefined);
+    return useMemo(
+            () => ({
+                store,
+                ...crossHighlightParams(field, [field]),
+                own: (selections) => selectionsExcept(selections, field),
+            }),
+            [store, field],
+    );
 }

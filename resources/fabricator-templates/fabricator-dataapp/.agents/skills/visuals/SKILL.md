@@ -421,12 +421,15 @@ Graphein specs can publish and consume named selections:
 ```
 
 Use `SelectionStoreProvider` / `useSelectionStore()` and pass the same `store` to
-several `ChartCard`s or `DataTableCard`s for cross-highlight/cross-filter. To turn
-a chart click into the app's existing server-side path, call
-`useSelectionFilterBridge(store, { fieldMap })`: it maps Graphein selections into
-`useFilterState`, which drives `applyFilters` and `toDaxFilters`. React slicers +
-DAX re-query remain the primary filter path because this app's tiles are
-independently DAX-aggregated per tile.
+several `ChartCard`s or `DataTableCard`s for cross-highlight/cross-filter. The
+**default is Power BI–style**: `useCrossHighlight(field)` + spreading
+`crossHighlightParams(param, fields)` into the source spec makes a click dim that
+chart's own unpicked marks while every other tile re-queries — feed the source
+`applyFilters(rows, pick.own(selections))` and others `toDaxFilters(selections)`.
+For a manual bridge, call `useSelectionFilterBridge(store, { fieldMap })`: it maps
+Graphein selections into `useFilterState`, which drives `applyFilters` and
+`toDaxFilters`. React slicers + DAX re-query remain the primary filter path because
+this app's tiles are independently DAX-aggregated per tile.
 
 ## Shape helpers (DAX → rows/specs)
 
@@ -568,6 +571,7 @@ import {
   SelectionStoreProvider, useSelectionStore, useSelection, type ChartSpec,
   // selection bridge
   useSelectionFilterBridge, selectionToFilters, filterToSelection,
+  useCrossHighlight, crossHighlightParams, selectionsExcept,
   // state tiles + sparkline
   EmptyTile, ErrorTile, ChartSkeleton, KpiSkeleton, TileBody, Sparkline,
   // DAX → rows/spec helpers + formatting/color
