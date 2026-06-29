@@ -90,15 +90,14 @@ bridge. Keep type consistent by updating `--font-sans`, `--font-display`, and
 
 ### Chart container sizing
 
-Use `PageShell`, `KpiGrid`, and `ChartGrid` for dashboard structure. `ChartCard`
+Use `PageShell`, `StatStrip`, and `DashboardGrid` + `Tile` for structure. `ChartCard`
 owns a responsive chart body; set the card `height` prop only when a specific
 visual needs more or less vertical space.
 
 ```tsx
 import {
-  PageShell, ThemeToggle, KpiGrid, ChartGrid,
-  KpiCard, ChartCard, DataTableCard,
-  toChartData, toTable,
+  PageShell, ThemeToggle, StatStrip, Stat, DashboardGrid, Tile,
+  ChartCard, DataTableCard, toChartData, toTable,
 } from "@/components/dashboard";
 
 const trend = toChartData(trendResult);   // long rows: { Month, Revenue }
@@ -111,36 +110,17 @@ const table = toTable(detailResult, {
 });
 
 <PageShell title="Sales overview" actions={<ThemeToggle />}>
-  <KpiGrid>
-    <KpiCard label="Revenue" value={revenue} valueFormat="currency" accent="chart-1" />
-    <KpiCard label="Margin" value={margin} valueFormat="percent" accent="success" />
-  </KpiGrid>
-  <ChartGrid>
-    <ChartCard
-      title="Revenue trend"
-      spec={{
-        type: "line",
-        data: trend,
-        encoding: {
-          x: { field: "Month", type: "temporal" },
-          y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
-        },
-      }}
-    />
-    <ChartCard
-      title="Sales mix"
-      spec={{
-        type: "pie",
-        donut: true,
-        data: mix,
-        encoding: {
-          theta: { field: "Sales", type: "quantitative", format: "$,.0f" },
-          color: { field: "Channel", type: "nominal" },
-        },
-      }}
-    />
-    <DataTableCard title="Details" spec={table} />
-  </ChartGrid>
+  <StatStrip>
+    <Stat label="Revenue" data={kpi} valueKey="revenue" valueFormat="currency" accent="chart-1" />
+    <Stat label="Margin" data={kpi} valueKey="margin" valueFormat="percent" accent="success" />
+  </StatStrip>
+  <DashboardGrid>
+    <Tile size="hero"><ChartCard title="Revenue trend" variant="feature" accent="chart-1" className="h-full"
+      spec={{ type: "line", data: trend, encoding: { x: { field: "Month", type: "temporal" }, y: { field: "Revenue", type: "quantitative", format: "$,.2s" } } }} /></Tile>
+    <Tile size="md"><ChartCard title="Sales mix"
+      spec={{ type: "pie", donut: true, data: mix, encoding: { theta: { field: "Sales", type: "quantitative", format: "$,.2s" }, color: { field: "Channel", type: "nominal" } } }} /></Tile>
+    <Tile size="full"><DataTableCard title="Details" spec={table} /></Tile>
+  </DashboardGrid>
 </PageShell>;
 ```
 
@@ -223,20 +203,19 @@ aligned with the same rhythm.
 
 ### Bar charts
 
-Author a `bar` spec. Bars round their corners via `cornerRadius` in the spec; use
-it consistently across bar charts. **Horizontal/ranked bars are not honored in
-the installed Graphein build** — `orientation` is ignored, so for top-N use a
-vertical bar with the rows pre-sorted/limited (`topN(rows, key, n)`).
+Author a `bar` spec. Bars round corners via `cornerRadius`. Bars are vertical;
+for ranked categories or long labels, pre-sort and limit with `topN(rows, key, n)`
+so the axis stays readable.
 
 ```tsx
 <ChartCard
   title="Revenue by region"
   spec={{
     type: "bar",
-    data: toChartData(data),   // { Region, Revenue }
+    data: topN(toChartData(data), "Revenue", 8),   // { Region, Revenue }
     encoding: {
       x: { field: "Region", type: "nominal" },
-      y: { field: "Revenue", type: "quantitative", format: "$,.0f" },
+      y: { field: "Revenue", type: "quantitative", format: "$,.2s" },
     },
   }}
 />;
@@ -267,9 +246,8 @@ contribution-to-total rather than side-by-side comparison.
 ### Trend lines
 
 Use `line` for precise trend comparison; set `area: true` when the filled shape
-helps emphasize volume. **Graphein has no reference lines** — show a goal as a
-constant extra series (a second `Measure` value repeated across x) or state it in
-the card `footer`.
+helps emphasize volume. For a goal/threshold, add `annotations: [{ type: "line",
+value: target }]` (graphein 0.8); or state it in the card `footer`.
 
 ```tsx
 <ChartCard
@@ -308,16 +286,16 @@ value) and `color` (the category).
 
 ### KPI rows
 
-Use `KpiGrid` with `KpiCard` for a compact metric row. Use `accent` to connect
-each KPI to the chart palette or a semantic role; use `invertDelta` for
-down-is-good measures such as churn, cost, or latency. `delta` is a
-**percent-scale** number (`12.4` → "+12.4%").
+Use `StatStrip` with `Stat` for the metric band (one band, 2–5 metrics). Use
+`accent` to connect each metric to the chart palette or a semantic role; use
+`invertDelta` for down-is-good measures (churn, cost, latency). `delta` is a
+**percent-scale** number (`12.4` → "+12.4%"). `KpiGrid` is legacy.
 
 ```tsx
-<KpiGrid>
-  <KpiCard label="Revenue" value={revenue} valueFormat="currency" delta={12.4} deltaLabel="vs prior period" accent="chart-1" />
-  <KpiCard label="Churn" value={churn} valueFormat="percent" delta={-0.6} deltaLabel="vs prior period" accent="warning" invertDelta />
-</KpiGrid>;
+<StatStrip>
+  <Stat label="Revenue" data={kpi} valueKey="revenue" valueFormat="currency" delta={12.4} accent="chart-1" />
+  <Stat label="Churn" data={kpi} valueKey="churn" valueFormat="percent" delta={-0.6} accent="warning" invertDelta />
+</StatStrip>;
 ```
 
 ### Tables
@@ -343,12 +321,12 @@ const table = toTable(data, {
 ## When Graphein lacks a chart type
 
 There is **no custom-chart escape hatch**. If a visualization is not a Graphein type
-(radar, treemap, waterfall, gauge…), re-express the *insight* with the
-closest supported type — Graphein ships `line`, `area`, `bar`, `scatter`,
-`pie`/donut, `heatmap`, `funnel`, `box`, `sankey`, `choropleth`, plus `table`/`matrix` (the
-app uses `KpiCard` for KPIs and `DataTableCard` for tables). See `visuals` → Gotchas and
-`custom-charts.md` for the mapping table. Never hand-write SVG or pull in another
-chart library.
+(radar, sunburst…), re-express the *insight* with the closest supported type —
+Graphein 0.8 ships `line`, `area`, `bar`, `scatter`, `combo`
+(dual-axis), `histogram`, `pie`/donut, `heatmap`, `calendarHeatmap`, `funnel`,
+`box`, `sankey`, `choropleth`, `treemap`, `gauge`, `bullet`, `waterfall`, `slope`,
+`dumbbell`, plus `table`/`matrix` (KPIs use `KpiCard`). See `visuals` → Gotchas and
+`custom-charts.md`. Never hand-write SVG or pull in another chart library.
 
 ---
 

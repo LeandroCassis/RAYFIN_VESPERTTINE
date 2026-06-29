@@ -14,15 +14,15 @@ import { cn } from "@/lib/utils";
  * Shared card surface styling — the single source of truth for the kit's tile
  * look so `Card`, `ChartCard`, and `KpiCard` stay visually consistent.
  *
- * Hierarchy comes from **flat** signals — surface token, border weight, and an
- * optional accent spine — never shadows.
+ * Hierarchy is **flat + editorial**: a bone canvas, white cards, a hairline
+ * border, and an optional accent top-rule for the hero tile. No drop shadows.
  */
 export type CardVariant = "surface" | "feature" | "outline" | "ghost";
 
 const VARIANT_CLASS: Record<CardVariant, string> = {
     /** Default tile — card surface + hairline border. */
     surface: "border border-border bg-card p-5",
-    /** Emphasized tile — a touch lifted via a stronger border + raised surface. */
+    /** Emphasized tile — stronger border + raised surface for the hero. */
     feature: "border border-border-strong bg-surface-1 p-5",
     /** Quiet tile — outline only, transparent fill. */
     outline: "border border-border bg-transparent p-5",
@@ -32,16 +32,16 @@ const VARIANT_CLASS: Record<CardVariant, string> = {
 
 /** Tailwind classes for a card surface of the given `variant`. */
 export function cardClass(variant: CardVariant = "surface", className?: string) {
-    return cn("rounded-2xl", VARIANT_CLASS[variant], className);
+    return cn("relative overflow-hidden rounded-2xl", VARIANT_CLASS[variant], className);
 }
 
 /**
- * Inline style for an optional thin accent spine on the card's left edge —
- * marks a hero/primary tile. `accent` is any chart token, role, `var(--…)`,
- * or hex (resolved via `resolveColor`).
+ * Inline style for an optional accent top-rule on a card — marks the hero /
+ * primary tile without the dated left spine. `accent` is any chart token,
+ * role, `var(--…)`, or hex (resolved via `resolveColor`).
  */
 export function accentEdgeStyle(accent?: string): CSSProperties | undefined {
     return accent
-        ? { borderLeftWidth: 3, borderLeftColor: resolveColor(accent) }
+        ? { borderTopWidth: 2, borderTopColor: resolveColor(accent) }
         : undefined;
 }

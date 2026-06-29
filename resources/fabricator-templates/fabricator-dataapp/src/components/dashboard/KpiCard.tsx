@@ -200,7 +200,7 @@ export function KpiCard({
 
             <div className="flex items-end justify-between gap-3">
                 <div className="min-w-0">
-                    <span className="block truncate font-numeric text-[28px] font-semibold leading-none tracking-tight text-foreground tabular-nums">
+                    <span className="block truncate font-display text-[32px] font-bold leading-none tracking-tight text-foreground tabular-nums">
                         {isNumericValue ? (
                             <AnimatedNumber value={metricValue} format={format} />
                         ) : (

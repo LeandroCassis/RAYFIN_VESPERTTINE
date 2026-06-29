@@ -256,7 +256,7 @@ export function Stat({
                 <div className="h-7 w-24 animate-shimmer rounded-md" aria-hidden />
             ) : (
                 <div className="flex items-end justify-between gap-2">
-                    <span className="block truncate font-numeric text-[26px] font-semibold leading-none tracking-tight text-foreground tabular-nums">
+                    <span className="block truncate font-display text-[26px] font-bold leading-none tracking-tight text-foreground tabular-nums">
                         {valueText}
                     </span>
                     {showDelta && (
