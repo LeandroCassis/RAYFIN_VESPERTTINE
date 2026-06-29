@@ -1,5 +1,10 @@
 import { useState } from 'react'
-import type { FabricWorkspace, FabricWorkspacesResult } from '@shared/ipc'
+import { Codicon } from './icons'
+import type {
+  FabricCapacity,
+  FabricWorkspace,
+  FabricWorkspacesResult
+} from '@shared/ipc'
 
 /** Where to send users who have no Fabric/Premium capacity yet. */
 const TRIAL_URL = 'https://learn.microsoft.com/fabric/fundamentals/fabric-trial'
@@ -85,6 +90,51 @@ export default function DeploymentCreateForm({
   const [wsQuery, setWsQuery] = useState('')
   const [selectedWs, setSelectedWs] = useState<string | null>(null)
   const [showIneligible, setShowIneligible] = useState(false)
+  // Inline "create a new workspace" sub-flow: pick a capacity + name.
+  const [creatingWs, setCreatingWs] = useState(false)
+  const [newWsName, setNewWsName] = useState('')
+  const [caps, setCaps] = useState<FabricCapacity[] | null>(null)
+  const [loadingCaps, setLoadingCaps] = useState(false)
+  const [selectedCap, setSelectedCap] = useState<string>('')
+  const [creatingBusy, setCreatingBusy] = useState(false)
+  const [createErr, setCreateErr] = useState<string | null>(null)
+
+  async function loadCaps(): Promise<void> {
+    setLoadingCaps(true)
+    try {
+      const res = await window.api.fabric.listCapacities()
+      const list = res.ok && res.capacities ? res.capacities : []
+      setCaps(list)
+      if (list.length > 0 && !selectedCap) setSelectedCap(list[0].id)
+    } finally {
+      setLoadingCaps(false)
+    }
+  }
+
+  function openCreateWs(): void {
+    setCreatingWs(true)
+    setCreateErr(null)
+    if (!caps) void loadCaps()
+  }
+
+  async function submitNewWs(): Promise<void> {
+    if (!selectedCap || !newWsName.trim()) return
+    setCreatingBusy(true)
+    setCreateErr(null)
+    try {
+      const res = await window.api.fabric.createWorkspace(newWsName.trim(), selectedCap)
+      if (!res.ok) {
+        setCreateErr(res.error || 'Could not create the workspace.')
+        return
+      }
+      setCreatingWs(false)
+      setNewWsName('')
+      onReload()
+      if (res.workspaceId) setSelectedWs(res.workspaceId)
+    } finally {
+      setCreatingBusy(false)
+    }
+  }
 
   const all = wsResult?.ok && wsResult.workspaces ? wsResult.workspaces : []
   const eligible = all.filter((w) => w.eligible)
@@ -128,7 +178,84 @@ export default function DeploymentCreateForm({
       </label>
 
       <div className="dep-field">
-        <span className="dep-field-label">Deploy to workspace</span>
+        <div className="dep-field-head">
+          <span className="dep-field-label">Deploy to workspace</span>
+          <div className="dep-field-head-actions">
+            <button
+              className="ws-create-link"
+              type="button"
+              onClick={openCreateWs}
+              disabled={loadingWs || creatingWs}
+              title="Create a new Fabric workspace on a capacity you have access to"
+            >
+              + New workspace
+            </button>
+            <button
+              className="ws-refresh"
+              type="button"
+              title="Refresh workspaces"
+              aria-label="Refresh workspaces"
+              disabled={loadingWs}
+              onClick={onReload}
+            >
+              <Codicon name="refresh" />
+            </button>
+          </div>
+        </div>
+        {creatingWs && (
+          <div className="ws-create">
+            <input
+              className="ws-input"
+              placeholder="New workspace name"
+              value={newWsName}
+              autoFocus
+              spellCheck={false}
+              onChange={(e) => setNewWsName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void submitNewWs()
+                else if (e.key === 'Escape') setCreatingWs(false)
+              }}
+            />
+            {loadingCaps ? (
+              <div className="ws-loading">
+                <span className="ws-spinner" />
+                Loading capacities…
+              </div>
+            ) : caps && caps.length > 0 ? (
+              <select
+                className="ws-input"
+                value={selectedCap}
+                onChange={(e) => setSelectedCap(e.target.value)}
+              >
+                {caps.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.displayName} · {c.sku ?? c.kind}
+                    {c.region ? ` · ${c.region}` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="ws-empty-sub">No eligible capacities available.</p>
+            )}
+            {createErr && <p className="ws-create-err">{createErr}</p>}
+            <div className="dep-create-actions">
+              <button
+                className="btn btn--xs btn--ghost"
+                onClick={() => setCreatingWs(false)}
+                disabled={creatingBusy}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn--xs btn--primary"
+                disabled={!selectedCap || !newWsName.trim() || creatingBusy}
+                onClick={() => void submitNewWs()}
+              >
+                {creatingBusy ? 'Creating…' : 'Create workspace'}
+              </button>
+            </div>
+          </div>
+        )}
         {loadingWs ? (
           <div className="ws-loading">
             <span className="ws-spinner" />
@@ -139,7 +266,7 @@ export default function DeploymentCreateForm({
             {showWsSearch && (
               <div className="ws-search">
                 <span className="ws-search-icon" aria-hidden>
-                  ⌕
+                  <Codicon name="search" />
                 </span>
                 <input
                   className="ws-input ws-search-input"

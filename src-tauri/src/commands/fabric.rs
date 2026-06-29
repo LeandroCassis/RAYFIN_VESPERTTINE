@@ -23,6 +23,7 @@ use serde::Serialize;
 use crate::services::{exec, paths, store};
 use crate::services::exec::RunOptions;
 use crate::types::{FabricDeleteResult, FabricWorkspacesResult};
+use crate::types::{FabricCapacitiesResult, FabricCreateWorkspaceResult};
 
 const FABRIC_API_BASE: &str = "https://api.fabric.microsoft.com/v1";
 
@@ -100,6 +101,9 @@ async function main() {
   const kindOf = (sku) => {
     const s = String(sku).toUpperCase()
     if (s.startsWith('F')) return 'fabric'
+    // PPU (Premium Per User, SKU PP1/PP2/PP3) can't host Fabric items — a deploy
+    // there 403s. Only dedicated Premium P-SKUs (P1/P2/P3) qualify, so exclude PP*.
+    if (s.startsWith('PP')) return 'other'
     if (s.startsWith('P')) return 'premium'
     return 'other'
   }
@@ -178,6 +182,101 @@ main().catch((err) => {
   const msg = err && err.message ? String(err.message) : String(err)
   const needsLogin = /silent|cached|account|login|token|interactive|sign/i.test(msg)
   process.stdout.write(JSON.stringify({ ok: false, deleted: 0, failures: [], needsLogin, error: msg }))
+})
+"#;
+
+/// Helper executed by the system `node` to list dedicated capacities the user
+/// can create a workspace on. argv: <authModulePath> <apiBase>.
+const CAPACITIES_HELPER_SOURCE: &str = r#"console.log = (...a) => process.stderr.write(a.map(String).join(' ') + '\n')
+console.debug = console.log
+console.info = console.log
+
+import { pathToFileURL } from 'node:url'
+
+const API_HOST = 'https://api.fabric.microsoft.com'
+
+async function fetchAllPages(startUrl, headers, { tolerate = false } = {}) {
+  const out = []
+  const seen = new Set()
+  let url = startUrl
+  for (let i = 0; i < 100 && url; i++) {
+    if (seen.has(url)) break
+    seen.add(url)
+    let res
+    try { res = await fetch(url, { headers }) } catch (e) { if (tolerate) break; throw e }
+    if (!res.ok) { if (tolerate) break; throw new Error('Fabric request failed (' + res.status + ')') }
+    const json = await res.json()
+    for (const v of json.value || []) out.push(v)
+    if (json.continuationUri) url = json.continuationUri.startsWith('http') ? json.continuationUri : API_HOST + json.continuationUri
+    else if (json.continuationToken) url = startUrl + (startUrl.includes('?') ? '&' : '?') + '$continuationToken=' + encodeURIComponent(json.continuationToken)
+    else url = null
+  }
+  return out
+}
+
+async function main() {
+  const [authPath, base] = process.argv.slice(2)
+  const auth = await import(pathToFileURL(authPath).href)
+  const rf = await auth.getRayfinAuth()
+  const { token } = await rf.acquireToken(undefined, { silentOnly: true })
+  const headers = { Authorization: 'Bearer ' + token }
+  const caps = await fetchAllPages(base + '/capacities', headers, {})
+  const kindOf = (sku) => {
+    const s = String(sku).toUpperCase()
+    if (s.startsWith('F')) return 'fabric'
+    if (s.startsWith('PP')) return 'other' // PPU can't host Fabric items
+    if (s.startsWith('P')) return 'premium'
+    return 'other'
+  }
+  const capacities = caps
+    .map((c) => {
+      const kind = c.sku ? kindOf(c.sku) : 'other'
+      return {
+        id: c.id, displayName: c.displayName, sku: c.sku || undefined,
+        region: c.region || undefined, kind,
+        eligible: (kind === 'fabric' || kind === 'premium') && (!c.state || c.state === 'Active')
+      }
+    })
+    .filter((c) => c.eligible)
+  process.stdout.write(JSON.stringify({ ok: true, capacities }))
+}
+
+main().catch((err) => {
+  const msg = err && err.message ? String(err.message) : String(err)
+  const needsLogin = /silent|cached|account|login|token|interactive|sign/i.test(msg)
+  process.stdout.write(JSON.stringify({ ok: false, needsLogin, error: msg }))
+})
+"#;
+
+/// Helper executed by the system `node` to create + assign a workspace. argv:
+/// <authModulePath> <apiBase> <displayName> <capacityId>.
+const CREATE_WS_HELPER_SOURCE: &str = r#"console.log = (...a) => process.stderr.write(a.map(String).join(' ') + '\n')
+console.debug = console.log
+console.info = console.log
+
+import { pathToFileURL } from 'node:url'
+
+async function main() {
+  const [authPath, base, name, capacityId] = process.argv.slice(2)
+  const auth = await import(pathToFileURL(authPath).href)
+  const rf = await auth.getRayfinAuth()
+  const { token } = await rf.acquireToken(undefined, { silentOnly: true })
+  const headers = { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' }
+  const body = { displayName: name }
+  if (capacityId) body.capacityId = capacityId
+  const res = await fetch(base + '/workspaces', { method: 'POST', headers, body: JSON.stringify(body) })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error('Fabric create workspace failed (' + res.status + ')' + (text ? ': ' + text.slice(0, 200) : ''))
+  }
+  const ws = await res.json()
+  process.stdout.write(JSON.stringify({ ok: true, workspaceId: ws.id }))
+}
+
+main().catch((err) => {
+  const msg = err && err.message ? String(err.message) : String(err)
+  const needsLogin = /silent|cached|account|login|token|interactive|sign/i.test(msg)
+  process.stdout.write(JSON.stringify({ ok: false, needsLogin, error: msg }))
 })
 "#;
 
@@ -293,6 +392,126 @@ pub async fn fabric_workspaces() -> FabricWorkspacesResult {
       FabricWorkspacesResult {
         ok: false,
         workspaces: None,
+        needs_login: Some(needs_login),
+        error: Some(err),
+      }
+    }
+  }
+}
+
+/// List dedicated capacities the signed-in user can create a workspace on
+/// (eligible F-SKU / P-SKU only; PPU and non-Active excluded).
+#[tauri::command]
+pub async fn fabric_capacities() -> FabricCapacitiesResult {
+  let auth_path = match exec::global_rayfin_auth_module() {
+    Some(p) => p,
+    None => {
+      return FabricCapacitiesResult {
+        ok: false,
+        capacities: None,
+        needs_login: None,
+        error: Some(
+          "Could not locate the Rayfin CLI to list Fabric capacities. Make sure the rayfin CLI is installed."
+            .to_string(),
+        ),
+      }
+    }
+  };
+  let script_path = match write_helper("fabric-capacities.mjs", CAPACITIES_HELPER_SOURCE) {
+    Ok(p) => p,
+    Err(err) => {
+      return FabricCapacitiesResult {
+        ok: false,
+        capacities: None,
+        needs_login: None,
+        error: Some(format!("Could not prepare the capacities lookup helper: {err}")),
+      }
+    }
+  };
+  let auth_str = auth_path.to_string_lossy().to_string();
+  let script_str = script_path.to_string_lossy().to_string();
+  let res = exec::run(
+    "node",
+    &[&script_str, &auth_str, FABRIC_API_BASE],
+    RunOptions::timeout(60_000),
+  )
+  .await;
+  if res.not_found {
+    return FabricCapacitiesResult {
+      ok: false,
+      capacities: None,
+      needs_login: None,
+      error: Some("Node.js was not found on PATH.".to_string()),
+    };
+  }
+  let out = res.stdout.trim();
+  match serde_json::from_str::<FabricCapacitiesResult>(out) {
+    Ok(parsed) => parsed,
+    Err(_) => {
+      let (needs_login, err) = failure_error(&res, out);
+      FabricCapacitiesResult {
+        ok: false,
+        capacities: None,
+        needs_login: Some(needs_login),
+        error: Some(err),
+      }
+    }
+  }
+}
+
+/// Create a new Fabric workspace and assign it to `capacity_id`. The region is
+/// inherited from the capacity. Returns the new workspace id on success.
+#[tauri::command]
+pub async fn fabric_create_workspace(name: String, capacity_id: String) -> FabricCreateWorkspaceResult {
+  let auth_path = match exec::global_rayfin_auth_module() {
+    Some(p) => p,
+    None => {
+      return FabricCreateWorkspaceResult {
+        ok: false,
+        workspace_id: None,
+        needs_login: None,
+        error: Some(
+          "Could not locate the Rayfin CLI to reach Fabric. Make sure the rayfin CLI is installed."
+            .to_string(),
+        ),
+      }
+    }
+  };
+  let script_path = match write_helper("fabric-create-ws.mjs", CREATE_WS_HELPER_SOURCE) {
+    Ok(p) => p,
+    Err(err) => {
+      return FabricCreateWorkspaceResult {
+        ok: false,
+        workspace_id: None,
+        needs_login: None,
+        error: Some(format!("Could not prepare the create-workspace helper: {err}")),
+      }
+    }
+  };
+  let auth_str = auth_path.to_string_lossy().to_string();
+  let script_str = script_path.to_string_lossy().to_string();
+  let res = exec::run(
+    "node",
+    &[&script_str, &auth_str, FABRIC_API_BASE, &name, &capacity_id],
+    RunOptions::timeout(60_000),
+  )
+  .await;
+  if res.not_found {
+    return FabricCreateWorkspaceResult {
+      ok: false,
+      workspace_id: None,
+      needs_login: None,
+      error: Some("Node.js was not found on PATH.".to_string()),
+    };
+  }
+  let out = res.stdout.trim();
+  match serde_json::from_str::<FabricCreateWorkspaceResult>(out) {
+    Ok(parsed) => parsed,
+    Err(_) => {
+      let (needs_login, err) = failure_error(&res, out);
+      FabricCreateWorkspaceResult {
+        ok: false,
+        workspace_id: None,
         needs_login: Some(needs_login),
         error: Some(err),
       }
@@ -540,7 +759,12 @@ mod tests {
     assert!(HELPER_SOURCE.contains("continuationToken"));
     // A workspace with a capacity but no visible SKU is 'unknown' (still eligible).
     assert!(HELPER_SOURCE.contains("'unknown'"));
+    // PPU (PP* SKU) must be classified ineligible 'other', not premium.
+    assert!(HELPER_SOURCE.contains("s.startsWith('PP')"));
     assert!(DELETE_HELPER_SOURCE.contains("method: 'DELETE'"));
     assert!(DELETE_HELPER_SOURCE.contains("res.status === 404"));
+    // Create-workspace helper POSTs a workspace; capacities helper excludes PPU.
+    assert!(CREATE_WS_HELPER_SOURCE.contains("method: 'POST'"));
+    assert!(CAPACITIES_HELPER_SOURCE.contains("s.startsWith('PP')"));
   }
 }

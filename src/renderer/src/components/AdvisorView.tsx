@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Codicon } from './icons'
 import type {
   AdvisorFinding,
   AdvisorSnapshot,
@@ -380,7 +381,7 @@ export default function AdvisorView({
               {snapshot.stale && (
                 <div className="advisor-stale">
                   <span className="advisor-stale-icon" aria-hidden="true">
-                    ↻
+                    <Codicon name="refresh" />
                   </span>
                   <span className="advisor-stale-text">
                     Your code has changed since this analysis — the results may be out of date.
@@ -393,7 +394,7 @@ export default function AdvisorView({
 
               <div className={`advisor-banner advisor-banner--${issueCount === 0 ? 'ok' : 'warn'}`}>
                 <div className="advisor-banner-icon" aria-hidden="true">
-                  {issueCount === 0 ? '✓' : '!'}
+                  {issueCount === 0 ? <Codicon name="check" /> : '!'}
                 </div>
                 <div className="advisor-banner-main">
                   <div className="advisor-banner-title">

@@ -141,6 +141,34 @@ export interface FabricWorkspacesResult {
   error?: string
 }
 
+/** A dedicated capacity the user can create a workspace on. */
+export interface FabricCapacity {
+  id: string
+  displayName: string
+  /** SKU, e.g. 'F2', 'P1' (undefined when not visible). */
+  sku?: string
+  region?: string
+  /** F* = fabric, P* (not PP) = premium, PP* = other (PPU, ineligible). */
+  kind: 'fabric' | 'premium' | 'other'
+  eligible: boolean
+}
+
+/** Outcome of listing eligible Fabric capacities (never throws). */
+export interface FabricCapacitiesResult {
+  ok: boolean
+  capacities?: FabricCapacity[]
+  needsLogin?: boolean
+  error?: string
+}
+
+/** Outcome of creating + assigning a new Fabric workspace (never throws). */
+export interface FabricCreateWorkspaceResult {
+  ok: boolean
+  workspaceId?: string
+  needsLogin?: boolean
+  error?: string
+}
+
 /** Outcome of deleting a project's deployed app(s) from Fabric (never throws). */
 export interface FabricDeleteResult {
   ok: boolean
@@ -1096,6 +1124,10 @@ export interface RayfinStudioApi {
   fabric: {
     /** List the signed-in user's Fabric workspaces (with capacity / F-SKU info). */
     listWorkspaces: () => Promise<FabricWorkspacesResult>
+    /** List eligible (F-SKU / P-SKU) capacities the user can create a workspace on. */
+    listCapacities: () => Promise<FabricCapacitiesResult>
+    /** Create + assign a new workspace to `capacityId`; region follows the capacity. */
+    createWorkspace: (name: string, capacityId: string) => Promise<FabricCreateWorkspaceResult>
     /**
      * Delete the project's deployed app(s) from Fabric (the Fabric items behind
      * its recorded deployments). Used when removing a project so the Fabric side

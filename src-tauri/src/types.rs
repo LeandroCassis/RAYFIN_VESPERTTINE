@@ -147,6 +147,47 @@ pub struct FabricWorkspacesResult {
   pub error: Option<String>,
 }
 
+/// A dedicated capacity the signed-in user can create a workspace on.
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricCapacity {
+  pub id: String,
+  pub display_name: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub sku: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub region: Option<String>,
+  /// F* = fabric, P* (not PP) = premium, PP* = other (PPU, ineligible).
+  pub kind: String,
+  pub eligible: bool,
+}
+
+/// Outcome of listing eligible Fabric capacities (never throws across IPC).
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricCapacitiesResult {
+  pub ok: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub capacities: Option<Vec<FabricCapacity>>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub needs_login: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error: Option<String>,
+}
+
+/// Outcome of creating + assigning a new Fabric workspace (never throws).
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricCreateWorkspaceResult {
+  pub ok: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub workspace_id: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub needs_login: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error: Option<String>,
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct FabricDeleteFailure {

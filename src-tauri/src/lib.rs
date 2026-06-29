@@ -142,6 +142,8 @@ pub fn run() {
       commands::auth::auth_logout_rayfin,
       // fabric
       commands::fabric::fabric_workspaces,
+      commands::fabric::fabric_capacities,
+      commands::fabric::fabric_create_workspace,
       commands::fabric::fabric_delete_apps,
       // projects
       commands::projects::projects_state,

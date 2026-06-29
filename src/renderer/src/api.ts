@@ -76,6 +76,9 @@ export const api: RayfinStudioApi = {
 
   fabric: {
     listWorkspaces: () => invoke('fabric_workspaces'),
+    listCapacities: () => invoke('fabric_capacities'),
+    createWorkspace: (name: string, capacityId: string) =>
+      invoke('fabric_create_workspace', { name, capacityId }),
     deleteApps: (projectId: string) => invoke('fabric_delete_apps', { projectId })
   },
 

@@ -34,7 +34,8 @@ import {
   CloseIcon,
   StopIcon,
   ImageIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  Codicon
 } from './icons'
 import logo from '../assets/logo.png'
 
@@ -570,7 +571,7 @@ function CopyButton({ text, className }: { text: string; className?: string }): 
     >
       {copied ? (
         <span className="copy-btn-check" aria-hidden="true">
-          ✓
+          <Codicon name="check" />
         </span>
       ) : (
         <CopyIcon />
@@ -976,7 +977,7 @@ function AgentStatus({
         <span className="agent-status-orb-core" />
       </span>
       <span className="agent-status-label" role="status" aria-live="polite">
-        {notice ? `↻ ${label}` : `${label}…`}
+        {notice ? <><Codicon name="refresh" /> {label}</> : `${label}…`}
       </span>
       <span className="agent-status-time" aria-hidden="true">
         {mm}:{ss}
@@ -1029,7 +1030,7 @@ function PlanCard({
             onClick={() => setExpanded((v) => !v)}
             aria-expanded={expanded}
           >
-            {expanded ? '▾ Hide full plan' : '▸ View full plan'}
+            {expanded ? <><Codicon name="chevron-down" /> Hide full plan</> : <><Codicon name="chevron-right" /> View full plan</>}
           </button>
           {expanded && (
             <div className="plan-card-body msg-text--md">
@@ -1358,7 +1359,7 @@ const MessageRow = memo(function MessageRow({
             {m.attachments} screenshot{m.attachments > 1 ? 's' : ''}
           </div>
         ) : null}
-        {m.notice && !m.pending && <div className="msg-notice">↻ {m.notice}</div>}
+        {m.notice && !m.pending && <div className="msg-notice"><Codicon name="refresh" /> {m.notice}</div>}
         {m.pending && (
           <AgentStatus
             tools={m.tools}
@@ -1378,7 +1379,7 @@ const MessageRow = memo(function MessageRow({
                 onClick={() => onRetry(m.id)}
                 title="Re-send this message"
               >
-                ↻ Retry
+                <Codicon name="refresh" /> Retry
               </button>
             )}
           </div>
@@ -2081,70 +2082,6 @@ export default function ChatPanel({
             Clear chat
           </button>
         </div>
-        <div className="chat-model-menu" onClick={(e) => e.stopPropagation()}>
-          <button
-            className="chat-model-btn"
-            title={
-              sending
-                ? 'Model can’t be changed while the assistant is working'
-                : 'Choose the AI model and reasoning effort'
-            }
-            onClick={() => setShowModel((s) => !s)}
-            disabled={sending}
-          >
-            <SparkleIcon className="chat-model-btn-icon" />
-            <span className="chat-model-btn-label">{selectedModel?.name || model || 'Auto'}</span>
-            <span className="chat-model-btn-caret">▾</span>
-          </button>
-          {showModel && (
-            <div className="chat-model-pop" role="dialog" aria-label="Model settings">
-              <label className="chat-model-field">
-                <span className="chat-model-field-label">Model</span>
-                <select
-                  className="chat-model-input"
-                  value={model}
-                  autoFocus
-                  onChange={(e) => selectModel(e.target.value)}
-                >
-                  <option value="">Auto (recommended)</option>
-                  {/* Keep a saved model selectable even if it's no longer listed. */}
-                  {model && !models.some((m) => m.id === model) && (
-                    <option value={model}>{model}</option>
-                  )}
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="chat-model-field">
-                <span className="chat-model-field-label">Reasoning effort</span>
-                <select
-                  className="chat-model-input"
-                  value={effort}
-                  onChange={(e) => {
-                    const next = e.target.value as ReasoningEffort | ''
-                    setEffort(next)
-                    saveOptions(model, next)
-                  }}
-                >
-                  <option value="">Auto</option>
-                  {effortOptions.map((o) => (
-                    <option key={o} value={o}>
-                      {o}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <p className="chat-model-hint">
-                {modelsLoading && models.length === 0
-                  ? 'Loading models…'
-                  : 'Leave on Auto unless you know what you need.'}
-              </p>
-            </div>
-          )}
-        </div>
         <span className="chat-toolbar-spacer" />
       </div>
 
@@ -2188,7 +2125,7 @@ export default function ChatPanel({
                 title="Generate fresh ideas from your app's code"
               >
                 <span className="chat-suggest-refresh-icon" aria-hidden="true">
-                  ↻
+                  <Codicon name="refresh" />
                 </span>
                 Refresh ideas
               </button>
@@ -2358,7 +2295,7 @@ export default function ChatPanel({
                 >
                   <ModeIcon mode={mode} className="mode-trigger-icon" />
                   <span className="mode-trigger-label">{currentMode.label}</span>
-                  <span className="mode-trigger-caret">▾</span>
+                  <span className="mode-trigger-caret"><Codicon name="chevron-down" /></span>
                 </button>
                 {showMode && (
                   <div className="mode-pop" role="menu">
@@ -2381,11 +2318,88 @@ export default function ChatPanel({
                         </span>
                         {mode === m.id && (
                           <span className="mode-opt-check" aria-hidden="true">
-                            ✓
+                            <Codicon name="check" />
                           </span>
                         )}
                       </button>
                     ))}
+                  </div>
+                )}
+              </div>
+              <div
+                className="chat-model-menu"
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setShowModel(false)
+                }}
+              >
+                <button
+                  type="button"
+                  className={`chat-model-btn${showModel ? ' chat-model-btn--open' : ''}`}
+                  title={
+                    sending
+                      ? 'Model can’t be changed while the assistant is working'
+                      : 'Choose the AI model and reasoning effort'
+                  }
+                  onClick={() => setShowModel((s) => !s)}
+                  disabled={sending}
+                  aria-haspopup="dialog"
+                  aria-expanded={showModel}
+                >
+                  <SparkleIcon className="chat-model-btn-icon" />
+                  <span className="chat-model-btn-label">
+                    Model: {selectedModel?.name || model || 'Auto'}
+                  </span>
+                  <span className="chat-model-btn-caret"><Codicon name="chevron-down" /></span>
+                </button>
+                {showModel && (
+                  <div className="chat-model-pop" role="dialog" aria-label="Model settings">
+                    <label className="chat-model-field">
+                      <span className="chat-model-field-label">Model</span>
+                      <select
+                        className="chat-model-input"
+                        value={model}
+                        autoFocus
+                        disabled={sending}
+                        onChange={(e) => selectModel(e.target.value)}
+                      >
+                        <option value="">Auto (recommended)</option>
+                        {/* Keep a saved model selectable even if it's no longer listed. */}
+                        {model && !models.some((m) => m.id === model) && (
+                          <option value={model}>{model}</option>
+                        )}
+                        {models.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="chat-model-field">
+                      <span className="chat-model-field-label">Reasoning effort</span>
+                      <select
+                        className="chat-model-input"
+                        value={effort}
+                        disabled={sending}
+                        onChange={(e) => {
+                          const next = e.target.value as ReasoningEffort | ''
+                          setEffort(next)
+                          saveOptions(model, next)
+                        }}
+                      >
+                        <option value="">Auto</option>
+                        {effortOptions.map((o) => (
+                          <option key={o} value={o}>
+                            {o}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <p className="chat-model-hint">
+                      {modelsLoading && models.length === 0
+                        ? 'Loading models…'
+                        : 'Leave on Auto unless you know what you need.'}
+                    </p>
                   </div>
                 )}
               </div>

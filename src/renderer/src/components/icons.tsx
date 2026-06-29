@@ -1,4 +1,4 @@
-import type { SVGProps } from 'react'
+import type { HTMLAttributes, SVGProps } from 'react'
 
 /**
  * Small, monochrome line icons shared across the app's control clusters
@@ -8,6 +8,19 @@ import type { SVGProps } from 'react'
  * segments bump these to 16px via `.seg-btn--icon .btn-ico`).
  */
 type IconProps = SVGProps<SVGSVGElement>
+
+/**
+ * VS Code codicon (font-based). Use for universally-recognized glyphs that
+ * previously used raw unicode (carets, refresh, edit, search). `name` is the
+ * codicon id without the `codicon-` prefix, e.g. `chevron-down`.
+ */
+export function Codicon({
+  name,
+  className = '',
+  ...rest
+}: { name: string } & HTMLAttributes<HTMLElement>): JSX.Element {
+  return <i className={`codicon codicon-${name} ${className}`.trim()} aria-hidden="true" {...rest} />
+}
 
 function Icon({ className = 'btn-ico', children, ...rest }: IconProps): JSX.Element {
   return (

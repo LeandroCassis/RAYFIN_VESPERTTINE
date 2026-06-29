@@ -1,5 +1,12 @@
 @import 'highlight.js/styles/github-dark.css';
 
+/* VS Code codicons: align the glyph font inline with adjacent text. */
+.codicon {
+  font-size: inherit;
+  line-height: 1;
+  vertical-align: middle;
+}
+
 :root {
   /* Dark theme (default) — deep, slightly cool neutrals + a teal accent (from the logo). */
   --bg: #0b0e14;
@@ -5097,6 +5104,12 @@ code {
   align-items: center;
   gap: 8px;
 }
+.dep-chip-prefix {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin-right: 1px;
+}
 .dep-chip-label {
   max-width: 150px;
   overflow: hidden;
@@ -5275,6 +5288,48 @@ code {
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+.dep-field-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.dep-field-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ws-create-link {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+}
+.ws-create-link:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.ws-create-link:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.ws-create {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.06));
+}
+.ws-create-err {
+  font-size: 11.5px;
+  color: var(--danger, #d33);
+  margin: 0;
 }
 
 .preview-webview {
@@ -6412,6 +6467,7 @@ code {
 }
 
 .chat-model-menu {
+  flex: none;
   position: static;
 }
 
@@ -6420,9 +6476,10 @@ code {
   align-items: center;
   gap: 6px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 9px;
   font: inherit;
-  font-size: 12px;
+  font-size: 11.5px;
+  font-weight: 600;
   color: var(--text-dim);
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
@@ -6434,6 +6491,11 @@ code {
 }
 
 .chat-model-btn:hover:not(:disabled) {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+.chat-model-btn--open {
   color: var(--text);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
@@ -6450,7 +6512,7 @@ code {
 }
 
 .chat-model-btn-label {
-  max-width: 120px;
+  max-width: 150px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -6461,18 +6523,16 @@ code {
   color: var(--text-faint);
 }
 
-/* Anchored to the toolbar's left edge (not the button) so the popover always
-   stays inside the chat pane — a button-anchored popover clips off the left
-   window edge in a narrow split pane, or overflows right under the native
-   preview webview. */
+/* Anchored to the composer-left cluster so the bottom-row popover opens upward
+   and stays within the composer instead of clipping below the chat pane. */
 .chat-model-pop {
   position: absolute;
-  top: calc(100% + 4px);
-  left: 12px;
+  bottom: calc(100% + 6px);
+  left: 0;
   right: auto;
   z-index: 40;
   width: 252px;
-  max-width: calc(100% - 24px);
+  max-width: calc(100cqw - 28px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -6481,6 +6541,7 @@ code {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
+  animation: statusIn 0.14s ease both;
 }
 
 .chat-model-field {
@@ -7814,6 +7875,7 @@ code {
 
 /* Composer left cluster: the mode selector sits beside the keyboard hint. */
 .composer-left {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 10px;

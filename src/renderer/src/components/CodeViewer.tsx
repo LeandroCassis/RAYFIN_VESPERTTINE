@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Editor from '@monaco-editor/react'
 import type { FileContent, FileNode, StudioProject } from '@shared/ipc'
 import { monacoLanguage } from '../monaco'
-import { EditorIcon } from './icons'
+import { Codicon, EditorIcon } from './icons'
 import HistoryView from './HistoryView'
-import RayfinConfigGuide from './RayfinConfigGuide'
 import SkillsView from './SkillsView'
 
 interface Props {
@@ -29,6 +28,48 @@ function formatBytes(n: number): string {
 
 /** Project-relative paths (lowercased) opened by default on first entry to Files. */
 const DEFAULT_FILES = ['rayfin/rayfin.yml', 'rayfin/rayfin.yaml']
+
+type CodeTab = 'files' | 'history' | 'skills'
+
+const codeTabKey = (projectId: string): string => `rayfin.code.tab.${projectId}`
+const codeFileKey = (projectId: string): string => `rayfin.code.file.${projectId}`
+
+function readCodeTab(projectId: string): CodeTab {
+  try {
+    const value = localStorage.getItem(codeTabKey(projectId))
+    return value === 'history' || value === 'skills' ? value : 'files'
+  } catch {
+    return 'files'
+  }
+}
+
+function writeCodeTab(projectId: string, tab: CodeTab): void {
+  try {
+    localStorage.setItem(codeTabKey(projectId), tab)
+  } catch {
+    // Ignore storage failures; persistence is a convenience only.
+  }
+}
+
+function readCodeFile(projectId: string): string | null {
+  try {
+    return localStorage.getItem(codeFileKey(projectId)) || null
+  } catch {
+    return null
+  }
+}
+
+function writeCodeFile(projectId: string, path: string | null): void {
+  try {
+    if (path) {
+      localStorage.setItem(codeFileKey(projectId), path)
+    } else {
+      localStorage.removeItem(codeFileKey(projectId))
+    }
+  } catch {
+    // Ignore storage failures; persistence is a convenience only.
+  }
+}
 
 /** Depth-first search for the first file node matching `pred`. */
 function findFile(nodes: FileNode[], pred: (n: FileNode) => boolean): FileNode | null {
@@ -84,7 +125,7 @@ function TreeRow({ node, depth, selectedPath, onSelect }: TreeRowProps): JSX.Ele
           onClick={() => setOpen((o) => !o)}
           title={node.ignored ? 'Ignored by Git' : undefined}
         >
-          <span className="tree-caret">{open ? '▾' : '▸'}</span>
+          <span className="tree-caret"><Codicon name={open ? 'chevron-down' : 'chevron-right'} /></span>
           <span className="tree-name">{node.name}</span>
         </button>
         {open &&
@@ -124,12 +165,14 @@ function FilesView({
   openRequest
 }: Props & { theme: string }): JSX.Element {
   const [tree, setTree] = useState<FileNode[] | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selectedState, setSelectedState] = useState(() => ({
+    projectId: project.id,
+    path: readCodeFile(project.id)
+  }))
+  const selected = selectedState.projectId === project.id ? selectedState.path : null
   const [file, setFile] = useState<FileContent | null>(null)
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
-  // rayfin.yml gets a friendly "Guide" view by default (with a YAML toggle).
-  const [configMode, setConfigMode] = useState<'guide' | 'yaml'>('guide')
   // Guards the one-time default pick so we never override a manual selection.
   const didDefaultRef = useRef(false)
 
@@ -149,12 +192,18 @@ function FilesView({
     [project.id]
   )
 
-  // Reset the default-pick guard (and selection) when switching projects.
+  // Reset the default-pick guard when switching projects, then restore any
+  // file remembered for the new project.
   useEffect(() => {
     didDefaultRef.current = false
-    setSelected(null)
+    setSelectedState({ projectId: project.id, path: readCodeFile(project.id) })
     setFile(null)
+    setTree(null)
   }, [project.id])
+
+  useEffect(() => {
+    if (selectedState.projectId === project.id) writeCodeFile(project.id, selectedState.path)
+  }, [project.id, selectedState])
 
   // Load (and refresh) the tree; re-read the open file when files may have changed.
   useEffect(() => {
@@ -167,8 +216,8 @@ function FilesView({
     if (!tree || didDefaultRef.current || selected) return
     didDefaultRef.current = true
     const target = findFile(tree, (n) => DEFAULT_FILES.includes(n.path.toLowerCase()))
-    if (target) setSelected(target.path)
-  }, [tree, selected])
+    if (target) setSelectedState({ projectId: project.id, path: target.path })
+  }, [project.id, tree, selected])
 
   useEffect(() => {
     if (selected) void readPath(selected)
@@ -178,12 +227,15 @@ function FilesView({
   useEffect(() => {
     if (!openRequest?.path) return
     didDefaultRef.current = true
-    setSelected(openRequest.path)
-  }, [openRequest?.nonce, openRequest?.path])
+    setSelectedState({ projectId: project.id, path: openRequest.path })
+  }, [openRequest?.nonce, openRequest?.path, project.id])
 
-  const onSelect = useCallback((node: FileNode): void => {
-    setSelected(node.path)
-  }, [])
+  const onSelect = useCallback(
+    (node: FileNode): void => {
+      setSelectedState({ projectId: project.id, path: node.path })
+    },
+    [project.id]
+  )
 
   const copy = (): void => {
     if (!file?.content) return
@@ -192,18 +244,13 @@ function FilesView({
     setTimeout(() => setCopied(false), 1200)
   }
 
-  // The Rayfin config file gets special "extra treatment": a plain-language
-  // guide (default) that explains the backend, plus a raw-YAML toggle.
-  const isRayfinConfig = selected != null && DEFAULT_FILES.includes(selected.toLowerCase())
-  const showGuide = isRayfinConfig && configMode === 'guide'
-
   return (
     <div className="code-viewer">
       <div className="code-tree">
         <div className="code-tree-head">
           <span>Files</span>
           <button className="btn btn--xs btn--ghost" onClick={() => void loadTree()} title="Refresh">
-            ⟳
+            <Codicon name="refresh" />
           </button>
         </div>
         <div className="code-tree-body">
@@ -232,32 +279,10 @@ function FilesView({
               {selected}
             </span>
             <span className="code-head-spacer" />
-            {isRayfinConfig && file?.content != null && (
-              <div className="code-seg code-cfg-seg" role="tablist" aria-label="rayfin.yml view">
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={configMode === 'guide'}
-                  className={`code-seg-btn${configMode === 'guide' ? ' code-seg-btn--on' : ''}`}
-                  onClick={() => setConfigMode('guide')}
-                >
-                  Guide
-                </button>
-                <button
-                  type="button"
-                  role="tab"
-                  aria-selected={configMode === 'yaml'}
-                  className={`code-seg-btn${configMode === 'yaml' ? ' code-seg-btn--on' : ''}`}
-                  onClick={() => setConfigMode('yaml')}
-                >
-                  YAML
-                </button>
-              </div>
-            )}
-            {file && !file.error && file.size > 0 && !showGuide && (
+            {file && !file.error && file.size > 0 && (
               <span className="code-size">{formatBytes(file.size)}</span>
             )}
-            {file?.content != null && !showGuide && (
+            {file?.content != null && (
               <button className="btn btn--xs btn--ghost" onClick={copy}>
                 {copied ? 'Copied' : 'Copy'}
               </button>
@@ -280,8 +305,6 @@ function FilesView({
             </div>
           ) : file?.content === '' ? (
             <div className="code-empty">Empty file.</div>
-          ) : showGuide && file?.content != null ? (
-            <RayfinConfigGuide content={file.content} />
           ) : file?.content != null ? (
             <div className="code-editor-host">
               <Editor
@@ -328,14 +351,26 @@ export default function CodeViewer({
   openRequest,
   onSkillsChanged
 }: Props): JSX.Element {
-  const [tab, setTab] = useState<'files' | 'history' | 'skills'>('files')
+  const [tabState, setTabState] = useState(() => ({
+    projectId: project.id,
+    tab: readCodeTab(project.id)
+  }))
+  const tab = tabState.projectId === project.id ? tabState.tab : 'files'
   const [editorHint, setEditorHint] = useState(false)
   const theme = useEditorTheme()
 
+  useEffect(() => {
+    setTabState({ projectId: project.id, tab: readCodeTab(project.id) })
+  }, [project.id])
+
+  useEffect(() => {
+    if (tabState.projectId === project.id) writeCodeTab(project.id, tabState.tab)
+  }, [project.id, tabState])
+
   // An external open request always lands in the Files browser.
   useEffect(() => {
-    if (openRequest?.path) setTab('files')
-  }, [openRequest?.nonce, openRequest?.path])
+    if (openRequest?.path) setTabState({ projectId: project.id, tab: 'files' })
+  }, [openRequest?.nonce, openRequest?.path, project.id])
 
   const openInEditor = useCallback(async (): Promise<void> => {
     try {
@@ -354,7 +389,7 @@ export default function CodeViewer({
             className={`code-seg-btn${tab === 'files' ? ' code-seg-btn--on' : ''}`}
             role="tab"
             aria-selected={tab === 'files'}
-            onClick={() => setTab('files')}
+            onClick={() => setTabState({ projectId: project.id, tab: 'files' })}
           >
             Files
           </button>
@@ -362,7 +397,7 @@ export default function CodeViewer({
             className={`code-seg-btn${tab === 'history' ? ' code-seg-btn--on' : ''}`}
             role="tab"
             aria-selected={tab === 'history'}
-            onClick={() => setTab('history')}
+            onClick={() => setTabState({ projectId: project.id, tab: 'history' })}
           >
             History
           </button>
@@ -370,7 +405,7 @@ export default function CodeViewer({
             className={`code-seg-btn${tab === 'skills' ? ' code-seg-btn--on' : ''}`}
             role="tab"
             aria-selected={tab === 'skills'}
-            onClick={() => setTab('skills')}
+            onClick={() => setTabState({ projectId: project.id, tab: 'skills' })}
           >
             Skills
           </button>

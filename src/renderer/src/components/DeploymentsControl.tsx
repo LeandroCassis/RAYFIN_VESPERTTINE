@@ -7,6 +7,7 @@ import type {
   StudioProject
 } from '@shared/ipc'
 import { useSuppressPreview } from '../overlay'
+import { Codicon } from './icons'
 import DeploymentCreateForm from './DeploymentCreateForm'
 
 interface Props {
@@ -179,18 +180,19 @@ export default function DeploymentsControl({
           className="seg-btn dep-select"
           title={
             activeLabel
-              ? `Active deployment: ${activeLabel}`
+              ? `Deploys to workspace: ${activeLabel}. Click to switch or create another.`
               : reconciling
                 ? 'Checking for an existing deployment…'
-                : 'No deployment yet'
+                : 'Not deployed yet — click to choose a workspace'
           }
           onClick={() => setOpen((o) => !o)}
         >
           <span className={`seg-dot${hasDeployment ? ' seg-dot--set' : ''}`} />
+          <span className="dep-chip-prefix">Workspace:</span>
           <span className="dep-chip-label">
-            {activeLabel || (reconciling ? 'Checking…' : 'No deployment')}
+            {activeLabel || (reconciling ? 'Checking…' : 'Not deployed')}
           </span>
-          <span className="dep-chip-caret">▾</span>
+          <span className="dep-chip-caret"><Codicon name="chevron-down" /></span>
         </button>
         <button
           className="seg-btn seg-btn--primary dep-deploy"
@@ -218,7 +220,7 @@ export default function DeploymentsControl({
                 disabled={loadingDeps}
                 onClick={() => void loadDeployments()}
               >
-                ↻
+                <Codicon name="refresh" />
               </button>
             )}
           </div>
@@ -282,7 +284,7 @@ export default function DeploymentsControl({
                               <span className="dep-item-name-text">
                                 {d.name || d.workspaceName}
                               </span>
-                              <span className="dep-item-edit">✎</span>
+                              <span className="dep-item-edit"><Codicon name="edit" /></span>
                             </button>
                           )}
                           {d.active ? (
