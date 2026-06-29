@@ -295,19 +295,13 @@ impl InnerWebView {
       // remove "mini menu" - See https://github.com/tauri-apps/wry/issues/535
       // and "smart screen" - See https://github.com/tauri-apps/tauri/issues/1345
       //
-      // [rayfin-desktop local patch] Also disable Chromium's native-window
-      // occlusion detection (CalculateNativeWinOcclusion) so WebView2 keeps
-      // rendering when the top-level window is minimized or fully occluded. The
-      // Fabricator agent screenshots the preview child silently while it is parked
-      // off-screen (see src/services/preview.rs `agent_capture`); without this, a
-      // capture taken while the app window is minimized returns a blank/stale frame
-      // or stalls `CapturePreview`. This is applied in the *shared default* (rather
-      // than per-webview) on purpose: the main window and the preview must keep
-      // IDENTICAL browser args, because WebView2 rejects environments with differing
-      // options that share a user-data folder (CreateCoreWebView2EnvironmentWithOptions
-      // fails with ERROR_INVALID_STATE / 0x8007139F). Re-apply this on wry updates.
-      let default_args =
-        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection,CalculateNativeWinOcclusion";
+      // [rayfin-desktop local patch] Keep native-window occlusion detection
+      // ENABLED so WebView2 stops compositing the preview child when the app
+      // window is minimized/occluded — a meaningful CPU saving under VMs
+      // (Parallels) where the preview otherwise paints continuously. The former
+      // off-screen silent-capture path that needed occlusion disabled was removed;
+      // the remaining capture path is bounded and only runs while visible.
+      let default_args = "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection";
       let mut arguments = String::from(default_args);
 
       if attributes.autoplay {

@@ -57,9 +57,12 @@ fn apply_compatibility_rendering() {
     return;
   }
   // Disable hardware GPU + GPU compositing so Chromium falls back to its software
-  // (SwiftShader) renderer. We deliberately do NOT disable the software rasterizer,
+  // (SwiftShader) renderer, and turn off D3D11 + GPU rasterization too — the
+  // virtualized GPU in Parallels/VMs misreports capabilities and otherwise hangs
+  // or paints garbage. We deliberately do NOT disable the software rasterizer,
   // since that fallback is exactly what we want the VM to use.
-  const FLAGS: &str = "--disable-gpu --disable-gpu-compositing";
+  const FLAGS: &str =
+    "--disable-gpu --disable-gpu-compositing --disable-gpu-rasterization --disable-d3d11";
   const KEY: &str = "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS";
   let merged = match std::env::var(KEY) {
     Ok(existing) if !existing.trim().is_empty() => format!("{existing} {FLAGS}"),
@@ -106,6 +109,9 @@ pub fn run() {
       // Materialize Fabricator's product-scoped agent skills/instructions under
       // app-data so chat sessions can inject them (never written into the repo).
       services::agent_skills::ensure_materialized();
+
+      // Watch for main-thread freezes (Parallels/VM hangs) and record them.
+      services::watchdog::start();
 
       Ok(())
     })
@@ -211,6 +217,7 @@ pub fn run() {
       services::preview::preview_forward,
       services::preview::preview_capture,
     ])
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building tauri application")
+    .run(|_app, _event| services::watchdog::beat());
 }

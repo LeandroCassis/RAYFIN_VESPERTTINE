@@ -296,6 +296,12 @@ export default function PreviewPane({
     const keyOf = (b: PreviewBounds): string =>
       `${b.x}|${b.y}|${b.width}|${b.height}|${window.innerWidth}|${window.innerHeight}`
 
+    // Coalesce reposition IPC to ~30Hz: per-frame `setBounds` calls during a drag
+    // are pure cost on a software-rendered VM. Show/hide stay immediate; only the
+    // setBounds spam is throttled. A throttled frame still reports "moved" so the
+    // burst keeps tracking and lands the final position.
+    const MIN_BOUNDS_INTERVAL_MS = 33
+    let lastBoundsAt = 0
     // Reconcile the native surface to the host's current rect. Returns true when
     // it actually moved/showed/hid, so the tracking loop knows it isn't settled yet.
     const reconcile = (): boolean => {
@@ -316,6 +322,9 @@ export default function PreviewPane({
         return true
       }
       if (key !== shownKey) {
+        const now = performance.now()
+        if (now - lastBoundsAt < MIN_BOUNDS_INTERVAL_MS) return true // defer, keep tracking
+        lastBoundsAt = now
         shownKey = key
         void window.api.preview.setBounds(b)
         return true

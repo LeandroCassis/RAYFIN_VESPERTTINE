@@ -534,9 +534,13 @@ async fn capture_now(app: &AppHandle) -> AppResult<Vec<u8>> {
   })
   .map_err(|e| AppError::Msg(format!("failed to access preview webview: {e}")))?;
 
-  rx.await
-    .map_err(|_| AppError::Msg("preview capture was cancelled".into()))?
-    .map_err(AppError::Msg)
+  // Belt-and-suspenders: `capture_png` already bounds its own UI-thread pump, but
+  // cap the whole round-trip too so a stalled dispatch can never wedge the caller.
+  match tokio::time::timeout(Duration::from_secs(10), rx).await {
+    Ok(Ok(res)) => res.map_err(AppError::Msg),
+    Ok(Err(_)) => Err(AppError::Msg("preview capture was cancelled".into())),
+    Err(_) => Err(AppError::Msg("preview capture timed out".into())),
+  }
 }
 
 /// Capture the current preview content as raw PNG bytes for the **renderer's own**
@@ -851,16 +855,33 @@ pub(crate) async fn navigate_and_wait(app: &AppHandle, url: &str, timeout: Durat
   Ok(())
 }
 
+/// Hard ceiling on how long the Windows capture may pump the UI-thread message
+/// loop. `CapturePreview`'s completion is delivered via the message loop, but on a
+/// misbehaving GPU (notably Parallels/VMs) it can never arrive — an unbounded pump
+/// (`wait_for_async_operation`) then freezes the entire app. We pump our own
+/// bounded loop instead and bail with an error after this deadline, which callers
+/// treat as a soft failure (blank/hide) rather than a hang.
+#[cfg(windows)]
+const CAPTURE_PUMP_DEADLINE: Duration = Duration::from_secs(5);
+
 /// Capture the WebView2 preview to PNG bytes. Runs on the UI thread inside
-/// [`preview_capture`]'s `with_webview` closure, where pumping the message loop
-/// (via `wait_for_async_operation`) to await the COM completion is safe.
+/// [`preview_capture`]'s `with_webview` closure. `CapturePreview` completes via
+/// the UI-thread message loop, so we pump it ourselves — but with a deadline so a
+/// completion that never comes (flaky VM GPU) can't hang the app, mirroring the
+/// macOS snapshot path's bounded run-loop.
 #[cfg(windows)]
 fn capture_png(platform: &tauri::webview::PlatformWebview) -> Result<Vec<u8>, String> {
+  use std::sync::mpsc;
+  use std::time::Instant;
+
   use webview2_com::CapturePreviewCompletedHandler;
   use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
   use windows::Win32::Foundation::HGLOBAL;
   use windows::Win32::System::Com::StructuredStorage::{CreateStreamOnHGlobal, GetHGlobalFromStream};
   use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+  use windows::Win32::UI::WindowsAndMessaging::{
+    DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
+  };
 
   let core = unsafe { platform.controller().CoreWebView2() }
     .map_err(|e| format!("CoreWebView2(): {e}"))?;
@@ -870,20 +891,46 @@ fn capture_png(platform: &tauri::webview::PlatformWebview) -> Result<Vec<u8>, St
   let stream = unsafe { CreateStreamOnHGlobal(HGLOBAL(std::ptr::null_mut()), true) }
     .map_err(|e| format!("CreateStreamOnHGlobal: {e}"))?;
 
-  let capture_stream = stream.clone();
-  CapturePreviewCompletedHandler::wait_for_async_operation(
-    Box::new(move |handler| unsafe {
-      core
-        .CapturePreview(
-          COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
-          &capture_stream,
-          &handler,
-        )
-        .map_err(webview2_com::Error::WindowsError)
-    }),
-    Box::new(|result: windows::core::Result<()>| result),
-  )
-  .map_err(|e| format!("CapturePreview: {e}"))?;
+  // Kick off the capture and signal completion over a channel, then pump the UI
+  // message loop ourselves until it fires — bounded by `CAPTURE_PUMP_DEADLINE` so
+  // a never-arriving completion can't block forever.
+  let (tx, rx) = mpsc::channel::<windows::core::Result<()>>();
+  let handler = CapturePreviewCompletedHandler::create(Box::new(move |result| {
+    let _ = tx.send(result);
+    Ok(())
+  }));
+  unsafe {
+    core
+      .CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, &stream, &handler)
+      .map_err(|e| format!("CapturePreview: {e}"))?;
+  }
+
+  let deadline = Instant::now() + CAPTURE_PUMP_DEADLINE;
+  loop {
+    match rx.try_recv() {
+      Ok(result) => {
+        result.map_err(|e| format!("CapturePreview: {e}"))?;
+        break;
+      }
+      Err(mpsc::TryRecvError::Disconnected) => {
+        return Err("preview capture handler dropped".into());
+      }
+      Err(mpsc::TryRecvError::Empty) => {}
+    }
+    if Instant::now() >= deadline {
+      return Err("preview capture timed out".into());
+    }
+    // Drain any pending messages (delivers WebView2's completion), then yield
+    // briefly so we don't spin the CPU while waiting.
+    unsafe {
+      let mut msg = MSG::default();
+      while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+        let _ = TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+      }
+    }
+    std::thread::sleep(Duration::from_millis(5));
+  }
 
   // The PNG now lives in the stream's backing HGLOBAL — copy it into a Vec.
   unsafe {

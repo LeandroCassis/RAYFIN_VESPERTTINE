@@ -16,3 +16,4 @@ pub mod semantic_model;
 pub mod store;
 pub mod telemetry;
 pub mod updater;
+pub mod watchdog;
