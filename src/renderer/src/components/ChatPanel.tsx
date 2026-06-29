@@ -882,6 +882,13 @@ function AssistantBody({
                 <span className="turn-interject-tag">You added</span>
                 <div className="turn-interject-text">
                   <Markdown>{seg.text}</Markdown>
+                  {seg.thumbs && seg.thumbs.length > 0 && (
+                    <div className="msg-shots">
+                      {seg.thumbs.map((src, j) => (
+                        <img key={j} className="msg-shot" src={src} alt="Screenshot attachment" />
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )
@@ -1817,11 +1824,12 @@ export default function ChatPanel({
    */
   async function steer(text: string, shots: PendingShot[]): Promise<void> {
     const liveTurnId = [...messages].reverse().find((m) => m.pending && m.turnId)?.turnId
+    const thumbs = shots.length ? shots.map((s) => s.thumb) : undefined
     if (liveTurnId) {
       onChange((prev) =>
         prev.map((m) =>
           m.turnId === liveTurnId && m.pending
-            ? { ...m, segments: [...(m.segments ?? []), { kind: 'interjection', text }] }
+            ? { ...m, segments: [...(m.segments ?? []), { kind: 'interjection', text, thumbs }] }
             : m
         )
       )

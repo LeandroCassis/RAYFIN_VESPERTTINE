@@ -1,0 +1,11 @@
+apiVersion: v1
+metadata:
+  name: fabricator-dashboard
+  displayName: Dashboard
+  description: >-
+    Lightweight dashboarding app — build dashboards over any data (inline/static
+    or a Power BI semantic model) with Graphein visuals. Defaults to the Fabric
+    view; built for the Fabricator deploy-to-test loop with no local backend.
+entries:
+  - path: .
+    name: fabricator-dashboard

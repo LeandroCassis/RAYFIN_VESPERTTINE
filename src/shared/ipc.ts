@@ -670,7 +670,7 @@ export interface ChatToolCall {
 export type ChatSegment =
   | { kind: 'text'; text: string }
   | { kind: 'tool'; id: string }
-  | { kind: 'interjection'; text: string }
+  | { kind: 'interjection'; text: string; thumbs?: string[] }
 
 
 /**
