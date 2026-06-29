@@ -224,3 +224,32 @@ pub async fn search_semantic_models(
   });
   run_helper(&request).await
 }
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  /// The helper's `parseTarget` cases must pass — this guards URL parsing
+  /// (e.g. the /modeling/<id>/modelView model-editor link) against regressions.
+  /// Skips gracefully if `node` isn't on PATH (parsing is JS-only).
+  #[test]
+  fn helper_selftest_parses_known_urls() {
+    let script = std::env::temp_dir().join("semantic-model-selftest.mjs");
+    if std::fs::write(&script, HELPER_SOURCE).is_err() {
+      return;
+    }
+    let out = std::process::Command::new("node")
+      .arg(&script)
+      .arg("--selftest")
+      .output();
+    let _ = std::fs::remove_file(&script);
+    match out {
+      Ok(o) => assert!(
+        o.status.success(),
+        "parseTarget selftest failed: {}",
+        String::from_utf8_lossy(&o.stderr)
+      ),
+      Err(_) => { /* node unavailable; parsing covered by `node --selftest` in dev */ }
+    }
+  }
+}

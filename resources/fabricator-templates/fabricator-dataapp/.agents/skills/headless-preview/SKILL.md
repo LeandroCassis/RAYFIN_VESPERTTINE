@@ -1,38 +1,33 @@
 ---
 name: headless-preview
 description: >
-  Use to check how a Graphein chart spec looks against REAL data without
-  deploying. `npm run preview` renders one spec headlessly to a PNG plus a
-  machine-readable report — pull a live DAX result with fabric-app-data, render
-  it themed exactly like the deployed app, then view the PNG and read the report
-  (clipping / overlap / contrast / mark counts) and iterate. This is the fast
-  inner loop per visual; deploy stays the integration checkpoint. Covers the
-  query→render→critique loop, the CLI flags, reading the report, the
-  validate→repair workflow, and which types are DOM-only (preview by deploying).
+  Use to check how a Graphein chart spec looks against REAL data. `npm run
+  preview` renders one spec headlessly to a PNG plus a machine-readable report —
+  pull a live DAX result with fabric-app-data, render it themed exactly like the
+  shipped app, then view the PNG and read the report (clipping / overlap /
+  contrast / mark counts) and iterate. This is the agent validation loop for
+  every visual. Covers the query→render→critique loop, the CLI flags, reading
+  the report, and the validate→repair workflow.
 ---
 
-# Headless preview — render a spec against live data, no deploy
+# Headless preview — render a spec against live data
 
 You can render a single Graphein `ChartSpec` **to a PNG and a JSON report on this
-machine**, with no browser and no deploy, using `@graphein/node`. Pair it with a
-live `fabric-app-data query` result and you can check a visual's *real*
-presentation — does the data shape suit this chart, do labels clip, do colors
-read, is the trend what you expected — in seconds, before you ever deploy.
+machine**, with no browser, using `@graphein/node`. Pair it with a live
+`fabric-app-data query` result and you can check a visual's *real* presentation —
+does the data shape suit this chart, do labels clip, do colors read, is the trend
+what you expected — in seconds, before it ships.
 
-> **This is the inner loop; deploy is still the checkpoint.** Headless preview
-> validates one visual's presentation and data fit fast. Deploy + screenshot
-> remains how you verify the whole app: auth, the Fabric shell, the full
-> dashboard, slicers, KPIs, and DOM-only visuals. Use both — preview to iterate a
-> chart, deploy to sign off.
+> **This is the loop.** Headless preview is the agent's validation for every
+> visual: presentation, data fit, clipping, overlap, and contrast. Fabricator
+> automatically deploys after the turn to ship the app after you preview-validate.
 
 ## When to use it
 
-| Use headless preview when… | Deploy instead when… |
-|---|---|
-| Checking a chart against live data before wiring it in | Verifying the whole running app / Fabric shell |
-| Choosing a chart type / encoding for a real result | Checking slicers, cross-filtering, auth, navigation |
-| Catching clipping, overlap, low contrast, wrong grain | Previewing a `kpi` / `table` / `matrix` / slicer (DOM-only) |
-| Tuning formatting, labels, `series`, sort, transforms | Final review / hand-off |
+Use headless preview when checking any visual against live data, choosing a
+type or encoding, catching clipping/overlap/contrast/wrong grain, and tuning
+formatting, labels, `series`, sort, or transforms. KPI/table/matrix/slicers/
+dashboard rasterize to PNG too, so preview-validate them before shipping.
 
 ## The loop
 
@@ -42,7 +37,7 @@ read, is the trend what you expected — in seconds, before you ever deploy.
 3. npm run preview -- --spec spec.json --data rows → PNG + report JSON
 4. VIEW the PNG (you have vision) + READ the report
 5. not right? adjust the spec / DAX → back to 3
-6. happy? drop the spec into a <ChartCard> and deploy
+6. happy? drop the spec into a <ChartCard>; Fabricator auto-deploys after the turn
 ```
 
 ## Run it
@@ -109,7 +104,7 @@ The script prints one JSON object. Treat it as a critique checklist:
 
 - **View the PNG** at `out` — that is the real deployed-look render (app theme +
   Inter font). Judge it like a reviewer: legibility, clipping, color, grain.
-- **`ok: false` or any `diagnostics`** → fix before deploying. Common codes:
+- **`ok: false` or any `diagnostics`** → fix before shipping. Common codes:
   label/axis overlap, clipped marks, low contrast, too many colors, empty plot.
 - **`dataRows: 0` (or `marks: 0`)** → your `encoding` fields don't match the
   mapped row keys, or the query returned nothing. Fix the field names / `--columns`
@@ -137,18 +132,16 @@ applied, remaining }`, `summarize(spec) → string`.
 |---|---|
 | `0` | Rendered — PNG written, report printed. |
 | `1` | Error — invalid/unrepairable spec, bad data, or render failure (see `error`). |
-| `2` | **DOM-only visual** — no headless canvas form; preview it by deploying. |
+| `2` | Render failure for a visual type that should be fixed before shipping. |
 
 ## What renders headlessly
 
-**Supported** (single canvas charts): `line`, `area`, `bar`, `scatter`, `box`,
+**Supported**: `line`, `area`, `bar`, `scatter`, `box`,
 `pie`, `heatmap`, `sankey`, `choropleth`, `combo`, `histogram`, `funnel`,
 `treemap`, `gauge`, `bullet`, `calendarHeatmap`, `waterfall`, `slope`, `dumbbell`
-— plus their `transform`, `annotations`, `insights`, `trendline`, and `facet`.
-
-**DOM-only** (exit `2` — preview by deploying): `kpi`, `table`, `matrix`, and the
-slicers (`dropdown`, `list`, `search`, `range`, `dateRange`), and `dashboard`.
-These are React/HTML surfaces, not canvas charts.
+— plus `kpi`, `table`, `matrix`, slicers (`dropdown`, `list`, `search`, `range`,
+`dateRange`), and `dashboard`. Chart specs also support `transform`,
+`annotations`, `insights`, `trendline`, and `facet`.
 
 ## Notes
 
@@ -158,5 +151,5 @@ These are React/HTML surfaces, not canvas charts.
   same `--color-*` bridge as `lib/graphein-theme.ts`) and registers the bundled
   Inter, so a preview looks like the deployed chart. Edit `global.css` to recolor —
   never hardcode hex in a spec.
-- This is local presentation feedback. It does **not** replace deploying for
-  end-to-end verification.
+- This is the agent validation loop for every visual; preview-validate before
+  Fabricator's automatic after-turn deploy ships the app.

@@ -320,5 +320,5 @@ chart.destroy();          // teardown
 ```
 
 When a render settles, Graphein sets `data-graphein-ready="true"` on the surface and
-increments `window.__GRAPHEIN_READY` — handy for the Fabricator screenshot loop to
+increments `window.__GRAPHEIN_READY` — handy for headless render/ready checks to
 wait on.

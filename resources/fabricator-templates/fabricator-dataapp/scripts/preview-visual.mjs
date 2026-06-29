@@ -13,8 +13,8 @@
  * This is the fast inner loop for "check a visual against live data": fetch rows
  * with `fabric-app-data query`, author a spec, render it here, then read the PNG
  * (you have vision) and the report (clipping / overlap / contrast / counts) to
- * critique it — no deploy + screenshot round-trip. Deploy stays the integration
- * checkpoint; this just makes the per-visual presentation check instant.
+ * critique it — no deploy round-trip. Fabricator auto-deploys after the turn; this
+ * just makes the per-visual presentation check instant.
  *
  * Usage:
  *   node scripts/preview-visual.mjs --spec <path|-> [options]
@@ -36,7 +36,7 @@
  *
  * Output: writes the PNG and prints a JSON critique to stdout — `ok`, `summary`,
  * `diagnostics`, `lint`, mark/series/color counts, `out`, and any `repaired` patch ops.
- * Exit codes: 0 = rendered · 1 = error · 2 = DOM-only visual (deploy to preview it).
+ * Exit codes: 0 = rendered · 1 = error.
  */
 
 import { spawnSync } from "node:child_process";
@@ -51,24 +51,6 @@ import { repairSpec, summarize, validateSpec } from "graphein";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "..");
-
-/** Graphein visuals whose presentation is pure DOM — no headless canvas form. */
-const DOM_ONLY = new Set([
-    "kpi",
-    "table",
-    "matrix",
-    "dropdown",
-    "list",
-    "search",
-    "range",
-    "dateRange",
-    "dashboard",
-]);
-
-/** Canvas charts the headless renderer supports (for the DOM-only error hint). */
-const HEADLESS_TYPES =
-    "line, area, bar, scatter, box, pie, heatmap, sankey, choropleth, combo, histogram, " +
-    "funnel, treemap, gauge, bullet, calendarHeatmap, waterfall, slope, dumbbell";
 
 /** DAX column dataTypes coerced to JS numbers (mirrors src/lib/to-chart-data.ts). */
 const NUMERIC_DAX_TYPES = new Set([
@@ -459,19 +441,6 @@ function main() {
                 repaired,
             });
         }
-    }
-
-    // DOM-only visuals have no headless canvas form.
-    if (DOM_ONLY.has(spec.type)) {
-        die(2, {
-            ok: false,
-            rendered: false,
-            type: spec.type,
-            domOnly: true,
-            message:
-                `"${spec.type}" is a DOM-only Graphein visual (no headless canvas form). ` +
-                `Preview it by deploying the app. Headless preview covers: ${HEADLESS_TYPES}.`,
-        });
     }
 
     const lint = (validateSpec(spec).warnings ?? []).map((w) => ({

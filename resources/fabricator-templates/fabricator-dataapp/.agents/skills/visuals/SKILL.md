@@ -8,7 +8,7 @@ description: >
   per-type recipes (line/area/bar/scatter/pie/heatmap/funnel/combo/histogram/
   treemap/gauge/bullet/waterfall/calendarHeatmap/slope/dumbbell/table/matrix),
   declarative features (transform/annotations/insights/trendline/facet), the
-  validate→repair→report self-check (graphein 0.6), headless preview against live
+  validate→repair→report self-check (graphein 0.7), headless preview against live
   data, the DAX→rows helpers (toChartData / toTable / topN / deriveKpi), `KpiCard`,
   `DataTableCard` (Graphein table/matrix), slicers (dropdown/list/search/date-range/range + FilterBar)
   with shared filter state, interactivity, layout, value formatting, and color tokens.
@@ -23,14 +23,14 @@ array, and an `encoding` that names the columns — and (3) drop it into
 `<ChartCard spec={…} />`. The card owns the loading / empty / error states and
 bridges the app theme, so a spec never needs a color or a size.
 
-> **Charts are `graphein` 0.6.** That means a broad chart catalog (combo/dual-axis,
+> **Charts are `graphein` 0.7.** That means a broad chart catalog (combo/dual-axis,
 > histogram, treemap, gauge, bullet, waterfall, calendar-heatmap, slope, dumbbell
 > on top of the classics), in-spec **transforms** and **annotations** (reference
 > lines), and a **self-correcting loop** — `validateSpec` → `repairSpec` →
-> `summarize` plus a render **report**. You can also render a spec **headlessly
-> against live data** to a PNG + report before deploying: see the
-> **headless-preview** skill. Use it to check each visual's real presentation in
-> the inner loop; deploy stays the integration checkpoint.
+> `summarize` plus a render **report**. Render each visual spec **headlessly
+> against live data** to a PNG + report before ship: see the **headless-preview**
+> skill. This is the agent validation loop; KPI/table/matrix/slicers/dashboard
+> rasterize to PNG too, so preview-validate every visual before shipping.
 
 Three things are React surfaces around Graphein specs or state:
 
@@ -44,11 +44,11 @@ Everything is exported from one barrel: **`@/components/dashboard`**.
 
 ## Fast path
 
-Optimize *time to wow*: ship one real tile, deploy, review, iterate.
+Optimize *time to wow*: ship one real tile, preview, user review, iterate.
 
 **Phase 1 — Hero slice:** render ONE real visual the simplest way — map the hero
 query with `toChartData(...)`, author a spec, pass it to a `ChartCard`. Pass
-`loading` / `error` straight from the query hook. That's enough to deploy.
+`loading` / `error` straight from the query hook. That's enough to ship.
 
 ```tsx
 import { ChartCard, toChartData } from "@/components/dashboard";
@@ -74,8 +74,8 @@ const { data, isLoading, error } = useSemanticModelQuery({ connection, query });
 ```
 
 **Phase 2 — Breadth:** add the rest (metric band, more charts, a `DataTableCard`),
-wrapped in `PageShell` + `StatStrip` + `DashboardGrid`/`Tile`. Deploy + review every
-1–2 additions.
+wrapped in `PageShell` + `StatStrip` + `DashboardGrid`/`Tile`. Preview each
+visual as you add it before automatic ship.
 
 **Phase 3 — Polish:** slicers, interactivity, multi-series, formatting, dark-mode
 review.
@@ -273,7 +273,7 @@ genuinely share an x but need different y-scales (don't reach for it by default)
 Full field-by-field docs + every channel/option:
 [Graphein spec reference](references/graphein-spec-reference.md).
 
-### Declarative features (graphein 0.6)
+### Declarative features (graphein 0.7)
 
 Reshape and enrich a chart **inside the spec** — no pre-massaging the data, no
 second chart. All are plain JSON and render headlessly:
@@ -296,9 +296,9 @@ second chart. All are plain JSON and render headlessly:
 - **`facet: { field }`** — split into a trellis of small multiples, one panel per
   category, on shared scales.
 
-### Self-check before deploy
+### Self-check before ship
 
-Graphein 0.6 can critique its own specs — use it to iterate without a deploy:
+Graphein 0.7 can critique its own specs — use it to iterate before ship:
 
 - **`validateSpec(spec)` → `{ valid, errors, warnings }`** — path-pointed errors +
   soft warnings. **`repairSpec(spec)` → `{ spec, applied, remaining }`** auto-fixes
@@ -308,8 +308,8 @@ Graphein 0.6 can critique its own specs — use it to iterate without a deploy:
   --dax-file q.dax` writes a themed PNG **and** a report (`ok`, `diagnostics` for
   clipping/overlap/contrast, mark/series/color counts). View the PNG, read the
   report, fix, repeat — then drop the spec into a `<ChartCard>`. Full loop +
-  flags: the **headless-preview** skill. (DOM-only `kpi`/`table`/`matrix`/slicers
-  have no headless form — preview those by deploying.)
+  flags: the **headless-preview** skill. KPI/table/matrix/slicers/dashboard
+  rasterize to PNG too, so preview-validate them before shipping.
 
 ### Gotchas
 
@@ -318,7 +318,7 @@ Graphein 0.6 can critique its own specs — use it to iterate without a deploy:
   render vertical. For "top N" / ranked breakdowns, use a **vertical** bar and
   sort rows by value (`topN(rows, key, n)`). For a horizontal category comparison
   of two points (e.g. before/after), use a **`dumbbell`** instead.
-- **Reference lines & combo charts now exist** (0.6). Use `annotations: [{ type:
+- **Reference lines & combo charts now exist** (0.7). Use `annotations: [{ type:
   "line", value }]` for a target/threshold line, and the `combo` type for two
   measures on different y-scales — don't fake either with stacked `ChartCard`s.
 - **Temporal fields are ISO strings** (`"2024-01"`, `"2024-01-15"`) or epoch ms —

@@ -157,6 +157,9 @@ function parseTarget(value) {
   }
 
   const pats = [
+    // Semantic-model editor / modeling view: .../modeling/{model}/modelView,
+    // .../me/modeling/{model}, .../datasets/{model}/details — all point at a model.
+    ['dataset', '/modeling/(' + GUID + ')'],
     ['dataset', '/datasets/(' + GUID + ')'],
     ['dataset', '[?&]datasetId=(' + GUID + ')'],
     ['report', '/reports/(' + GUID + ')'],
@@ -168,8 +171,11 @@ function parseTarget(value) {
     if (m) { res.kind = kind; res.id = m[1]; return res }
   }
 
-  const g = v.match(GUID_RE)
-  if (g) res.id = g[0]
+  // Bare-GUID fallback: take the first GUID that isn't the workspace id, so a
+  // /groups/{ws} prefix never gets mistaken for the model/report target.
+  const all = v.match(new RegExp(GUID, 'g')) || []
+  const id = all.find((g) => g !== res.workspace) || all[0]
+  if (id) res.id = id
   return res
 }
 
@@ -353,11 +359,24 @@ async function locateDataset(pbi, dsId, wss, names, wsHint) {
   return { report: null, app: null, models: [model], notes: [] }
 }
 
-async function autoDetect(pbi, gid) {
+async function autoDetect(pbi, gid, wsHint, wss) {
   const [sa] = await pbi.get(`/apps/${gid}`)
   if (sa === 200) return 'app'
   const [sd, jd] = await pbi.get(`/datasets/${gid}`)
   if (sd === 200 && jd && jd.id) return 'dataset'
+  // A model id often lives in another workspace: try the hint, then a bounded
+  // scan, before assuming it's a report (a model GUID would never match one).
+  if (wsHint) {
+    const [s, j] = await pbi.get(`/groups/${wsHint}/datasets/${gid}`)
+    if (s === 200 && j && j.id) return 'dataset'
+  }
+  if (wss && wss.length) {
+    const hit = await parallelFind(wss, async (w) => {
+      const [s, j] = await pbi.get(`/groups/${w.id}/datasets/${gid}`)
+      return s === 200 && j && j.id ? true : null
+    })
+    if (hit) return 'dataset'
+  }
   return 'report' // default; report locator handles fast path + full scan
 }
 
@@ -373,7 +392,7 @@ async function runLocate(token, req) {
     return { ok: true, matched: false, error: 'Provide a report/app/dataset id or a Power BI URL.', input: { value: req.target, kind, id: null }, models: [] }
   }
   const { wss, names } = await workspaceIndex(pbi)
-  if (!kind) kind = await autoDetect(pbi, id)
+  if (!kind) kind = await autoDetect(pbi, id, wsHint, wss)
 
   let result
   if (kind === 'app') result = await locateApp(pbi, id, wss, names, appReport)
@@ -497,7 +516,34 @@ async function runSearch(token, req) {
 }
 
 // ── Entry ─────────────────────────────────────────────────────────────────--
+// Pure-function self-test for parseTarget — no auth/network. Run with
+// `node semantic_model_helper.mjs --selftest`. Exits non-zero on first failure.
+function selftest() {
+  const cases = [
+    ['https://msit.powerbi.com/groups/ea3779f7-4d16-4fbc-87ba-f501e2a6fdee/modeling/92a63060-dcef-4d6b-ac2f-cdd1bae79b43/modelView?experience=power-bi&subfolderId=228083',
+      { kind: 'dataset', id: '92a63060-dcef-4d6b-ac2f-cdd1bae79b43', workspace: 'ea3779f7-4d16-4fbc-87ba-f501e2a6fdee' }],
+    ['https://app.powerbi.com/groups/ea3779f7-4d16-4fbc-87ba-f501e2a6fdee/datasets/92a63060-dcef-4d6b-ac2f-cdd1bae79b43/details',
+      { kind: 'dataset', id: '92a63060-dcef-4d6b-ac2f-cdd1bae79b43', workspace: 'ea3779f7-4d16-4fbc-87ba-f501e2a6fdee' }],
+    ['https://app.powerbi.com/groups/ea3779f7-4d16-4fbc-87ba-f501e2a6fdee/reports/92a63060-dcef-4d6b-ac2f-cdd1bae79b43/ReportSection',
+      { kind: 'report', id: '92a63060-dcef-4d6b-ac2f-cdd1bae79b43', workspace: 'ea3779f7-4d16-4fbc-87ba-f501e2a6fdee' }],
+    ['https://app.powerbi.com/apps/aaaaaaaa-1111-2222-3333-444444444444/reports/bbbbbbbb-1111-2222-3333-444444444444/x',
+      { kind: 'app', id: 'aaaaaaaa-1111-2222-3333-444444444444', appReport: 'bbbbbbbb-1111-2222-3333-444444444444' }],
+    ['92a63060-dcef-4d6b-ac2f-cdd1bae79b43', { kind: null, id: '92a63060-dcef-4d6b-ac2f-cdd1bae79b43' }],
+  ]
+  let failed = 0
+  for (const [input, want] of cases) {
+    const got = parseTarget(input)
+    for (const k of Object.keys(want)) {
+      if (got[k] !== want[k]) { failed++; process.stderr.write(`FAIL ${k}: want ${want[k]} got ${got[k]}\n  ${input}\n`) }
+    }
+  }
+  if (failed) { process.stderr.write(`${failed} parseTarget assertion(s) failed\n`); process.exit(1) }
+  process.stderr.write('parseTarget selftest ok\n')
+  process.exit(0)
+}
+
 async function main() {
+  if (process.argv.includes('--selftest')) return selftest()
   const [authPath, reqJson] = process.argv.slice(2)
   if (!authPath || !reqJson) throw new Error('usage: <authModulePath> <requestJson>')
   const req = JSON.parse(reqJson)

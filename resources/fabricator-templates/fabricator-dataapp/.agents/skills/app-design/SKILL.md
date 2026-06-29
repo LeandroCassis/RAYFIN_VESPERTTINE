@@ -12,15 +12,15 @@ Your job is to build cohesive, distinctive apps — not just correct ones. Add c
 
 ## Fast path
 
-Optimize **time to wow**: ship a working vertical slice fast, then iterate via deploy + review. In **Phase 1 — Hero slice (time to wow)**, use a clean default look quickly and move on: get ONE compelling, real visual wired to live data on screen and deployed.
+Optimize **time to wow**: ship a working vertical slice fast, then iterate. In **Phase 1 — Hero slice (time to wow)**, use a clean default look quickly and move on: get ONE compelling, real visual wired to live data and previewed against it (`npm run preview`).
 
 For that first slice, pick one characterful `--font-display` plus a complementary `--font-sans`, loaded via Google Fonts in `index.html`; set `--color-primary` and `--radius` in `src/global.css`; then get back to the hero visual. Do NOT perfect theming in Phase 1.
 
-After the hero slice is running, continue with **Phase 2 — Breadth** by adding remaining visuals/KPIs, deploying and reviewing every 1–2. Use **Phase 3 — Polish** for theme/typography refinement, loading/empty/error states, edge-case correctness, and final audits.
+After the hero slice is wired, continue with **Phase 2 — Breadth** by adding remaining visuals/KPIs, previewing each new visual against live data. Use **Phase 3 — Polish** for theme/typography refinement, loading/empty/error states, edge-case correctness, and final audits.
 
-Deploy early and often — never one final deploy. Deploy and review the running app (Fabricator handles deploy + screenshots for you), read deep references only when a specific problem demands it, and never block the first deploy on exhaustive discovery or perfect theming.
+Preview each visual against live data with `npm run preview` (Fabricator auto-deploys after the turn), read deep references only when a specific problem demands it, and never block the first hero visual on exhaustive discovery or perfect theming.
 
-The deep theming workflow, reference files, and Final Audit below are for Phase 2/3 polish — don't do them before the first deploy.
+The deep theming workflow, reference files, and Final Audit below are for Phase 2/3 polish — don't do them before the hero visual ships.
 
 ## Aesthetic Direction
 
@@ -215,4 +215,4 @@ Treat this as a Phase 3 polish-pass activity after the dashboard is built, deplo
 
 After assembling a layout, audit each element in its actual context — not in isolation. A component may look correct on its own but break the visual rhythm of the page. Check: Is every text legible? Are labels proportional to their controls? Are toolbar rows aligned on a shared edge? Do charts fill their containers? Do repeated elements (badges in tables, icons in lists) maintain appropriate visual weight for their density? Fix anything that fails.
 
-For individual charts, let Graphein critique itself: `npm run preview` renders a spec headlessly and returns a **report** that flags clipping, label/axis overlap, low contrast, and excess colors (`ok: false` + `diagnostics`). Use it to catch per-visual presentation issues fast — then do the whole-page audit on the deployed app, where layout rhythm, the Fabric shell, and DOM-only visuals (KPIs/tables/slicers) are visible. (→ `headless-preview`)
+For individual visuals, let Graphein critique itself: `npm run preview` renders a spec headlessly and returns a **report** that flags clipping, label/axis overlap, low contrast, and excess colors (`ok: false` + `diagnostics`). Use it to catch per-visual presentation issues fast; the whole-page audit covers layout rhythm and the Fabric shell after the automatic after-turn deploy. (→ `headless-preview`)

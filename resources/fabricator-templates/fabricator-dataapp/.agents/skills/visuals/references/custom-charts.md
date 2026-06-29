@@ -3,7 +3,7 @@
 There is **no custom-chart escape hatch** to maintain anymore: charts are Graphein
 specs, and you compose them by choosing a `type` and an `encoding`. When a
 visualization isn't an obvious built-in, don't hand-roll SVG — map it onto the
-nearest Graphein type. Graphein 0.6 has a broad catalog, so most intents now have
+nearest Graphein type. Graphein 0.7 has a broad catalog, so most intents now have
 a native type.
 
 ## Map the intent to a type
@@ -28,12 +28,12 @@ a native type.
 
 All of the above are valid Graphein types — author them as a spec and drop them
 into `ChartCard` like any other (see the
-[spec reference](graphein-spec-reference.md)). Most render headlessly, so check
+[spec reference](graphein-spec-reference.md)). They render headlessly, so check
 them with `npm run preview` before deploying (see the **headless-preview** skill).
 
 ## If a type genuinely doesn't exist
 
-Graphein 0.6 still has **no radar/spider chart** (and no sunburst). It also does
+Graphein 0.7 still has **no radar/spider chart** (and no sunburst). It also does
 not honor horizontal **bars** (the `orientation` field is ignored). Options, in
 order:
 

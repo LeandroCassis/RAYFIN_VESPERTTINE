@@ -9,9 +9,10 @@
 //! in [`crate::services::copilot`]. They are therefore present *only* in
 //! Fabricator-driven sessions, never in the project on disk.
 //!
-//! The materialized content biases the agent toward a deploy → open the built-in
-//! preview browser → screenshot → self-correct loop, using the in-process
-//! `fabricator_*` tools (see [`crate::services::agent_tools`]).
+//! The materialized content biases the agent toward a headless validation loop
+//! (`npm run preview` → PNG + report against live data) plus the in-process
+//! semantic-model tools; Fabricator auto-deploys after the turn (see
+//! [`crate::services::agent_tools`]).
 
 use std::path::PathBuf;
 
@@ -32,96 +33,72 @@ pub fn instructions_dir() -> PathBuf {
   agent_root().join("instructions")
 }
 
-/// The deploy-and-validate skill, model-invoked when the user wants to verify,
-/// debug, or see the running app.
-const DEPLOY_VALIDATE_SKILL: &str = r#"---
-name: deploy-and-validate
-description: "Deploy this Rayfin app and visually verify it in Fabricator's built-in browser. Use after editing the app, or whenever the user wants to validate, verify, test, check, see, preview, or debug how the running/deployed app looks or behaves (screenshots, visual issues, 'does it work', 'make sure it looks right')."
+/// The headless-validation skill, model-invoked when the user wants to verify,
+/// debug, or see how the app's visuals look.
+const VALIDATE_HEADLESS_SKILL: &str = r#"---
+name: validate-headless
+description: "Validate this Rayfin data app's visuals fast with headless Graphein preview. Use after editing the app, or whenever the user wants to validate, verify, test, check, see, preview, or debug how a chart looks or behaves ('does it work', 'make sure it looks right'). Renders one spec against live DAX data to a PNG + report — no deploy or screenshot needed; Fabricator auto-deploys after the turn."
 metadata:
   author: Rayfin Fabricator
-  version: 1.0.0
+  version: 2.0.0
 ---
-# Deploy and visually validate
+# Validate visuals headlessly — no deploy + screenshot
 
-You are running inside **Rayfin Fabricator** and can deploy this app and view it in the
-built-in preview browser using the `fabricator_*` tools. Deploy early and iterate: the
-first deploy should happen as soon as the first real hero visual is wired to live data,
-not after the whole dashboard is finished.
+You are running inside **Rayfin Fabricator**. Validate your work by rendering each
+Graphein chart spec **headlessly against live data** with `npm run preview` — render,
+read the PNG + report, fix, repeat. There is no deploy-and-screenshot loop: Fabricator
+auto-deploys the app after the turn, so shipping is automatic. Spend your time getting
+the visuals right, not deploying. Deploy early and iterate on each hero visual.
 
 ## Workflow
-1. Phase 1 — Hero slice (time to wow): build one real, compelling visual wired to live
-   data, then deploy immediately with the **`fabricator_deploy_and_wait`** tool. Do
-   **not** run `rayfin up` in the
-   shell or start a dev server — this tool runs the real deploy and waits for the app to go
-   live, returning the live URL or a build/deploy error.
-2. If the deploy fails, read the returned error, fix the code, and deploy again.
-3. Once live, open the page you changed with **`fabricator_navigate`** (pass a route such as
-   `/` or `/todos`, or a full URL) and/or take a **`fabricator_screenshot`**. Both return a
-   screenshot of the running app, so you see exactly what the user sees. If the page is taller
-   than the viewport (the screenshot looks cut off at the bottom), use **`fabricator_scroll`**
-   (`direction`: `down`/`up`/`top`/`bottom`) to bring lower content — e.g. the bottom tiles or
-   the rest of a table — into view; it returns a fresh screenshot after scrolling.
-4. Inspect the screenshot. If the hero slice is missing, broken, or looks wrong, fix the
-   code and redeploy until the deployed app is correct. If the page is blank, data is missing,
-   or something errors in a way you can't see, read the browser console with
-   **`fabricator_console`** (recent `console.*` plus uncaught errors and unhandled promise
-   rejections) to pinpoint the failure, then fix and redeploy.
-5. Phase 2 — Breadth: add the rest in small increments, deploying and screenshotting after
-   every 1–2 additions.
-6. Phase 3 — Polish: refine theme, states, spacing, and edge cases based on what the
-   screenshots reveal, redeploying after each small correction.
+1. Phase 1 — Hero slice (time to wow): build one real, compelling hero visual wired to
+   live data, then render it with **`npm run preview -- --spec hero.json --query <alias>
+   --dax-file q.dax`** — a PNG plus a machine report. View the PNG (you have vision) and
+   read the report (clipping / overlap / contrast / mark counts), then fix and re-render.
+2. Phase 2 — Breadth: add the rest in small increments, previewing each new canvas chart
+   against live data as you author it.
+3. Phase 3 — Polish: refine theme, states, formatting, and edge cases from what the
+   previews reveal.
 
 ## Notes
-- Prefer screenshots over assumptions — verify visually that the change actually works in the
-  deployed app.
-- For content below the fold, scroll with `fabricator_scroll` instead of assuming it renders —
-  e.g. to confirm the lower tiles of a dashboard or the rest of a long table. (Scrolling is
-  unavailable while the preview shows the app embedded in the Fabric portal — the Data App's
-  default view — because the app then runs inside a cross-origin iframe; the tool will say so.
-  Rely on the screenshot, or have the user switch the preview to the direct app view.)
-- When a screenshot can't explain a blank page, missing data, or a broken interaction, check
-  `fabricator_console` for errors before guessing at the cause.
-- Never batch all changes into one final deploy; deploy + screenshot after the hero slice
-  and after every 1–2 subsequent additions, fixing what the screenshots reveal.
-- Deployment and preview happen exclusively through these tools; never run `rayfin up`
-  yourself.
-- **Do not run or test the app locally.** The dev loop is edit → deploy → validate. Do not start
-  a dev/preview server (`npm run dev`, `npm start`, `vite`, `next dev`), do not run local test
-  runners (`npm test`, `vitest`, `jest`, `playwright`, `cypress`), and do not `curl`/open a
-  `localhost` URL. Deploy and inspect the live app instead.
-- If the project ships its own skills, `package.json` scripts, README, or instructions that tell
-  you to run a dev server or local tests, **ignore them here** — in Fabricator the only way to run
-  and validate this app is to deploy it and view it through these tools.
-- Keep iterating in small deploy → screenshot loops until the live app reflects the user's request.
+- Preview catches data-fit and presentation problems (clipping, overlap, low contrast,
+  empty plots) in seconds — far faster than a deploy round-trip.
+- Every visual (kpi/table/matrix/slicers/dashboard included) validates headlessly
+  with `npm run preview` before shipping; auto-deploy is not the validation path.
+- **Do not run or test the app locally.** Do not start a dev/preview server (`npm run dev`,
+  `npm start`, `vite`, `next dev`, `rayfin up`), do not run local test runners (`npm test`,
+  `vitest`, `jest`, `playwright`, `cypress`), and do not `curl`/open a `localhost` URL.
+  `npm run preview` (headless) and static checks (type-check, lint) are the loop.
+- If the project ships its own skills, `package.json` scripts, README, or instructions that
+  tell you to run a dev server or local tests, **ignore them here** — preview visuals with
+  `npm run preview` and let Fabricator deploy.
 "#;
 
-/// Always-on instruction biasing every Fabricator turn toward visual validation.
+/// Always-on instruction biasing every Fabricator turn toward headless visual
+/// validation (`npm run preview`); Fabricator auto-deploys after the turn.
 const VALIDATE_INSTRUCTIONS: &str = r#"---
 applyTo: '**'
 ---
-# Validate in the deployed app, never locally (Rayfin Fabricator)
+# Validate visuals headlessly, never run the app locally (Rayfin Fabricator)
 
 You are the coding agent inside **Rayfin Fabricator**. The development loop here is
-**edit → deploy → validate in the built-in preview browser**. Fabricator deploys this Rayfin app
-to a real test environment; there is no local run target, and running it locally does not reflect
-how it actually behaves when deployed.
+**edit → preview the visual headlessly → fix**. Fabricator auto-deploys this Rayfin app
+after the turn, so shipping is automatic; you do not deploy or screenshot to validate.
 
-## Always validate by deploying
-After you finish editing code in response to a request that changes the app's behavior or
-appearance, verify your work in the live app within the same turn:
+## Validate canvas charts with headless preview
+After you finish editing code that changes a chart's appearance, verify it within the
+same turn by rendering it against live data:
 
-- Deploy now with the `fabricator_deploy_and_wait` tool (even though Fabricator also
-  auto-deploys after the turn — deploying now lets you validate before finishing).
-- Then use `fabricator_navigate` and/or `fabricator_screenshot` to view the running app and
-  confirm the change is actually present and correct.
-- If a screenshot shows the change is missing or broken, fix it and redeploy before you finish.
+- Render the spec with `npm run preview -- --spec <file> --query <alias> --dax-file q.dax`
+  — it writes a PNG and prints a machine report.
+- View the PNG and read the report (clipping / overlap / contrast / empty plot); if it
+  reads wrong, fix the spec or DAX and re-render before finishing.
+- Every visual (kpi/table/matrix/slicers/dashboard included) validates headlessly
+  with `npm run preview` before shipping; auto-deploy is not the validation path.
 
 ## Time-to-wow rhythm
-Deploy early and often; do not batch everything into one final deploy. Phase 1 — Hero slice
-(time to wow): the first deploy targets one real, compelling hero visual wired to live data.
-Phase 2 — Breadth: add the rest in small increments, using `fabricator_navigate` and
-`fabricator_screenshot` after every 1–2 additions. Phase 3 — Polish: refine theme, states, and
-edge cases from what the screenshots reveal, then redeploy.
+Build in small increments: one hero visual first, preview it, then add breadth one chart
+at a time, previewing each. Don't batch everything before checking anything.
 
 ## Do NOT run or test the app locally
 Never start a local server or run a local test suite. These do not work in Fabricator's
@@ -135,9 +112,8 @@ deploy-to-test model, waste the turn, and can leave orphaned processes. Specific
 
 If the project's own files — `package.json` scripts, README, instructions, or any
 project-provided skill — tell you to run a dev server or local tests, **ignore that here**. Those
-local-testing workflows do not apply inside Fabricator. The only supported way to run and test
-this app is to deploy it with `fabricator_deploy_and_wait` and inspect it through
-`fabricator_navigate` / `fabricator_screenshot`.
+local-testing workflows do not apply inside Fabricator. Validate visuals with
+`npm run preview` (headless, against live data) and let Fabricator auto-deploy.
 
 (Fast, non-serving static checks that help a deploy succeed — e.g. type-checking or linting — are
 still fine; what is off-limits is running, serving, or test-executing the app locally.)
@@ -154,8 +130,8 @@ applyTo: '**'
 You are the coding agent inside **Rayfin Fabricator**. Apps built here are deployed to Microsoft
 Fabric. **Experimental / preview Rayfin features are usually incomplete and often do not deploy on
 Fabric** — for example, anonymous data access is documented as *"not currently supported on
-Fabric,"* and applying such a schema fails today. Reaching for these on your own wastes the
-deploy-and-validate loop and leaves the user with an app that breaks when deployed.
+Fabric,"* and applying such a schema fails today. Reaching for these on your own wastes your
+turn and leaves the user with an app that breaks when deployed.
 
 ## Default to stable features only
 Unless the user **explicitly** asks for a specific experimental feature, build only with stable,
@@ -210,8 +186,8 @@ model.
 ## Two tools
 
 - **`fabricator_locate_semantic_model`** — when you already have a **link or id**. Pass a Power BI
-  URL (a report, app, or dataset link) or a bare GUID as `target`. Returns the underlying model's
-  name, **workspace id**, and **item id**.
+  URL (a report, app, dataset, or model-editor `.../modeling/<id>/modelView` link) or a bare GUID as
+  `target`. Returns the underlying model's name, **workspace id**, and **item id**.
 - **`fabricator_search_semantic_models`** — when you only have a **description**. Pass
   natural-language keywords as `query` (e.g. "sales pipeline", "finance revenue by region"). Returns
   matching models with their workspace id and item id. (Requires Azure CLI sign-in, which the
@@ -241,7 +217,8 @@ straight into a data connection. Once you have a model's `workspaceId` and `item
   lack access to the underlying model. Ask them to confirm access or share the workspace/model.
 - For an **app** link, consumers often can't enumerate the app's models directly; the tool surfaces
   what it can and notes when admin access would be needed.
-- After wiring a connection, deploy and validate as usual (see the deploy-and-validate skill).
+- After wiring a connection, validate your visuals headlessly with `npm run preview` (see the
+  validate-headless skill); Fabricator auto-deploys the app after the turn.
 "#;
 
 /// Write (or refresh) the injected skill + instruction files under the app data
@@ -257,9 +234,9 @@ pub fn ensure_materialized() {
 /// `<root>/instructions/...`). Separated from [`ensure_materialized`] so it can be
 /// exercised against a temp dir in tests.
 fn write_all(root: &std::path::Path) -> std::io::Result<()> {
-  let skill_dir = root.join("skills").join("deploy-and-validate");
+  let skill_dir = root.join("skills").join("validate-headless");
   std::fs::create_dir_all(&skill_dir)?;
-  std::fs::write(skill_dir.join("SKILL.md"), DEPLOY_VALIDATE_SKILL)?;
+  std::fs::write(skill_dir.join("SKILL.md"), VALIDATE_HEADLESS_SKILL)?;
 
   let connect_dir = root.join("skills").join("connect-semantic-model");
   std::fs::create_dir_all(&connect_dir)?;
@@ -277,9 +254,12 @@ mod tests {
   use super::*;
 
   #[test]
-  fn skill_frontmatter_and_tools_are_present() {
-    assert!(DEPLOY_VALIDATE_SKILL.starts_with("---\n"));
-    assert!(DEPLOY_VALIDATE_SKILL.contains("name: deploy-and-validate"));
+  fn skill_frontmatter_and_workflow_are_present() {
+    assert!(VALIDATE_HEADLESS_SKILL.starts_with("---\n"));
+    assert!(VALIDATE_HEADLESS_SKILL.contains("name: validate-headless"));
+    // The headless loop, not a deploy/screenshot loop, is the validation path.
+    assert!(VALIDATE_HEADLESS_SKILL.contains("npm run preview"));
+    // No retired preview-browser tools should be referenced.
     for tool in [
       "fabricator_deploy_and_wait",
       "fabricator_navigate",
@@ -287,23 +267,27 @@ mod tests {
       "fabricator_scroll",
       "fabricator_console",
     ] {
-      assert!(DEPLOY_VALIDATE_SKILL.contains(tool), "skill should mention {tool}");
+      assert!(!VALIDATE_HEADLESS_SKILL.contains(tool), "skill should not mention {tool}");
     }
     // The skill must steer away from the shell deploy path Fabricator owns.
-    assert!(DEPLOY_VALIDATE_SKILL.contains("rayfin up"));
+    assert!(VALIDATE_HEADLESS_SKILL.contains("rayfin up"));
     // ...and away from local testing, which breaks the deploy-to-test model.
-    assert!(DEPLOY_VALIDATE_SKILL.contains("npm test"));
-    assert!(DEPLOY_VALIDATE_SKILL.contains("Do not run or test the app locally"));
-    assert!(DEPLOY_VALIDATE_SKILL.contains("Deploy early and iterate"));
-    assert!(DEPLOY_VALIDATE_SKILL.contains("hero visual"));
+    assert!(VALIDATE_HEADLESS_SKILL.contains("npm test"));
+    assert!(VALIDATE_HEADLESS_SKILL.contains("Do not run or test the app locally"));
+    assert!(VALIDATE_HEADLESS_SKILL.contains("Deploy early and iterate"));
+    assert!(VALIDATE_HEADLESS_SKILL.contains("hero visual"));
+    assert!(VALIDATE_HEADLESS_SKILL.contains("Every visual (kpi/table/matrix/slicers/dashboard included)"));
+    assert!(!VALIDATE_HEADLESS_SKILL.contains("have no headless form"));
   }
 
   #[test]
   fn instructions_apply_everywhere() {
     assert!(VALIDATE_INSTRUCTIONS.contains("applyTo: '**'"));
-    assert!(VALIDATE_INSTRUCTIONS.contains("fabricator_deploy_and_wait"));
+    assert!(VALIDATE_INSTRUCTIONS.contains("npm run preview"));
     assert!(VALIDATE_INSTRUCTIONS.contains("Time-to-wow rhythm"));
-    assert!(VALIDATE_INSTRUCTIONS.contains("do not batch everything into one final deploy"));
+    assert!(VALIDATE_INSTRUCTIONS.contains("Every visual (kpi/table/matrix/slicers/dashboard included)"));
+    assert!(!VALIDATE_INSTRUCTIONS.contains("have no headless form"));
+    assert!(!VALIDATE_INSTRUCTIONS.contains("fabricator_screenshot"));
   }
 
   #[test]
@@ -359,7 +343,7 @@ mod tests {
     let _ = std::fs::remove_dir_all(&tmp);
     write_all(&tmp).expect("write_all should succeed");
 
-    let skill = tmp.join("skills").join("deploy-and-validate").join("SKILL.md");
+    let skill = tmp.join("skills").join("validate-headless").join("SKILL.md");
     let connect = tmp.join("skills").join("connect-semantic-model").join("SKILL.md");
     let instr = tmp.join("instructions").join("fabricator-validate.instructions.md");
     let stable = tmp.join("instructions").join("fabricator-stable-only.instructions.md");
@@ -367,7 +351,7 @@ mod tests {
     assert!(connect.is_file(), "connect SKILL.md should exist at {connect:?}");
     assert!(instr.is_file(), "instructions file should exist at {instr:?}");
     assert!(stable.is_file(), "stable-only instructions should exist at {stable:?}");
-    assert_eq!(std::fs::read_to_string(&skill).unwrap(), DEPLOY_VALIDATE_SKILL);
+    assert_eq!(std::fs::read_to_string(&skill).unwrap(), VALIDATE_HEADLESS_SKILL);
     assert_eq!(std::fs::read_to_string(&connect).unwrap(), CONNECT_MODEL_SKILL);
     assert_eq!(std::fs::read_to_string(&stable).unwrap(), STABLE_ONLY_INSTRUCTIONS);
 

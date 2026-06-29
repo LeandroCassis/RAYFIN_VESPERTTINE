@@ -233,8 +233,8 @@ pub async fn deploy_run(
   run_deploy(app, project_id, workspace).await
 }
 
-/// Core deploy routine shared by the [`deploy_run`] command and the agent's
-/// `fabricator_deploy_and_wait` tool. Runs `rayfin up` (streamed to the
+/// Core deploy routine shared by the [`deploy_run`] command and Fabricator's
+/// after-turn auto-deploy. Runs `rayfin up` (streamed to the
 /// `deploy:run` UI channel), records the outcome in the store, and returns the
 /// resolved live URL on success.
 pub(crate) async fn run_deploy(
