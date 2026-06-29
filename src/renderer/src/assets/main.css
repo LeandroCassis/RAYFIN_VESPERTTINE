@@ -7874,9 +7874,10 @@ code {
   color: var(--text-faint);
 }
 
-/* In a narrow composer the mode selector takes priority — drop the (decorative)
-   keyboard hint rather than letting it wrap into a tall stack beside the modes. */
-@container (max-width: 560px) {
+/* In a narrow composer the mode/model selectors take priority — drop the
+   (decorative) keyboard hint before it collides with them. The breakpoint is
+   generous so the hint hides while the chat shares width with the preview pane. */
+@container (max-width: 720px) {
   .composer-hint {
     display: none;
   }
