@@ -7,6 +7,7 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent
 } from 'react'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import {
   type AdvisorFinding,
   type AppSettings,
@@ -539,6 +540,15 @@ export default function Workbench({
     setRayfinVer(null)
     void refreshRayfinVer(id)
   }, [projects?.activeProjectId, refreshRayfinVer])
+
+  // Reflect the active project in the OS window title so users running one
+  // instance per project can tell them apart in the taskbar / Alt-Tab. The
+  // project name leads so it stays visible when the title is truncated.
+  useEffect(() => {
+    const base = 'Rayfin Fabricator'
+    const title = active?.name ? `${active.name} — ${base}` : base
+    void getCurrentWindow().setTitle(title)
+  }, [active?.name])
 
   // Debounce-persist chat transcripts whenever they change (after streaming settles).
   useEffect(() => {
