@@ -225,6 +225,11 @@ fn build(app: &AppHandle, url: Url, bounds: PreviewBounds) -> AppResult<()> {
 
   let builder = WebviewBuilder::new(PREVIEW_LABEL, WebviewUrl::External(url))
     .focused(false)
+    // Expose the web inspector on the preview so users can open browser devtools
+    // for their deployed app (see `preview_open_devtools`). Devtools default to on
+    // in debug but off in release wry; the `devtools` cargo feature (Cargo.toml)
+    // makes `with_devtools`/`open_devtools` available, and this keeps it on.
+    .devtools(true)
     // Capture the deployed app's console output/errors so the agent can read
     // them back later via `fabricator_console`. Must be set before the webview
     // is created so it runs at document start on every page.
@@ -443,27 +448,19 @@ pub fn preview_reload(app: AppHandle) -> AppResult<()> {
   Ok(())
 }
 
-/// Clear the preview webview's WebView2 profile — cookies, cached tokens and
-/// site storage — then reload, so the deployed app starts a brand-new session.
-/// Useful when a previous Entra/AAD identity was cached and you want to sign in
-/// as a different tenant or account. The auth-broker popup shares this same
-/// profile, so clearing it here drops the cached identity everywhere.
+/// Open the browser devtools (web inspector) window for the preview webview, so a
+/// user can inspect their deployed app's DOM, console, network and storage. On
+/// Windows this opens WebView2's `OpenDevToolsWindow` in a separate window. The
+/// call is dispatched to the runtime (non-blocking, hidden-safe), so it never
+/// pumps/deadlocks the UI thread the way a capture would.
+///
+/// Requires the `devtools` cargo feature on `tauri` (see Cargo.toml), which also
+/// makes `Webview::open_devtools` compile in release builds; without it this API
+/// is gated out entirely.
 #[tauri::command]
-pub async fn preview_clear_data(app: AppHandle) -> AppResult<()> {
-  match app.get_webview(PREVIEW_LABEL) {
-    Some(wv) => wv
-      .clear_all_browsing_data()
-      .map_err(|e| AppError::Msg(e.to_string()))?,
-    None => return Ok(()),
-  }
-  // `ClearBrowsingDataAll` runs on WebView2's own queue and WRY does not await
-  // its completion handler, so the call returns before the data is actually
-  // gone. Pause briefly (re-fetching the webview afterwards so nothing
-  // non-`Send` is held across the await) before reloading, or the fresh request
-  // could still carry the old cookies.
-  tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+pub fn preview_open_devtools(app: AppHandle) -> AppResult<()> {
   if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
-    let _ = wv.reload();
+    wv.open_devtools();
   }
   Ok(())
 }

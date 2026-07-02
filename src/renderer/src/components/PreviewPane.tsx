@@ -8,7 +8,7 @@ import {
   ReloadIcon,
   FabricIcon,
   AnnotateIcon,
-  CookieIcon,
+  DevToolsIcon,
   ExpandIcon,
   CollapseIcon
 } from './icons'
@@ -105,7 +105,6 @@ export default function PreviewPane({
   const [loading, setLoading] = useState(false)
   const [canBack, setCanBack] = useState(false)
   const [canForward, setCanForward] = useState(false)
-  const [clearing, setClearing] = useState(false)
   // Annotate-and-attach: `captured` holds the frozen PNG (data URL) being drawn on.
   const [captured, setCaptured] = useState<string | null>(null)
   const [capturing, setCapturing] = useState(false)
@@ -399,15 +398,10 @@ export default function PreviewPane({
   const reload = useCallback((): void => {
     void window.api.preview.reload()
   }, [])
-  // Drop the preview's cached WebView2 session (cookies + tokens) and reload, so
-  // a previously cached Entra/AAD identity no longer auto-signs-in.
-  const clearSession = useCallback(async (): Promise<void> => {
-    setClearing(true)
-    try {
-      await window.api.preview.clearData()
-    } finally {
-      setClearing(false)
-    }
+  // Open the browser devtools (web inspector) for the preview so the user can
+  // inspect their deployed app's DOM, console and network.
+  const openDevtools = useCallback((): void => {
+    void window.api.preview.openDevtools()
   }, [])
   const goBack = useCallback((): void => {
     void window.api.preview.back()
@@ -528,12 +522,12 @@ export default function PreviewPane({
             </button>
             <button
               className="seg-btn seg-btn--icon"
-              onClick={() => void clearSession()}
-              disabled={!showWebview || clearing || transitioning}
-              aria-label="Clear cookies"
-              title="Clear the preview's cookies and cached sign-in, then reload — use this to sign in as a different account or Entra tenant"
+              onClick={openDevtools}
+              disabled={!showWebview || transitioning}
+              aria-label="Open devtools"
+              title="Open the browser devtools (inspector) for the preview — inspect the deployed app's DOM, console and network"
             >
-              {clearing ? <ReloadIcon className="btn-ico icon-spin" /> : <CookieIcon />}
+              <DevToolsIcon />
             </button>
             <button
               className={`seg-btn seg-btn--icon ${focused ? 'seg-btn--on' : ''}`}

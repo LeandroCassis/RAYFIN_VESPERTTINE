@@ -80,7 +80,7 @@ Want to build from source instead? Jump to [Build from source](#build-from-sourc
 
 **Ship.** One-click `rayfin up` deploys to Microsoft Fabric. A deployments panel handles create, switch, and redeploy across workspaces.
 
-**Preview.** A native inline preview loads your running app — navigation, reload, sign-out / clear-cookies, focus mode, a Fabric portal shell toggle, and annotate-a-screenshot-straight-into-chat.
+**Preview.** A native inline preview loads your running app — navigation, reload, browser devtools (inspector), focus mode, a Fabric portal shell toggle, and annotate-a-screenshot-straight-into-chat.
 
 **Validate.** The Advisor runs AI security and policy checks, saves the results, and tells you when they've gone stale. The Model tab flags loose access on any entity and hands a one-click *harden* prompt to the agent.
 

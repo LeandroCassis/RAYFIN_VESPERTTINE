@@ -928,7 +928,7 @@ code {
   font-size: 15px;
 }
 
-/* Spinning glyph for an in-progress icon button (e.g. clearing cookies). */
+/* Spinning glyph for an in-progress icon button (e.g. a refresh in progress). */
 .icon-spin {
   display: inline-flex;
   animation: ws-spin 0.8s linear infinite;

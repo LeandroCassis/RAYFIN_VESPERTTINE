@@ -1400,11 +1400,11 @@ export interface RayfinStudioApi {
     /** Reload the current page. */
     reload: () => Promise<void>
     /**
-     * Clear the preview's browsing session — cookies, cached tokens and site
-     * storage — then reload. Use to drop a cached Entra/AAD identity and sign in
-     * as a different tenant or account.
+     * Open the browser devtools (web inspector) window for the preview, so you
+     * can inspect the deployed app's DOM, console, network and storage. On
+     * Windows this opens WebView2's DevTools in a separate window.
      */
-    clearData: () => Promise<void>
+    openDevtools: () => Promise<void>
     /** Navigate back one entry in the preview's history. */
     back: () => Promise<void>
     /** Navigate forward one entry in the preview's history. */

@@ -83,15 +83,13 @@ export function HomeIcon(props: IconProps): JSX.Element {
   )
 }
 
-/** Cookie with chips — clear the preview's cookies / cached sign-in. */
-export function CookieIcon(props: IconProps): JSX.Element {
+/** Code angle-brackets `</>` — open the preview's browser devtools / inspector. */
+export function DevToolsIcon(props: IconProps): JSX.Element {
   return (
     <Icon {...props}>
-      <path d="M12 3a9 9 0 1 0 9 9 3 3 0 0 1-3.6-3.6A3 3 0 0 1 12 3Z" />
-      <circle cx="9" cy="11" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="13" cy="9.5" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="14.5" cy="14" r="0.9" fill="currentColor" stroke="none" />
-      <circle cx="9.5" cy="15" r="0.9" fill="currentColor" stroke="none" />
+      <path d="m8 8-4 4 4 4" />
+      <path d="m16 8 4 4-4 4" />
+      <path d="m13.5 6-3 12" />
     </Icon>
   )
 }
