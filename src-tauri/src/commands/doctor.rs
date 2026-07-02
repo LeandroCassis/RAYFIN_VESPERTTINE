@@ -50,8 +50,8 @@ static TOOLS: Lazy<Vec<ToolDef>> = Lazy::new(|| {
         winget: Some("OpenJS.NodeJS.LTS"),
         brew: Some("node"),
       }),
-      min_version: None,
-      install_hint: "Install Node.js 18+ (includes npm).",
+      min_version: Some("20"),
+      install_hint: "Install Node.js 20 or newer (includes npm).",
       install_url: Some("https://nodejs.org/en/download"),
     },
     ToolDef {
@@ -522,5 +522,17 @@ mod tests {
     assert_eq!(rayfin.min_version, Some("1.32"));
     assert_eq!(rayfin.npm_package, Some("@microsoft/rayfin-cli"));
     assert!(rayfin.required);
+  }
+
+  #[test]
+  fn node_requires_20_so_it_gates_before_the_rayfin_cli() {
+    // The Rayfin CLI's npm package requires Node >=20; on Node 18 `npm i -g`
+    // only warns while `rayfin --version` fails, leaving the rayfin gate stuck.
+    // Flagging Node here upgrades it (and relaunches) before the npm phase.
+    let node = tool_by_id("node").expect("node tool def");
+    assert_eq!(node.min_version, Some("20"));
+    assert!(!meets_min_version(Some("18.20.4"), node.min_version.unwrap()));
+    assert!(meets_min_version(Some("20.11.0"), node.min_version.unwrap()));
+    assert!(meets_min_version(Some("22.14.0"), node.min_version.unwrap()));
   }
 }

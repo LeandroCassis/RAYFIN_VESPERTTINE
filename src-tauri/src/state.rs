@@ -22,6 +22,8 @@ pub struct AppState {
   advisor_cancels: Mutex<HashMap<String, CancelToken>>,
   /// Active suggestion-generation cancel tokens, keyed by `projectId` (one per project).
   suggest_cancels: Mutex<HashMap<String, CancelToken>>,
+  /// Active inline-explain cancel tokens, keyed by `projectId` (one explain per project).
+  explain_cancels: Mutex<HashMap<String, CancelToken>>,
   /// Shared Copilot SDK client + per-thread session cache.
   pub copilot: CopilotManager,
   /// Bridges Plan-mode `exit_plan_mode` requests to the renderer's approval UI.
@@ -206,6 +208,39 @@ impl AppState {
   /// when a token was found and signalled.
   pub fn cancel_suggest(&self, project_id: &str) -> bool {
     if let Some(token) = self.suggest_cancels.lock().unwrap().remove(project_id) {
+      token.cancel();
+      true
+    } else {
+      false
+    }
+  }
+
+  /// Register a fresh inline-explain cancel token for a project only if none is
+  /// already running. Returns `None` when an explanation is already in flight.
+  pub fn try_begin_explain(&self, project_id: &str) -> Option<CancelToken> {
+    let mut map = self.explain_cancels.lock().unwrap();
+    if map.contains_key(project_id) {
+      return None;
+    }
+    let token = CancelToken::new();
+    map.insert(project_id.to_string(), token.clone());
+    Some(token)
+  }
+
+  /// Remove an explain run's cancel token (called when it completes). Only clears
+  /// the slot when it still holds `token`, so a stale run finishing never evicts a
+  /// newer explanation that already took the slot.
+  pub fn end_explain(&self, project_id: &str, token: &CancelToken) {
+    let mut map = self.explain_cancels.lock().unwrap();
+    if map.get(project_id).is_some_and(|t| t.same(token)) {
+      map.remove(project_id);
+    }
+  }
+
+  /// Cancel an in-flight inline explanation, if one is running. Returns true when
+  /// a token was found and signalled.
+  pub fn cancel_explain(&self, project_id: &str) -> bool {
+    if let Some(token) = self.explain_cancels.lock().unwrap().remove(project_id) {
       token.cancel();
       true
     } else {

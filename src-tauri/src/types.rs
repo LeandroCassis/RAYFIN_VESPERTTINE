@@ -940,6 +940,18 @@ pub enum AdvisorEvent {
   Error { text: String },
   #[serde(rename = "done")]
   Done { ok: bool },
+  /// A chunk of a streamed inline "Explain this finding" answer, routed to the
+  /// right card by `explainId` (a key the renderer owns; findings may lack an id).
+  #[serde(rename = "explainDelta", rename_all = "camelCase")]
+  ExplainDelta { explain_id: String, text: String },
+  /// Terminal marker for an inline explanation (`ok` false carries `error`).
+  #[serde(rename = "explainDone", rename_all = "camelCase")]
+  ExplainDone {
+    explain_id: String,
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+  },
 }
 
 #[derive(Serialize, Clone)]

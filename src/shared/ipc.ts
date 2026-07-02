@@ -861,6 +861,10 @@ export type AdvisorEvent =
   | { type: 'progress'; text: string; tool?: string }
   | { type: 'error'; text: string }
   | { type: 'done'; ok: boolean }
+  /** A chunk of a streamed inline "Explain this finding" answer, routed by explainId. */
+  | { type: 'explainDelta'; explainId: string; text: string }
+  /** Terminal marker for an inline explanation (ok false carries error). */
+  | { type: 'explainDone'; explainId: string; ok: boolean; error?: string }
 
 /** Envelope so the renderer can route advisor events to the right project. */
 export interface AdvisorEventEnvelope {
@@ -1265,6 +1269,19 @@ export interface RayfinStudioApi {
      * the current code), or null if it has never been analyzed.
      */
     load: (projectId: string) => Promise<AdvisorSnapshot | null>
+    /**
+     * Explain a single finding inline. Runs a throwaway, read-only Copilot session
+     * (so the answer never lands in the Build chat), streaming `advisor:event`
+     * `explainDelta` chunks routed by `explainId`, and resolving with the full
+     * Markdown answer. Rejects (and emits `explainDone` with ok=false) on failure.
+     */
+    explain: (
+      projectId: string,
+      explainId: string,
+      finding: AdvisorFinding
+    ) => Promise<string>
+    /** Cancel the in-flight inline explanation for a project. Resolves true if one was running. */
+    explainCancel: (projectId: string) => Promise<boolean>
     /** Subscribe to streamed advisor events. Returns an unsubscribe function. */
     onEvent: (cb: (envelope: AdvisorEventEnvelope) => void) => () => void
   }

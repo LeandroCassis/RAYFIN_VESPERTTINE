@@ -2638,27 +2638,60 @@ code {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 24px 28px 32px;
+  padding: 28px 32px 52px;
 }
 
+/* Centered reading column so ultra-wide windows don't strand content on the left. */
+.advisor-inner {
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ---------------------------------- header --------------------------------- */
 .advisor-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+}
+
+.advisor-head-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+}
+
+.advisor-head-badge {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.advisor-head-badge .btn-ico {
+  width: 22px;
+  height: 22px;
 }
 
 .advisor-title {
   margin: 0;
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
+  font-size: 20px;
+  font-weight: 680;
+  letter-spacing: -0.015em;
 }
 
 .advisor-sub {
-  margin: 6px 0 0;
-  max-width: 600px;
+  margin: 5px 0 0;
+  max-width: 620px;
   font-size: 13px;
   line-height: 1.55;
   color: var(--text-dim);
@@ -2669,23 +2702,37 @@ code {
   display: flex;
   align-items: center;
   gap: 10px;
+  padding-top: 4px;
 }
 
+/* ---------------------------------- loading -------------------------------- */
 .advisor-loading {
-  margin: 44px auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: 64px auto;
   color: var(--text-dim);
   font-size: 13px;
-  text-align: center;
 }
 
-/* Analyzing: a live feed of what Copilot is doing, so progress feels alive. */
+.advisor-spinner {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: ws-spin 0.7s linear infinite;
+}
+
+/* --------------------------- analyzing (live feed) -------------------------- */
 .advisor-analyze {
-  margin-top: 4px;
   overflow: hidden;
-  background: var(--bg-elev-2);
+  background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  animation: turnIn 0.2s ease;
+  animation: advisor-rise 0.22s ease both;
 }
 
 .advisor-scanstrip {
@@ -2721,31 +2768,22 @@ code {
   border-bottom: 1px solid var(--border-soft);
 }
 
-.advisor-spinner {
-  flex: none;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  border: 2px solid var(--accent-soft);
-  border-top-color: var(--accent);
-  animation: ws-spin 0.7s linear infinite;
-}
-
 .advisor-analyze-headmain {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .advisor-analyze-title {
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 640;
 }
 
 .advisor-analyze-desc {
   font-size: 12px;
+  line-height: 1.45;
   color: var(--text-dim);
 }
 
@@ -2760,7 +2798,7 @@ code {
 .advisor-analyze-time {
   font-variant-numeric: tabular-nums;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 640;
   color: var(--accent);
 }
 
@@ -2770,7 +2808,7 @@ code {
 }
 
 .advisor-feed {
-  max-height: 264px;
+  max-height: 280px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
@@ -2804,7 +2842,12 @@ code {
 
 .advisor-feed-icon {
   flex: none;
-  font-size: 12px;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+
+.advisor-feed-item--current .advisor-feed-icon {
+  color: var(--accent);
 }
 
 .advisor-feed-text {
@@ -2825,15 +2868,16 @@ code {
   }
 }
 
+/* ---------------------------------- results -------------------------------- */
 .advisor-error {
-  margin-bottom: 14px;
+  margin: 0;
   white-space: pre-wrap;
 }
 
 .advisor-results {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 /* "Your code changed since this analysis" prompt. */
@@ -2842,15 +2886,21 @@ code {
   align-items: center;
   gap: 10px;
   padding: 10px 14px;
-  background: color-mix(in srgb, var(--pending) 12%, var(--bg-elev));
-  border: 1px solid color-mix(in srgb, var(--pending) 38%, var(--border));
   border-radius: var(--radius);
+  background: color-mix(in srgb, var(--pending) 10%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--pending) 34%, var(--border));
 }
 
 .advisor-stale-icon {
   flex: none;
-  font-size: 15px;
+  display: grid;
+  place-items: center;
   color: var(--pending);
+}
+
+.advisor-stale-icon .btn-ico {
+  width: 16px;
+  height: 16px;
 }
 
 .advisor-stale-text {
@@ -2860,78 +2910,81 @@ code {
   color: var(--text);
 }
 
-/* Result summary banner (status + counts + when). */
-.advisor-banner {
+/* Result hero (status + severity breakdown + when + fix-all). */
+.advisor-hero {
   display: flex;
   align-items: center;
-  gap: 14px;
-  padding: 15px 18px;
-  background: var(--bg-elev-2);
-  border: 1px solid var(--border);
+  gap: 16px;
+  padding: 16px 18px;
   border-radius: var(--radius-lg);
-  animation: turnIn 0.2s ease;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  animation: advisor-rise 0.24s ease both;
 }
 
-.advisor-banner--ok {
-  border-color: color-mix(in srgb, var(--ok) 32%, var(--border));
+.advisor-hero--ok {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--border));
+  background: color-mix(in srgb, var(--ok) 7%, var(--bg-elev));
 }
 
-.advisor-banner--warn {
-  border-color: color-mix(in srgb, var(--danger) 28%, var(--border));
+.advisor-hero--warn {
+  border-color: color-mix(in srgb, var(--danger) 30%, var(--border));
+  background: color-mix(in srgb, var(--danger) 6%, var(--bg-elev));
 }
 
-.advisor-banner-icon {
+.advisor-hero-icon {
   flex: none;
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 800;
   line-height: 1;
 }
 
-.advisor-banner--ok .advisor-banner-icon {
+.advisor-hero--ok .advisor-hero-icon {
   color: var(--ok);
   background: color-mix(in srgb, var(--ok) 16%, transparent);
 }
 
-.advisor-banner--warn .advisor-banner-icon {
+.advisor-hero--warn .advisor-hero-icon {
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
 }
 
-.advisor-banner-main {
+.advisor-hero-icon .btn-ico {
+  width: 24px;
+  height: 24px;
+}
+
+.advisor-hero-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
+}
+
+.advisor-hero-title {
+  font-size: 17px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
+}
+
+.advisor-hero-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
 }
 
 .advisor-fixall {
   flex: none;
   white-space: nowrap;
-}
-
-.advisor-banner-title {
-  font-size: 16px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-.advisor-banner-meta {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.advisor-meta-when {
-  color: var(--text-faint);
 }
 
 .advisor-sevpills {
@@ -2940,15 +2993,26 @@ code {
 }
 
 .sevpill {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
   font-weight: 600;
-  padding: 2px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
+}
+
+.sevdot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
 }
 
 .sevpill--high {
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
 }
 
 .sevpill--med {
@@ -2958,90 +3022,170 @@ code {
 
 .sevpill--low {
   color: var(--text-dim);
-  background: color-mix(in srgb, var(--text) 9%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
+.advisor-meta-when {
+  color: var(--text-faint);
+}
+
+/* Fixes paused while the Build chat is busy. */
+.advisor-busy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius);
+  font-size: 12.5px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 8%, var(--bg-elev));
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border));
+}
+
+.advisor-busy-spinner {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--accent-soft);
+  border-top-color: var(--accent);
+  animation: ws-spin 0.7s linear infinite;
 }
 
 .advisor-summary {
   margin: 0;
-  padding: 12px 14px;
+  padding: 14px 16px;
   font-size: 13px;
-  line-height: 1.55;
-  color: var(--text);
+  line-height: 1.6;
+  color: var(--text-dim);
   background: var(--bg-elev);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius);
 }
 
+/* ---------------------------------- groups --------------------------------- */
+.advisor-group {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .advisor-group-head {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-soft);
+  gap: 9px;
+}
+
+.advisor-group-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.advisor-group-icon .btn-ico {
+  width: 15px;
+  height: 15px;
 }
 
 .advisor-group-title {
   margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
   color: var(--text-dim);
 }
 
-.advisor-group-icon {
-  font-size: 14px;
-  line-height: 1;
-  /* Keep emoji glyphs from inheriting the uppercase letter-spacing. */
-  letter-spacing: normal;
-}
-
 .advisor-group-count {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--text-dim);
   background: var(--bg-elev-2);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 2px 9px;
+  padding: 1px 8px;
+  min-width: 22px;
+  text-align: center;
 }
 
+/* Trailing hairline that fills the row to the right of the section label. */
+.advisor-group-head::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-soft);
+}
+
+/* Capped, responsive grid — never leaves empty tracks on wide windows. */
 .advisor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
 }
 
+@media (max-width: 720px) {
+  .advisor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* --------------------------------- findings -------------------------------- */
 .advisor-finding {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 15px 16px;
-  background: var(--bg-elev-2);
+  gap: 10px;
+  padding: 16px 16px 16px 18px;
+  position: relative;
+  overflow: hidden;
+  background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-left: 3px solid var(--border);
   border-radius: var(--radius-lg);
-  animation: turnIn 0.18s ease;
-  transition: border-color 0.15s ease;
+  animation: advisor-rise 0.2s ease both;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
-.advisor-finding:has(.sev--high) {
-  border-left-color: var(--danger);
+/* Flat severity rail down the left edge. */
+.advisor-finding::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--border);
+  transition: background 0.15s ease;
 }
 
-.advisor-finding:has(.sev--med) {
-  border-left-color: var(--pending);
+.advisor-finding--high::before {
+  background: var(--danger);
 }
 
-.advisor-finding:has(.sev--low) {
-  border-left-color: var(--text-faint);
+.advisor-finding--med::before {
+  background: var(--pending);
 }
 
-.advisor-finding-top {
+.advisor-finding--low::before {
+  background: var(--text-faint);
+}
+
+.advisor-finding:hover {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+/* An expanded (explaining) card takes the full width for comfortable reading. */
+.advisor-finding--open {
+  grid-column: 1 / -1;
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+}
+
+.advisor-finding-head {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3049,6 +3193,9 @@ code {
 }
 
 .sev {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   flex: none;
   font-size: 10.5px;
   font-weight: 700;
@@ -3059,24 +3206,30 @@ code {
   border-radius: 999px;
 }
 
+.sev .sevdot {
+  width: 5px;
+  height: 5px;
+}
+
 .sev--high {
   color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 16%, transparent);
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
 }
 
 .sev--med {
   color: var(--pending);
-  background: color-mix(in srgb, var(--pending) 16%, transparent);
+  background: color-mix(in srgb, var(--pending) 15%, transparent);
 }
 
 .sev--low {
   color: var(--text-dim);
-  background: color-mix(in srgb, var(--text) 9%, transparent);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 .advisor-file {
+  margin-left: auto;
   min-width: 0;
-  max-width: 100%;
+  max-width: 62%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -3085,104 +3238,322 @@ code {
   color: var(--text-dim);
   background: var(--code-inline-bg);
   border: 1px solid var(--border-soft);
-  border-radius: var(--radius-sm);
+  border-radius: 6px;
   padding: 3px 7px;
 }
 
 .advisor-finding-title {
-  margin: 2px 0 0;
+  margin: 0;
   font-size: 14.5px;
-  font-weight: 600;
+  font-weight: 640;
   line-height: 1.35;
 }
 
 .advisor-finding-detail {
   margin: 0;
   font-size: 12.5px;
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--text-dim);
 }
 
-.advisor-rec {
+/* Suggested-fix callout. */
+.advisor-fix-hint {
   display: flex;
-  gap: 8px;
-  padding: 9px 11px;
-  font-size: 12px;
-  line-height: 1.5;
-  background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
   border-radius: var(--radius);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
-.advisor-rec-label {
-  flex: none;
+.advisor-fix-hint-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-size: 10px;
+  letter-spacing: 0.05em;
   color: var(--accent);
-  padding-top: 1px;
 }
 
-.advisor-rec-text {
+.advisor-fix-hint-label .btn-ico {
+  width: 12px;
+  height: 12px;
+}
+
+.advisor-fix-hint-text {
+  font-size: 12px;
+  line-height: 1.5;
   color: var(--text);
 }
 
 .advisor-finding-foot {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   margin-top: 2px;
 }
 
-/* Intro / hero (before the first run) — intentionally generic, no fixed checklist. */
+.advisor-finding-foot .btn.is-active {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  color: var(--accent);
+}
+
+/* ------------------------------ inline explain ----------------------------- */
+.advisor-explain {
+  overflow: hidden;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border-soft);
+  animation: advisor-explain-open 0.22s ease both;
+}
+
+@keyframes advisor-explain-open {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.advisor-explain-thinking {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 12.5px;
+  color: var(--text-dim);
+}
+
+.advisor-explain-dots {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.advisor-explain-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: advisor-dot 1s ease-in-out infinite;
+}
+
+.advisor-explain-dots i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.advisor-explain-dots i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes advisor-dot {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+.advisor-explain-body {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.advisor-explain-body .md {
+  font-size: 12.5px;
+}
+
+/* Blinking caret while the answer is still streaming in. */
+.advisor-explain-body--streaming::after {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 13px;
+  margin-top: 4px;
+  vertical-align: -2px;
+  border-radius: 1px;
+  background: var(--accent);
+  animation: advisor-caret 1s steps(2, start) infinite;
+}
+
+@keyframes advisor-caret {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.advisor-explain-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-soft);
+}
+
+.advisor-explain-by {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.advisor-explain-by .btn-ico {
+  width: 12px;
+  height: 12px;
+  color: var(--accent);
+}
+
+.advisor-explain-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12.5px;
+  color: var(--danger);
+}
+
+.advisor-explain-error span {
+  flex: 1;
+  min-width: 0;
+}
+
+/* A quiet inline text button (Stop / Regenerate). */
+.advisor-explain-linkbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font: inherit;
+  font-size: 11.5px;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    color 0.12s ease,
+    background 0.12s ease;
+}
+
+.advisor-explain-linkbtn:hover:not(:disabled) {
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.advisor-explain-linkbtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.advisor-explain-linkbtn .btn-ico {
+  width: 12px;
+  height: 12px;
+}
+
+/* ----------------------------- intro / hero -------------------------------- */
 .advisor-intro {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 8px;
-  padding: 46px 24px 42px;
-  margin-top: 8px;
-  background: var(--bg-elev-2);
+  gap: 10px;
+  padding: 56px 28px;
+  background: var(--bg-elev);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  animation: turnIn 0.2s ease;
+  animation: advisor-rise 0.24s ease both;
 }
 
 .advisor-intro-badge {
   display: grid;
   place-items: center;
-  width: 60px;
-  height: 60px;
+  width: 64px;
+  height: 64px;
   margin-bottom: 4px;
-  font-size: 28px;
+  color: var(--accent);
   background: var(--accent-soft);
-  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-  border-radius: var(--radius-lg);
+  border-radius: 18px;
+}
+
+.advisor-intro-badge .btn-ico {
+  width: 32px;
+  height: 32px;
 }
 
 .advisor-intro-title {
   margin: 0;
-  font-size: 18px;
-  font-weight: 650;
+  font-size: 19px;
+  font-weight: 680;
+  letter-spacing: -0.01em;
 }
 
 .advisor-intro-sub {
   margin: 0;
-  max-width: 500px;
+  max-width: 520px;
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-dim);
 }
 
 .advisor-intro-run {
-  margin-top: 12px;
+  margin-top: 14px;
+  height: 40px;
+  padding: 0 22px;
+  font-size: 13.5px;
+  border-radius: 10px;
 }
 
 .advisor-intro-foot {
-  margin-top: 10px;
+  margin-top: 8px;
   font-size: 11.5px;
   color: var(--text-faint);
+}
+
+/* Shared soft rise-in for cards and panels. */
+@keyframes advisor-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .advisor-finding,
+  .advisor-hero,
+  .advisor-intro,
+  .advisor-analyze,
+  .advisor-explain,
+  .advisor-feed-item {
+    animation: none !important;
+  }
+  .advisor-scanline,
+  .advisor-explain-dots i,
+  .advisor-explain-body--streaming::after,
+  .advisor-spinner,
+  .advisor-busy-spinner {
+    animation: none !important;
+  }
 }
 
 /* Skill preview modal (raw SKILL.md in Monaco) */

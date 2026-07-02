@@ -24,10 +24,13 @@ use crate::services::emit::emit_advisor_event;
 use crate::services::fingerprint::fingerprint;
 use crate::services::{paths, store};
 use crate::state::AppState;
-use crate::types::{AdvisorEvent, AdvisorRawReport, AdvisorReport, AdvisorSnapshot};
+use crate::types::{AdvisorEvent, AdvisorFinding, AdvisorRawReport, AdvisorReport, AdvisorSnapshot};
 
 /// 10 minute ceiling for a single review run.
 const RUN_TIMEOUT_MS: u64 = 10 * 60_000;
+
+/// 3 minute ceiling for a single inline "Explain this finding" answer.
+const EXPLAIN_TIMEOUT_MS: u64 = 3 * 60_000;
 
 /// The full instruction handed to Copilot. Read-only; ends with a strict JSON
 /// contract we can parse out of the assistant's final message.
@@ -404,4 +407,229 @@ pub async fn advisor_run(
 #[tauri::command]
 pub fn advisor_cancel(state: State<'_, AppState>, project_id: String) -> bool {
   state.cancel_advisor(&project_id)
+}
+
+/// Build the read-only "explain this finding" instruction. The answer is prose /
+/// Markdown (no JSON contract) rendered inline in the Advisor card.
+fn explain_prompt(finding: &AdvisorFinding) -> String {
+  let location = match finding.file.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+    Some(f) => f.to_string(),
+    None => "(not specific to one file)".to_string(),
+  };
+  format!(
+    r#"You are helping the owner of a Rayfin app (a Microsoft Fabric app: a TypeScript/React frontend under `src/` plus a Rayfin backend under `rayfin/`). The Advisor's read-only review flagged the issue below. Explain it in depth: what the underlying problem is, why it matters for THIS specific app (read the relevant code to ground your explanation), and how you would fix it.
+
+This is a READ-ONLY explanation. DO NOT modify, create, or delete any files, and DO NOT run any deploy or `rayfin up` command.
+
+Issue: {title}
+Severity: {severity}
+Category: {category}
+Location: {location}
+
+Details: {detail}
+Suggested fix: {recommendation}
+
+Write a clear, friendly explanation in Markdown for a non-expert app owner: a few short paragraphs, using a short bullet list or a small fenced code snippet only where it genuinely helps. Be concrete to this codebase. Do NOT restate this prompt and do NOT output any JSON — reply with only the explanation."#,
+    title = finding.title,
+    severity = finding.severity,
+    category = finding.category,
+    location = location,
+    detail = finding.detail,
+    recommendation = finding.recommendation,
+  )
+}
+
+/// Feed one Copilot **server** event into the explain accumulator, streaming
+/// assistant text out as `ExplainDelta` events as it arrives. Returns `true` once
+/// the turn reaches a terminal state (`session.idle` / `session.error`).
+fn map_explain_event(
+  event_type: &str,
+  data: &Value,
+  st: &mut ReviewState,
+  emit_delta: &mut dyn FnMut(String),
+) -> bool {
+  match event_type {
+    "assistant.message_delta" => {
+      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+      let text = data.get("deltaContent").and_then(|v| v.as_str()).unwrap_or("");
+      if text.is_empty() {
+        return false;
+      }
+      st.assistant.push_str(text);
+      *st.streamed.entry(id).or_insert(0) += text.chars().count();
+      emit_delta(text.to_string());
+    }
+    "assistant.message" => {
+      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+      let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
+      let total = content.chars().count();
+      let have = *st.streamed.get(&id).unwrap_or(&0);
+      if total > have {
+        let rest: String = content.chars().skip(have).collect();
+        st.assistant.push_str(&rest);
+        st.streamed.insert(id, total);
+        emit_delta(rest);
+      }
+    }
+    "session.error" => {
+      let msg = data
+        .get("message")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .unwrap_or("Copilot reported an error.")
+        .to_string();
+      st.errored = Some(msg);
+      return true;
+    }
+    "session.idle" => return true,
+    _ => {}
+  }
+  false
+}
+
+/// Explain a single Advisor finding inline. Runs a *transient*, read-only Copilot
+/// session (so the answer never lands in the project's Build chat history),
+/// streaming the Markdown answer to the renderer as `explainDelta` events routed
+/// by `explain_id`, and resolving with the full text. Emits a terminal
+/// `explainDone` event in every outcome.
+#[tauri::command]
+pub async fn advisor_explain(
+  app: AppHandle,
+  state: State<'_, AppState>,
+  project_id: String,
+  explain_id: String,
+  finding: AdvisorFinding,
+) -> Result<String, String> {
+  let Some(project) = store::find_project(&project_id) else {
+    return Err("Project not found.".into());
+  };
+
+  let Some(token) = state.try_begin_explain(&project_id) else {
+    return Err("An explanation is already being generated for this project.".into());
+  };
+
+  // Helper to emit a terminal marker and release the guard on every early exit.
+  let finish_err = |detail: String| {
+    emit_advisor_event(
+      &app,
+      &project_id,
+      AdvisorEvent::ExplainDone { explain_id: explain_id.clone(), ok: false, error: Some(detail.clone()) },
+    );
+  };
+
+  let session = match state.copilot.transient_session(&project.path, None, None).await {
+    Ok(s) => s,
+    Err(e) => {
+      state.end_explain(&project_id, &token);
+      finish_err(format!("Couldn't start the explanation. {e}"));
+      return Err(e);
+    }
+  };
+
+  enum DrainEnd {
+    Finished,
+    Cancelled,
+    Closed,
+  }
+
+  let mut st = ReviewState::default();
+  let mut cancelled = false;
+  let mut timed_out = false;
+
+  // Subscribe before sending so no events are missed.
+  let mut sub = session.subscribe();
+  let send_err = session
+    .send(MessageOptions::new(explain_prompt(&finding)))
+    .await
+    .err()
+    .map(|e| e.to_string());
+
+  if send_err.is_none() {
+    let drain = async {
+      loop {
+        if token.is_cancelled() {
+          let _ = session.abort().await;
+          return DrainEnd::Cancelled;
+        }
+        tokio::select! {
+          _ = token.wait_cancelled() => {
+            let _ = session.abort().await;
+            return DrainEnd::Cancelled;
+          }
+          recv = sub.recv() => match recv {
+            Ok(ev) => {
+              let mut emit = |text: String| {
+                emit_advisor_event(
+                  &app,
+                  &project_id,
+                  AdvisorEvent::ExplainDelta { explain_id: explain_id.clone(), text },
+                );
+              };
+              if map_explain_event(&ev.event_type, &ev.data, &mut st, &mut emit) {
+                return DrainEnd::Finished;
+              }
+            }
+            Err(err) => match err.kind() {
+              RecvErrorKind::Lagged(l) => {
+                log::warn!("advisor explain stream lagged, skipped {} events", l.skipped());
+              }
+              RecvErrorKind::Closed => return DrainEnd::Closed,
+              other => {
+                log::warn!("advisor explain stream error: {other:?}");
+                return DrainEnd::Closed;
+              }
+            },
+          }
+        }
+      }
+    };
+    match tokio::time::timeout(Duration::from_millis(EXPLAIN_TIMEOUT_MS), drain).await {
+      Ok(DrainEnd::Cancelled) => cancelled = true,
+      Ok(DrainEnd::Finished) | Ok(DrainEnd::Closed) => {}
+      Err(_) => {
+        let _ = session.abort().await;
+        timed_out = true;
+      }
+    }
+  }
+
+  // The explain session is one-shot; disconnect it so it never accumulates.
+  let _ = session.disconnect().await;
+  state.end_explain(&project_id, &token);
+
+  if cancelled {
+    finish_err("Explanation cancelled.".into());
+    return Err("Explanation cancelled.".into());
+  }
+  if let Some(e) = send_err {
+    finish_err(format!("Couldn't complete the explanation. {e}"));
+    return Err(e);
+  }
+
+  let answer = st.assistant.trim().to_string();
+  if answer.is_empty() {
+    let detail = if let Some(e) = &st.errored {
+      e.clone()
+    } else if timed_out {
+      "the explanation timed out".to_string()
+    } else {
+      "Copilot ended without an explanation.".to_string()
+    };
+    finish_err(format!("Couldn't complete the explanation. {detail}"));
+    return Err(detail);
+  }
+
+  emit_advisor_event(
+    &app,
+    &project_id,
+    AdvisorEvent::ExplainDone { explain_id, ok: true, error: None },
+  );
+  Ok(answer)
+}
+
+/// Cancel the in-flight inline explanation for a project, if any.
+#[tauri::command]
+pub fn advisor_explain_cancel(state: State<'_, AppState>, project_id: String) -> bool {
+  state.cancel_explain(&project_id)
 }

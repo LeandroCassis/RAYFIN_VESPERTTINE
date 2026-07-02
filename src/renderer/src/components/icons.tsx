@@ -410,3 +410,24 @@ export function TerminalIcon(props: IconProps): JSX.Element {
     </Icon>
   )
 }
+
+/** Lightning bolt — runtime / query performance. */
+export function BoltIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8Z" />
+    </Icon>
+  )
+}
+
+/** Universal-access figure — frontend accessibility. */
+export function AccessibilityIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <circle cx="12" cy="4.5" r="1.6" />
+      <path d="M4 8.5c2.6 1.1 5.2 1.6 8 1.6s5.4-.5 8-1.6" />
+      <path d="M12 10v5" />
+      <path d="m8.5 21 3.5-6 3.5 6" />
+    </Icon>
+  )
+}

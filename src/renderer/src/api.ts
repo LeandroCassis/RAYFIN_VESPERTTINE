@@ -14,6 +14,7 @@ import {
   IpcChannels,
   type AppSettings,
   type AdvisorEventEnvelope,
+  type AdvisorFinding,
   type ChatEventEnvelope,
   type ChatMessage,
   type ChatMode,
@@ -137,6 +138,9 @@ export const api: RayfinStudioApi = {
     run: (projectId: string) => invoke('advisor_run', { projectId }),
     cancel: (projectId: string) => invoke('advisor_cancel', { projectId }),
     load: (projectId: string) => invoke('advisor_load', { projectId }),
+    explain: (projectId: string, explainId: string, finding: AdvisorFinding) =>
+      invoke('advisor_explain', { projectId, explainId, finding }),
+    explainCancel: (projectId: string) => invoke('advisor_explain_cancel', { projectId }),
     onEvent: (cb: (envelope: AdvisorEventEnvelope) => void) =>
       subscribe<AdvisorEventEnvelope>(IpcChannels.advisorEvent, cb)
   },

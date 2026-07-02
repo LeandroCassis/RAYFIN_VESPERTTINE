@@ -435,31 +435,6 @@ export default function Workbench({
     })
   }, [])
 
-  // Ask the Build chat to explain an Advisor finding in more depth (read-only —
-  // no code changes), staged so the user can add follow-up questions.
-  const explainFinding = useCallback((finding: AdvisorFinding): void => {
-    const id = activeIdRef.current
-    if (!id) return
-    const category = categoryMeta(finding.category).title
-    const location = finding.file ? `\nLocation: ${finding.file}` : ''
-    const prompt =
-      'The Advisor review flagged the issue below. Please explain it in more depth: ' +
-      'what the underlying problem is, why it matters for this app, and how you would ' +
-      'fix it. Do NOT change any code yet — just explain.\n\n' +
-      `Issue: ${finding.title}\n` +
-      `Severity: ${finding.severity}\n` +
-      `Category: ${category}${location}\n\n` +
-      `Details: ${finding.detail}`
-    setViewMode('build')
-    setFocusPane(null)
-    setChatOutbound({
-      id: `advisor-explain-${Date.now()}`,
-      projectId: id,
-      display: `Explain: ${finding.title}`,
-      prompt
-    })
-  }, [])
-
   // Hand the whole Advisor findings list to the Build chat to fix in one task.
   const fixAllFindings = useCallback((findings: AdvisorFinding[]): void => {
     const id = activeIdRef.current
@@ -948,8 +923,10 @@ export default function Workbench({
                   <AdvisorView
                     project={active}
                     onFix={fixWithCopilot}
-                    onExplain={explainFinding}
                     onFixAll={fixAllFindings}
+                    chatBusy={(chats[active.id] ?? []).some(
+                      (m) => m.role === 'assistant' && m.pending
+                    )}
                     autoRun={Boolean(settings?.experiments?.advisorAutoRun)}
                   />
                 </div>
