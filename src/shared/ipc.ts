@@ -458,6 +458,12 @@ export interface ExperimentFlags {
    * virtualized GPU misbehaves. Applied at startup, so a change needs a relaunch.
    */
   compatibilityRendering?: boolean
+  /**
+   * Chat mode selector: show the Agent / Plan / Autopilot dropdown in the chat
+   * composer. When off (the default), the selector is hidden and every turn runs
+   * in the standard Agent mode.
+   */
+  chatModeSelector?: boolean
 }
 
 export interface CreateProjectInput {

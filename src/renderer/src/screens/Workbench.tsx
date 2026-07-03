@@ -879,6 +879,7 @@ export default function Workbench({
                       deployLock={active.awaitingFirstDeploy === true}
                       deploying={Boolean(deploys[active.id]?.running)}
                       onRequestDeploy={() => setCreateMode('deploy')}
+                      modeSelectorEnabled={Boolean(settings?.experiments?.chatModeSelector)}
                     />
                   </section>
                   {!focusPane && (

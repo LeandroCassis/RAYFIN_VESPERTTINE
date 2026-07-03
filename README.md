@@ -76,7 +76,7 @@ Want to build from source instead? Jump to [Build from source](#build-from-sourc
 
 ## What's inside
 
-**Author.** Chat with a built-in GitHub Copilot agent in **Agent**, **Plan**, or **Autopilot** mode — pick the model and reasoning effort, steer it mid-turn, and keep separate threads (plus optional parallel side threads) with full history. Inspect and edit any generated file in a built-in Monaco editor, see your data model as an entity diagram, browse the agent's reusable Skills, and lean on a git timeline you can diff and restore.
+**Author.** Chat with a built-in GitHub Copilot agent — pick the model and reasoning effort, steer it mid-turn, and keep separate threads (plus optional parallel side threads) with full history. Every turn runs in **Agent** mode; enable the experimental mode selector (Settings → Experiments) to also choose **Plan** or **Autopilot**. Inspect and edit any generated file in a built-in Monaco editor, see your data model as an entity diagram, browse the agent's reusable Skills, and lean on a git timeline you can diff and restore.
 
 **Ship.** One-click `rayfin up` deploys to Microsoft Fabric. A deployments panel handles create, switch, and redeploy across workspaces.
 

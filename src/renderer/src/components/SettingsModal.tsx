@@ -199,6 +199,12 @@ export default function SettingsModal({
                 checked={Boolean(settings.experiments?.advisorAutoRun)}
                 onChange={(v) => onChange({ experiments: { advisorAutoRun: v } })}
               />
+              <ToggleRow
+                label="Chat mode selector"
+                hint="Show the Agent / Plan / Autopilot dropdown in the composer. Off runs every turn in Agent mode."
+                checked={Boolean(settings.experiments?.chatModeSelector)}
+                onChange={(v) => onChange({ experiments: { chatModeSelector: v } })}
+              />
             </div>
 
             <div className="field">

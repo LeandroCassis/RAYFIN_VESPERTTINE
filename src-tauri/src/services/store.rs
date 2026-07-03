@@ -37,6 +37,7 @@ fn default_settings() -> AppSettings {
     experiments: Some(ExperimentFlags {
       advisor_auto_run: Some(false),
       compatibility_rendering: Some(false),
+      chat_mode_selector: Some(false),
     }),
   }
 }
@@ -133,12 +134,16 @@ pub fn set_settings(
       let current = c.settings.experiments.get_or_insert(ExperimentFlags {
         advisor_auto_run: Some(false),
         compatibility_rendering: Some(false),
+        chat_mode_selector: Some(false),
       });
       if let Some(v) = patch.advisor_auto_run {
         current.advisor_auto_run = Some(v);
       }
       if let Some(v) = patch.compatibility_rendering {
         current.compatibility_rendering = Some(v);
+      }
+      if let Some(v) = patch.chat_mode_selector {
+        current.chat_mode_selector = Some(v);
       }
     }
     persist(c);

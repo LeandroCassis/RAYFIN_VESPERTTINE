@@ -435,6 +435,11 @@ pub struct ExperimentFlags {
   /// change only takes effect after the app is relaunched. Opt-in (off by default).
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub compatibility_rendering: Option<bool>,
+  /// Chat mode selector: show the Agent / Plan / Autopilot dropdown in the chat
+  /// composer. When off (the default), the selector is hidden and every turn
+  /// runs in the standard Agent mode. Opt-in (off by default).
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub chat_mode_selector: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

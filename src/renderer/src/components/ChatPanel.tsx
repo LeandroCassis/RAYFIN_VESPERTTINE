@@ -115,6 +115,9 @@ interface Props {
   deploying?: boolean
   /** Open the fullscreen deploy step (the gate CTA). */
   onRequestDeploy?: () => void
+  /** Experimental: show the Agent / Plan / Autopilot mode selector in the composer.
+   * When false (the default), the selector is hidden and every turn runs in Agent mode. */
+  modeSelectorEnabled?: boolean
 }
 
 /** Reasoning efforts shown when the engine's per-model list is unavailable
@@ -1470,7 +1473,8 @@ export default function ChatPanel({
   onToggleFocus,
   deployLock = false,
   deploying = false,
-  onRequestDeploy
+  onRequestDeploy,
+  modeSelectorEnabled = false
 }: Props): JSX.Element {
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -2349,55 +2353,57 @@ export default function ChatPanel({
           </div>
           <div className="composer-actions">
             <div className="composer-left">
-              <div
-                className="mode-menu"
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  if (e.key === 'Escape') setShowMode(false)
-                }}
-              >
-                <button
-                  type="button"
-                  className={`mode-trigger${showMode ? ' mode-trigger--open' : ''}`}
-                  onClick={() => setShowMode((s) => !s)}
-                  disabled={sending}
-                  aria-haspopup="menu"
-                  aria-expanded={showMode}
-                  title={currentMode.hint}
+              {modeSelectorEnabled && (
+                <div
+                  className="mode-menu"
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Escape') setShowMode(false)
+                  }}
                 >
-                  <ModeIcon mode={mode} className="mode-trigger-icon" />
-                  <span className="mode-trigger-label">{currentMode.label}</span>
-                  <span className="mode-trigger-caret"><Codicon name="chevron-down" /></span>
-                </button>
-                {showMode && (
-                  <div className="mode-pop" role="menu">
-                    {MODES.map((m) => (
-                      <button
-                        key={m.id}
-                        type="button"
-                        role="menuitemradio"
-                        aria-checked={mode === m.id}
-                        className={`mode-opt${mode === m.id ? ' mode-opt--on' : ''}`}
-                        onClick={() => {
-                          setMode(m.id)
-                          setShowMode(false)
-                        }}
-                      >
-                        <ModeIcon mode={m.id} className="mode-opt-icon" />
-                        <span className="mode-opt-text">
-                          <span className="mode-opt-label">{m.label}</span>
-                          <span className="mode-opt-desc">{m.desc}</span>
-                        </span>
-                        {mode === m.id && (
-                          <span className="mode-opt-check" aria-hidden="true">
-                            <Codicon name="check" />
+                  <button
+                    type="button"
+                    className={`mode-trigger${showMode ? ' mode-trigger--open' : ''}`}
+                    onClick={() => setShowMode((s) => !s)}
+                    disabled={sending}
+                    aria-haspopup="menu"
+                    aria-expanded={showMode}
+                    title={currentMode.hint}
+                  >
+                    <ModeIcon mode={mode} className="mode-trigger-icon" />
+                    <span className="mode-trigger-label">{currentMode.label}</span>
+                    <span className="mode-trigger-caret"><Codicon name="chevron-down" /></span>
+                  </button>
+                  {showMode && (
+                    <div className="mode-pop" role="menu">
+                      {MODES.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={mode === m.id}
+                          className={`mode-opt${mode === m.id ? ' mode-opt--on' : ''}`}
+                          onClick={() => {
+                            setMode(m.id)
+                            setShowMode(false)
+                          }}
+                        >
+                          <ModeIcon mode={m.id} className="mode-opt-icon" />
+                          <span className="mode-opt-text">
+                            <span className="mode-opt-label">{m.label}</span>
+                            <span className="mode-opt-desc">{m.desc}</span>
                           </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
+                          {mode === m.id && (
+                            <span className="mode-opt-check" aria-hidden="true">
+                              <Codicon name="check" />
+                            </span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div
                 className="chat-model-menu"
                 onClick={(e) => e.stopPropagation()}
