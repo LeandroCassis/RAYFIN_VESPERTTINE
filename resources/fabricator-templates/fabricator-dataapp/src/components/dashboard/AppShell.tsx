@@ -197,7 +197,7 @@ export function AppShell({
 
     if (rail == null) {
         return (
-            <div className="min-h-screen bg-background bg-dotgrid text-foreground">
+            <div className="min-h-screen bg-background text-foreground">
                 {masthead}
                 {main}
             </div>
@@ -205,7 +205,7 @@ export function AppShell({
     }
 
     return (
-        <div className="min-h-screen bg-background bg-dotgrid text-foreground lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <div className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[16rem_minmax(0,1fr)]">
             <aside
                 className={cn(
                     "border-b border-border bg-surface-1 lg:sticky lg:top-0 lg:h-screen lg:overflow-y-auto lg:border-b-0 lg:border-r",

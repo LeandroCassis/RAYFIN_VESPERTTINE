@@ -53,6 +53,7 @@ export type {
 export { Card } from "./Card";
 export type { CardProps, CardVariant } from "./Card";
 export { ThemeToggle } from "./ThemeToggle";
+export { SketchToggle } from "./SketchToggle";
 export { SegmentedControl, FilterChips } from "./controls";
 export type {
     SegmentedControlProps,
@@ -147,6 +148,7 @@ export type {
 export {
     SunIcon,
     MoonIcon,
+    PenIcon,
     ArrowUpRightIcon,
     ArrowDownRightIcon,
     ChevronRightIcon,

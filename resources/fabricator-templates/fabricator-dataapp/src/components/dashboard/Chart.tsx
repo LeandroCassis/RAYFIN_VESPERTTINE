@@ -9,6 +9,7 @@ import { useMemo, type CSSProperties } from "react";
 
 import type { ChartSpec, SelectionChangeListener, SelectionStore } from "graphein";
 
+import { useSketchContext } from "@/hooks/sketch.context";
 import { useGrapheinTheme } from "@/lib/graphein-theme";
 
 import { useChart } from "./use-chart";
@@ -52,11 +53,16 @@ export function Chart({
     style,
 }: ChartProps) {
     const appTheme = useGrapheinTheme();
-    // Inject the app theme unless the spec opts out with its own `theme`.
-    const themed = useMemo<ChartSpec>(
-        () => (spec.theme != null ? spec : { ...spec, theme: appTheme }),
-        [spec, appTheme],
-    );
+    const { sketch } = useSketchContext();
+    // Inject the app theme (unless the spec sets its own) and the global
+    // hand-drawn "sketch" mode (unless the spec opts in/out itself), so every
+    // chart stays on-brand and honors the masthead's SketchToggle.
+    const themed = useMemo<ChartSpec>(() => {
+        let next: ChartSpec = spec;
+        if (next.theme == null) next = { ...next, theme: appTheme };
+        if (sketch && next.sketch == null) next = { ...next, sketch: true };
+        return next;
+    }, [spec, appTheme, sketch]);
     const ref = useChart<HTMLDivElement>(themed, { store, onSelectionChange });
     return (
         <div

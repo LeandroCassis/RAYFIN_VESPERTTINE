@@ -40,6 +40,7 @@ import {
     PageShell,
     selectionsExcept,
     ThemeToggle,
+    SketchToggle,
     Tile,
     topN,
     useFilterState,
@@ -303,7 +304,12 @@ export function DemoDashboard() {
             eyebrow="Gapminder · 1952–2007"
             title="Global development explorer"
             subtitle={`Life expectancy, income, and population — ${year}`}
-            actions={<ThemeToggle />}
+            actions={
+                <>
+                    <SketchToggle />
+                    <ThemeToggle />
+                </>
+            }
             toolbar={
                 <FilterBar>
                     <DropdownSlicer
@@ -329,7 +335,7 @@ export function DemoDashboard() {
             <DashboardGrid>
                 {kpiSpecs.map((spec, index) => (
                     <Tile key={index} size="sm">
-                        <ChartCard spec={spec} height={150} />
+                        <ChartCard spec={spec} height={116} className="p-4" />
                     </Tile>
                 ))}
             </DashboardGrid>
