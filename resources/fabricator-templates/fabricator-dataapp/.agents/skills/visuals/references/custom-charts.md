@@ -3,14 +3,14 @@
 There is **no custom-chart escape hatch** to maintain anymore: charts are Graphein
 specs, and you compose them by choosing a `type` and an `encoding`. When a
 visualization isn't an obvious built-in, don't hand-roll SVG — map it onto the
-nearest Graphein type. Graphein 0.8 has a broad catalog, so most intents now have
+nearest Graphein type. Graphein 0.13 has a broad catalog, so most intents now have
 a native type.
 
 ## Map the intent to a type
 
 | You want… | Author this |
 |---|---|
-| Ranked / "top N" | `bar` (vertical), rows sorted by value (`topN`) |
+| Ranked / "top N" | `bar`, rows sorted by value (`topN`); add `orientation: "horizontal"` for long labels |
 | Horizontal two-point compare (before/after) | `dumbbell` (`category` + `value` + `group`) |
 | Progress to goal / actual vs target | `bullet` (`value` + `target`), or a `KpiCard` with `delta` |
 | Gauge / single value vs max | `gauge` (`value` + `min`/`max`) |
@@ -33,14 +33,12 @@ them with `npm run preview` before deploying (see the **headless-preview** skill
 
 ## If a type genuinely doesn't exist
 
-Graphein 0.8 still has **no radar/spider chart** (and no sunburst). It also does
-not honor horizontal **bars** (the `orientation` field is ignored). Options, in
+Graphein 0.13 still has **no radar/spider chart** (and no sunburst). Options, in
 order:
 
 1. **Re-express the question** with a supported type — a radar is usually a
-   small-multiple (`facet`) of bars or a `line`; a horizontal ranked bar is a
-   sorted **vertical** `bar`; a sunburst is often a `treemap`. This is almost
-   always the right call.
+   small-multiple (`facet`) of bars or a `line`; a sunburst is often a `treemap`.
+   This is almost always the right call.
 2. **A simple bespoke React component** inside a `ChartCard` (children mode) for a
    truly one-off, non-charty visual (e.g. a custom progress list). Theme it from
    `src/global.css` tokens and `seriesColor` / `roleColor` so dark mode keeps

@@ -42,10 +42,9 @@ columns. To compare groups, add a `series` channel (`"series": { "field": "regio
 - **Tables / pivots:** use `DataTableCard` with a Graphein `table` / `matrix` spec.
   Build tables with `toTable(result, { columns })`; author matrices over
   `toChartData(result)` rows.
-- **Horizontal bars are not honored** in this version: `BarSpec` types an
-  `orientation` field but the runtime ignores it (bars always render vertical).
-  For ranked/top-N, sort rows by value and use a vertical bar; for a horizontal
-  two-point comparison, use a `dumbbell`.
+- **Horizontal bars are supported:** set `orientation: "horizontal"` on a `bar`
+  spec (keep `x` = category, `y` = value; the runtime swaps the axes). For
+  ranked/top-N, sort rows by value; for a two-point comparison, use a `dumbbell`.
 
 ## Common fields (`BaseSpec`)
 
@@ -151,7 +150,8 @@ and DAX.
 - `stack?: boolean` — stack series. Omit for side-by-side groups (the default when
   `series` is present and not stacked).
 - `cornerRadius?: number`.
-- `orientation` — **ignored in this version** (always vertical; see caveat above).
+- `orientation?: 'vertical' | 'horizontal'` — `'horizontal'` swaps the axes
+  (category runs down the y-axis, value across the x-axis); defaults to vertical.
 
 ### scatter
 `encoding`: requires `x`, `y`; optional `size` (bubble radius), `series` (colors
