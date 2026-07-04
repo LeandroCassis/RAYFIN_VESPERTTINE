@@ -7,7 +7,7 @@ import type {
   PreviewMode,
   StudioProject
 } from '@shared/ipc'
-import { loadCopilotModels, pickFastModel } from '../copilotModels'
+import { loadCopilotModels, pickFastModel, isFastModel } from '../copilotModels'
 import { usePreviewSuppressed } from '../overlay'
 import AnnotateOverlay from './AnnotateOverlay'
 import {
@@ -478,15 +478,26 @@ export default function PreviewPane({
   // (picked once from the model list; `undefined` → engine default).
   const aiRef = useRef(false)
   const fastModelRef = useRef<string | undefined>(undefined)
+  // The resolved model list for the placeholder AI picker, cached so the poll can
+  // re-push it if the controller is re-injected empty (preview reload).
+  const designModelsRef = useRef<{ id: string; name: string; fast: boolean }[] | null>(null)
 
-  // Resolve a fast model once design mode is on, for the placeholder "Generate
-  // with AI" flow (best-effort — falls back to the engine default).
+  // Resolve a fast model once design mode is on, and push the model list to the
+  // controller's placeholder AI picker (fast models first). Best-effort.
   useEffect(() => {
-    if (!designActive || fastModelRef.current) return
+    if (!designActive) return
     let cancelled = false
     void loadCopilotModels()
       .then((models) => {
-        if (!cancelled) fastModelRef.current = pickFastModel(models)
+        if (cancelled) return
+        fastModelRef.current = pickFastModel(models)
+        const list = models
+          .map((m) => ({ id: m.id, name: m.name, fast: isFastModel(m) }))
+          .sort((a, b) => (a.fast === b.fast ? 0 : a.fast ? -1 : 1))
+        if (list.length) {
+          designModelsRef.current = list
+          void window.api.preview.design.setModels(list)
+        }
       })
       .catch(() => {
         /* leave undefined → engine default */
@@ -514,7 +525,7 @@ export default function PreviewPane({
         req.description,
         req.width,
         req.height,
-        fastModelRef.current
+        req.model || fastModelRef.current
       )
     } catch {
       html = ''
@@ -593,6 +604,11 @@ export default function PreviewPane({
         const status = await window.api.preview.design.poll()
         if (cancelled) return
         if (status) setDesignCount(status.changeCount)
+        // Re-push the model list if the controller was re-injected empty (a
+        // preview reload drops its in-page state).
+        if (status && status.hasModels === false && designModelsRef.current) {
+          void window.api.preview.design.setModels(designModelsRef.current)
+        }
         if (status?.aiPending && !aiRef.current) {
           aiRef.current = true
           try {

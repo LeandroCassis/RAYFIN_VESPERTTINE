@@ -533,6 +533,10 @@ pub struct DesignStatus {
   /// renderer then drains the request, generates the HTML, and applies it.
   #[serde(default)]
   pub ai_pending: bool,
+  /// Whether the controller currently has the AI model list (it's re-injected
+  /// empty on page reloads, so the renderer re-pushes when this is false).
+  #[serde(default)]
+  pub has_models: bool,
 }
 
 /// A drained "Send to chat" handoff: the composed instruction + change count.
@@ -554,6 +558,9 @@ pub struct DesignAiRequest {
   pub description: String,
   pub width: u32,
   pub height: u32,
+  /// Model id chosen in the picker (`None` → the fast model resolved by the host).
+  #[serde(default)]
+  pub model: Option<String>,
 }
 
 /// The controller source plus a guarded `enable()` call, evaluated to (re)install
@@ -649,6 +656,27 @@ pub fn preview_design_apply_generated(app: AppHandle, id: String, html: String) 
       serde_json::to_string(&id).unwrap_or_else(|_| "\"\"".into()),
       serde_json::to_string(&html).unwrap_or_else(|_| "\"\"".into()),
     );
+    wv.eval(js).map_err(|e| AppError::Msg(e.to_string()))?;
+  }
+  Ok(())
+}
+
+/// A model choice for the placeholder AI picker (mirrors the renderer's list).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesignModel {
+  pub id: String,
+  pub name: String,
+  pub fast: bool,
+}
+
+/// Supply the design controller's placeholder AI model picker with the available
+/// models (the renderer resolves + fast-flags them). Pushed once per design session.
+#[tauri::command]
+pub fn preview_design_set_models(app: AppHandle, models: Vec<DesignModel>) -> AppResult<()> {
+  if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
+    let json = serde_json::to_string(&models).unwrap_or_else(|_| "[]".into());
+    let js = format!("try{{window.__rayfinDesign&&window.__rayfinDesign.setModels({json})}}catch(e){{}}");
     wv.eval(js).map_err(|e| AppError::Msg(e.to_string()))?;
   }
   Ok(())

@@ -52,7 +52,10 @@
     move: null, // active move gesture (or pending, pre-threshold)
     drawing: null, // active draw gesture
     hoverEl: null,
-    handoff: null
+    handoff: null,
+    aiRequest: null, // pending "Generate with AI" request for a placeholder
+    models: null, // [{id,name,fast}] supplied by the host for the AI model picker
+    aiModel: '' // selected model id ('' → host default / fast)
   };
 
   // ---- constants -----------------------------------------------------------
@@ -269,7 +272,8 @@
     '.ring{position:fixed;pointer-events:none;z-index:2147483639;border:2px solid ' + AMBER + ';border-radius:4px;box-shadow:0 0 0 2px ' + AMBER + '44}',
     '.marker{position:fixed;pointer-events:none;z-index:2147483645;min-width:18px;height:18px;line-height:18px;text-align:center;background:' + AMBER + ';color:#241a04;font-size:11px;font-weight:800;border-radius:9px;padding:0 4px;box-shadow:0 1px 4px rgba(0,0,0,.5)}',
     '.insert{position:fixed;pointer-events:none;z-index:2147483643;background:' + TEAL + ';box-shadow:0 0 6px ' + TEAL + '}',
-    '.hnd{position:fixed;width:10px;height:10px;background:#fff;border:1.5px solid ' + TEAL + ';border-radius:2px;z-index:2147483643;pointer-events:auto}',
+    '.hnd{position:fixed;width:12px;height:12px;background:' + TEAL + ';border:2px solid #fff;border-radius:3px;z-index:2147483643;pointer-events:auto;box-shadow:0 1px 5px rgba(0,0,0,.45)}',
+    '.hnd:hover{background:' + TEAL_HI + ';transform:scale(1.18)}',
     // draw layer + pins
     '.draw{position:fixed;left:0;top:0;width:100vw;height:100vh;z-index:2147483638;pointer-events:none;overflow:visible}',
     '.pins{position:fixed;inset:0;z-index:2147483643;pointer-events:none}',
@@ -293,24 +297,31 @@
     '.crumb button:hover{background:' + PANEL_BG2 + ';color:' + TXT + '}',
     '.crumb .cur{color:' + TEAL + ';font-weight:600}',
     '.insp-sz{font-size:11px;color:' + TXT_DIM + ';margin-top:4px}',
-    '.insp-body{flex:1;min-height:0;overflow:auto;padding:6px 12px 12px}',
-    '.grp{margin-top:12px}',
+    '.insp-body{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:6px 12px 12px}',
+    '.grp{margin-top:14px}',
     '.grp>h5{margin:0 0 6px;font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:' + TXT_DIM + ';font-weight:700}',
-    '.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:6px 0}',
-    '.row label{font-size:12px;color:#c7ccd3}',
-    '.row .ctl{display:flex;align-items:center;gap:6px}',
-    '.insp input[type=text],.insp input[type=number],.insp select,.insp textarea{background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:6px;padding:5px 7px;font-size:12px;width:110px}',
-    '.insp textarea{width:100%;min-height:52px;resize:vertical;margin-top:4px}',
-    '.insp input[type=number]{width:66px}',
-    '.insp input[type=range]{width:96px;accent-color:' + TEAL + '}',
-    '.insp input[type=color]{width:30px;height:24px;background:' + PANEL_BG2 + ';border:1px solid ' + BORDER + ';border-radius:5px;padding:2px}',
+    '.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;min-width:0}',
+    '.row label{font-size:12px;color:#c7ccd3;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+    '.row .ctl{display:flex;align-items:center;gap:6px;flex:none}',
+    '.insp input[type=text],.insp input[type=number],.insp select,.insp textarea{background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:6px;padding:5px 7px;font-size:12px;width:124px;max-width:58%}',
+    '.insp textarea{width:100%;max-width:100%;min-height:74px;resize:none;margin-top:6px;line-height:1.45}',
+    '.insp input[type=number]{width:64px}',
+    '.insp input[type=range]{width:104px;accent-color:' + TEAL + '}',
+    '.insp input[type=color]{width:34px;height:24px;background:' + PANEL_BG2 + ';border:1px solid ' + BORDER + ';border-radius:5px;padding:2px}',
     '.insp .mini{color:' + TXT_DIM + ';font-size:11px;font-weight:600;padding:4px 8px;border-radius:6px;background:' + PANEL_BG2 + '}',
     '.insp .mini:hover{color:' + TXT + '}',
     '.insp .mini.danger:hover{background:#5b1a1a;color:#fff}',
     '.insp-actions{display:flex;gap:6px;padding:8px 12px;border-top:1px solid ' + BORDER + '}',
-    '.ai-btn{width:100%;margin-top:8px;font-size:12px;font-weight:600;color:' + TEAL + ';background:transparent;border:1px solid ' + TEAL + '66;border-radius:7px;padding:7px 10px;text-align:center}',
-    '.ai-btn:hover{background:' + TEAL + '1f;color:' + TEAL_HI + '}',
-    '.ai-note{margin-top:6px;font-size:10px;color:' + TXT_DIM + ';line-height:1.45}',
+    // AI generate card
+    '.ai-card{margin:2px 0 4px;padding:11px 12px 12px;border:1px solid ' + TEAL + '3d;border-radius:11px;background:linear-gradient(155deg,' + TEAL + '1f,rgba(20,184,186,0) 72%)}',
+    '.ai-card h5{margin:0;color:' + TEAL_HI + ';font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:6px}',
+    '.ai-card textarea{background:' + PANEL_BG + 'cc}',
+    '.ai-row{display:flex;gap:6px;margin-top:8px;align-items:stretch}',
+    '.ai-model{flex:1 1 auto;min-width:0;max-width:none;background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:8px;padding:0 8px;font-size:11px;height:32px}',
+    '.ai-btn{flex:none;font-size:12px;font-weight:700;color:#04211f;background:' + TEAL + ';border-radius:8px;padding:0 14px;height:32px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 2px 12px ' + TEAL + '55}',
+    '.ai-btn:hover{background:' + TEAL_HI + ';box-shadow:0 3px 16px ' + TEAL + '77}',
+    '.ai-btn.busy{opacity:.7;pointer-events:none}',
+    '.ai-note{margin-top:9px;font-size:10px;color:' + TXT_DIM + ';line-height:1.45}',
     // toolbar actions (count / undo / discard / send)
     '.tb-sep{width:1px;align-self:stretch;background:' + BORDER + ';margin:0 2px}',
     '.tb-count{font-size:11px;color:' + TXT_DIM + ';padding:0 4px;white-space:nowrap}',
@@ -333,6 +344,44 @@
     '.cmt button.ok{background:' + TEAL + ';color:#04211f;font-weight:600}',
     '.editing-text{outline:2px dashed ' + TEAL + ' !important;outline-offset:2px}'
   ].join('\n');
+
+  // Light-DOM animation CSS for the placeholder "building" state (the placeholder
+  // is a real element in the app's DOM, not in our shadow root, so its @keyframes
+  // must live in the page). Injected on enable, removed on disable. Namespaced
+  // `__rf_*` + honours prefers-reduced-motion.
+  var GEN_STYLE_ID = '__rayfin_design_gen_style';
+  var GEN_STYLE = [
+    '@keyframes __rfSweep{0%{transform:translateX(-130%) skewX(-12deg)}100%{transform:translateX(130%) skewX(-12deg)}}',
+    '@keyframes __rfScan{0%{top:-8%;opacity:0}12%{opacity:1}88%{opacity:1}100%{top:104%;opacity:0}}',
+    '@keyframes __rfGlow{0%,100%{box-shadow:0 0 0 1px ' + TEAL + '77,0 0 24px -6px ' + TEAL + 'aa,inset 0 0 22px -10px ' + TEAL_HI + '99}50%{box-shadow:0 0 0 1px ' + TEAL_HI + ',0 0 40px -4px ' + TEAL + ',inset 0 0 34px -8px ' + TEAL_HI + '}}',
+    '@keyframes __rfGrid{to{background-position:24px 24px}}',
+    '@keyframes __rfPulse{0%,100%{transform:scale(1);opacity:.7}50%{transform:scale(1.2);opacity:1}}',
+    '@keyframes __rfDots{0%{content:""}25%{content:"·"}50%{content:"··"}75%{content:"···"}}',
+    '@keyframes __rfReveal{0%{opacity:0;transform:scale(.985)}100%{opacity:1;transform:none}}',
+    '.__rf_gen{position:relative !important;overflow:hidden !important;display:flex !important;align-items:center !important;justify-content:center !important;border:1px solid ' + TEAL + '77 !important;background:radial-gradient(120% 90% at 50% -10%,#0b2b2c 0%,#081116 72%) !important;color:' + TEAL_HI + ' !important;animation:__rfGlow 2.4s ease-in-out infinite}',
+    '.__rf_gen::before{content:"";position:absolute;inset:0;background:linear-gradient(100deg,transparent 34%,' + TEAL_HI + '14 46%,' + TEAL_HI + '66 50%,' + TEAL_HI + '14 54%,transparent 66%);transform:translateX(-130%) skewX(-12deg);animation:__rfSweep 1.7s ease-in-out infinite;pointer-events:none}',
+    '.__rf_grid{position:absolute;inset:0;background-image:linear-gradient(' + TEAL + '1f 1px,transparent 1px),linear-gradient(90deg,' + TEAL + '1f 1px,transparent 1px);background-size:24px 24px;animation:__rfGrid 2.6s linear infinite;opacity:.55;pointer-events:none;-webkit-mask-image:radial-gradient(120% 90% at 50% 0%,#000 30%,transparent 85%);mask-image:radial-gradient(120% 90% at 50% 0%,#000 30%,transparent 85%)}',
+    '.__rf_gscan{position:absolute;left:6%;right:6%;height:2px;top:-8%;border-radius:2px;background:linear-gradient(90deg,transparent,' + TEAL_HI + ',transparent);box-shadow:0 0 14px 2px ' + TEAL_HI + 'cc;animation:__rfScan 2s cubic-bezier(.4,0,.2,1) infinite;pointer-events:none}',
+    '.__rf_glab{position:relative;z-index:2;display:flex;align-items:center;gap:9px;font:700 13px ui-sans-serif,system-ui;letter-spacing:.04em;color:#7ff2df;text-shadow:0 0 16px ' + TEAL + 'aa}',
+    '.__rf_gspark{font-size:15px;color:' + TEAL_HI + ';filter:drop-shadow(0 0 6px ' + TEAL_HI + ');animation:__rfPulse 1.3s ease-in-out infinite}',
+    '.__rf_gdots::after{content:"";display:inline-block;width:16px;text-align:left;animation:__rfDots 1.3s steps(1,end) infinite}',
+    '.__rf_reveal{animation:__rfReveal .5s cubic-bezier(.2,.7,.2,1)}',
+    '@media (prefers-reduced-motion: reduce){.__rf_gen,.__rf_gen::before,.__rf_grid,.__rf_gscan,.__rf_gspark,.__rf_gdots::after,.__rf_reveal{animation:none !important}.__rf_gscan{display:none}}'
+  ].join('\n');
+
+  function injectGenStyle() {
+    try {
+      if (document.getElementById(GEN_STYLE_ID)) return;
+      var s = document.createElement('style');
+      s.id = GEN_STYLE_ID;
+      s.textContent = GEN_STYLE;
+      (document.head || document.documentElement).appendChild(s);
+    } catch (e) {}
+  }
+  function removeGenStyle() {
+    var s = document.getElementById(GEN_STYLE_ID);
+    if (s) s.remove();
+  }
 
   function icon(name) {
     var p = {
@@ -622,22 +671,36 @@
   }
   function px(v) { var n = parseFloat(v); return isNaN(n) ? 0 : Math.round(n); }
 
-  // Subtle "Generate with AI" section shown at the top of a placeholder's
-  // inspector: describe the component → a fast model draws HTML/CSS into the box.
+  // Subtle "Generate with AI" card shown at the top of a placeholder's inspector:
+  // describe the component + pick a model → a model draws HTML/CSS into the box.
   function aiGroup(ph) {
-    var g = h('div', { class: 'grp' }, [h('h5', { text: '✨ Generate with AI' })]);
+    var card = h('div', { class: 'ai-card' });
+    card.appendChild(h('h5', { text: '✨ Generate with AI' }));
     var generating = ph.getAttribute('data-rayfin-gen') === '1';
     var entry = findInsertEntry(ph);
     var hasGen = !!(entry && entry.generatedHtml);
     var ta = h('textarea', { placeholder: 'Describe this component — e.g. “a KPI card showing total revenue with a small up-trend”', text: phDesc(ph) });
     ta.oninput = function () { ph.setAttribute('data-rayfin-desc', ta.value); };
-    g.appendChild(ta);
-    var btn = h('button', { class: 'ai-btn', text: generating ? '✨ Generating…' : (hasGen ? 'Regenerate' : '✨ Generate with AI') });
-    if (generating) { btn.style.opacity = '.6'; btn.style.pointerEvents = 'none'; }
+    card.appendChild(ta);
+
+    var row = h('div', { class: 'ai-row' });
+    var sel = h('select', { class: 'ai-model', title: 'Model (⚡ = fast)' });
+    var models = (state.models && state.models.length) ? state.models : [{ id: '', name: 'Fast model', fast: true }];
+    models.forEach(function (m) {
+      var o = h('option', { value: m.id, text: (m.fast ? '⚡ ' : '') + m.name });
+      if (m.id === state.aiModel) o.setAttribute('selected', 'selected');
+      sel.appendChild(o);
+    });
+    sel.onchange = function () { state.aiModel = sel.value; };
+    if (generating) { sel.disabled = true; }
+    row.appendChild(sel);
+    var btn = h('button', { class: 'ai-btn' + (generating ? ' busy' : ''), text: generating ? '✨ Generating…' : (hasGen ? 'Regenerate' : '✨ Generate') });
     btn.onclick = function (e) { e.stopPropagation(); requestAiGenerate(ph, ta.value); };
-    g.appendChild(btn);
-    g.appendChild(h('div', { class: 'ai-note', text: hasGen ? 'Preview generated — sent to chat as the starting point.' : 'HTML/CSS only, rendered into the box + sent to chat as a starting point.' }));
-    return g;
+    row.appendChild(btn);
+    card.appendChild(row);
+
+    card.appendChild(h('div', { class: 'ai-note', text: hasGen ? '✓ Preview generated — sent to chat as the starting point.' : 'HTML/CSS only, drawn into the box and sent to chat as a starting point.' }));
+    return card;
   }
 
   // Apply an inline style change + record it (revert restores the pre-select
@@ -742,13 +805,17 @@
   }
 
   // ---- resize handles ------------------------------------------------------
-  var HANDLE_DIRS = [['nw', 0, 0], ['n', .5, 0], ['ne', 1, 0], ['e', 1, .5], ['se', 1, 1], ['s', .5, 1], ['sw', 0, 1], ['w', 0, .5]];
+  // Flow elements are anchored at their top-left, so we only resize from the
+  // right / bottom / bottom-right corner (like a textarea) — a west/north handle
+  // would just grow the opposite edge, which feels backwards. [dir, x%, y%, cursor]
+  var HANDLE_DIRS = [['e', 1, 0.5, 'ew-resize'], ['s', 0.5, 1, 'ns-resize'], ['se', 1, 1, 'nwse-resize']];
   function hideHandles() { elHandles.style.display = 'none'; elHandles.textContent = ''; }
   function showHandles() {
     if (!state.selected) return;
     elHandles.textContent = ''; elHandles.style.display = 'block';
     HANDLE_DIRS.forEach(function (d) {
       var hd = h('div', { class: 'hnd' });
+      hd.style.cursor = d[3];
       hd.onpointerdown = function (e) { startResize(e, d); };
       elHandles.appendChild(hd);
     });
@@ -757,14 +824,14 @@
   function positionHandles() {
     if (elHandles.style.display !== 'block' || !state.selected) return;
     var r = state.selected.getBoundingClientRect(), kids = elHandles.children;
-    for (var i = 0; i < kids.length; i++) { var d = HANDLE_DIRS[i]; kids[i].style.left = (r.left + r.width * d[1] - 5) + 'px'; kids[i].style.top = (r.top + r.height * d[2] - 5) + 'px'; }
+    for (var i = 0; i < kids.length; i++) { var d = HANDLE_DIRS[i]; kids[i].style.left = (r.left + r.width * d[1] - 6) + 'px'; kids[i].style.top = (r.top + r.height * d[2] - 6) + 'px'; }
   }
   function positionBadges() {
     if (!state.selected) { elBadges.style.display = 'none'; return; }
     var r = state.selected.getBoundingClientRect();
     elBadges.textContent = ''; elBadges.style.display = 'block';
     var b = h('div', { class: 'badge', text: Math.round(r.width) + ' × ' + Math.round(r.height) });
-    b.style.left = (r.left + r.width / 2 - 24) + 'px'; b.style.top = (r.bottom + 4) + 'px';
+    b.style.left = (r.left + r.width / 2 - 24) + 'px'; b.style.top = (r.bottom + 8) + 'px';
     elBadges.appendChild(b);
   }
 
@@ -1015,7 +1082,7 @@
   var phSeq = 0;
   function isPlaceholder(el) { return !!(el && el.getAttribute && el.getAttribute('data-rayfin-placeholder') === '1'); }
   function findInsertEntry(el) { for (var i = 0; i < state.changes.length; i++) if (state.changes[i].kind === 'insert' && state.changes[i].el === el) return state.changes[i]; return null; }
-  function placeholderById(id) { try { return root && document.querySelector('[data-rayfin-ph-id="' + id + '"]'); } catch (e) { return null; } }
+  function placeholderById(id) { try { return document.querySelector('[data-rayfin-ph-id="' + id + '"]'); } catch (e) { return null; } }
   function phDesc(ph) { return (ph && ph.getAttribute('data-rayfin-desc')) || ''; }
   var PH_BASE = 'margin:8px 0;border:2px dashed ' + TEAL + ';border-radius:12px;background:' + TEAL + '14;box-sizing:border-box;';
   var PH_EMPTY = PH_BASE + 'min-height:96px;display:flex;align-items:center;justify-content:center;text-align:center;color:' + TEAL + ';font:600 13px ui-sans-serif,system-ui;padding:14px;';
@@ -1079,9 +1146,12 @@
     var r = ph.getBoundingClientRect();
     var sz = phSize(ph);
     ph.setAttribute('data-rayfin-gen', '1');
+    // Futuristic "building" animation (light-DOM keyframes injected in enable()).
     ph.setAttribute('style', PH_EMPTY + sz);
-    ph.textContent = '✨ Generating…';
-    state.aiRequest = { id: id, description: desc, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)) };
+    ph.classList.add('__rf_gen');
+    ph.innerHTML = '<span class="__rf_grid"></span><span class="__rf_gscan"></span>' +
+      '<span class="__rf_glab"><span class="__rf_gspark">✦</span><span>Building<span class="__rf_gdots"></span></span></span>';
+    state.aiRequest = { id: id, description: desc, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), model: state.aiModel || undefined };
     bump();
     renderInspector();
   }
@@ -1094,6 +1164,7 @@
     if (!ph) return;
     var sz = phSize(ph);
     ph.removeAttribute('data-rayfin-gen');
+    ph.classList.remove('__rf_gen');
     var clean = html ? sanitizeHtml(html) : '';
     if (!clean) {
       // Failure — return to the describe state.
@@ -1106,6 +1177,9 @@
     }
     ph.setAttribute('style', PH_BASE + 'min-height:96px;padding:0;overflow:hidden;position:relative;display:block;' + sz);
     ph.innerHTML = clean;
+    // Brief reveal animation on the newly rendered component.
+    ph.classList.add('__rf_reveal');
+    setTimeout(function () { ph.classList.remove('__rf_reveal'); }, 620);
     var entry = findInsertEntry(ph);
     if (entry) entry.generatedHtml = clean;
     bump();
@@ -1318,6 +1392,7 @@
     if (state.enabled) return;
     state.enabled = true;
     buildUI();
+    injectGenStyle();
     window.addEventListener('pointermove', onPointerMove, true);
     window.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('dblclick', onDblClick, true);
@@ -1346,9 +1421,21 @@
     window.removeEventListener('resize', reposition, true);
     if (rafId) cancelAnimationFrame(rafId); rafId = 0;
     clearMarkers();
+    // Reset any placeholder left mid-"building" (its animation style is about to
+    // be removed) so it doesn't sit as a static half-state in the app.
+    try {
+      var gens = document.querySelectorAll('[data-rayfin-gen="1"]');
+      for (var gi = 0; gi < gens.length; gi++) {
+        var gp = gens[gi];
+        gp.removeAttribute('data-rayfin-gen');
+        gp.classList.remove('__rf_gen');
+        gp.textContent = gp.getAttribute('data-rayfin-desc') || 'New component';
+      }
+    } catch (e) {}
+    removeGenStyle();
     if (host) host.remove();
     host = root = null;
-    state.selected = null; state.hoverEl = null; state.handoff = null;
+    state.selected = null; state.hoverEl = null; state.handoff = null; state.aiRequest = null;
   }
 
   // ---- color helper --------------------------------------------------------
@@ -1366,7 +1453,7 @@
     __v: VERSION,
     enable: function () { try { enable(); } catch (e) {} },
     disable: function () { try { disable(); } catch (e) {} },
-    peek: function () { return { enabled: state.enabled, version: state.version, changeCount: state.changes.length, handoffReady: !!state.handoff, aiPending: !!state.aiRequest }; },
+    peek: function () { return { enabled: state.enabled, version: state.version, changeCount: state.changes.length, handoffReady: !!state.handoff, aiPending: !!state.aiRequest, hasModels: !!(state.models && state.models.length) }; },
     drain: function () {
       var hf = state.handoff; if (!hf) return null;
       state.handoff = null;
@@ -1382,10 +1469,22 @@
     drainAi: function () {
       var r = state.aiRequest; if (!r) return null;
       state.aiRequest = null; bump();
-      return { id: r.id, description: r.description, width: r.width, height: r.height };
+      return { id: r.id, description: r.description, width: r.width, height: r.height, model: r.model };
     },
     // Inject AI-generated HTML into placeholder `id` (empty html = generation
     // failed → restore the describe state).
-    applyGenerated: function (id, html) { try { applyGenerated(id, html); } catch (e) {} }
+    applyGenerated: function (id, html) { try { applyGenerated(id, html); } catch (e) {} },
+    // Supply the model list for the placeholder AI picker (host resolves it);
+    // `[{id,name,fast}]`. Defaults the selection to the first fast model.
+    setModels: function (list) {
+      try {
+        state.models = Array.isArray(list) ? list : null;
+        if (!state.aiModel && state.models && state.models.length) {
+          var fast = state.models.filter(function (m) { return m.fast; })[0];
+          state.aiModel = (fast || state.models[0]).id;
+        }
+        if (state.selected && isPlaceholder(state.selected)) renderInspector();
+      } catch (e) {}
+    }
   };
 })();

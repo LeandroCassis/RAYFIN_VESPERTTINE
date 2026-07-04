@@ -52,16 +52,17 @@ export function useCopilotModels(enabled: boolean): { models: CopilotModel[]; lo
 /** Substrings that mark a model as small/fast (cheap, low-latency). */
 const FAST_HINTS = ['haiku', 'flash', 'mini', 'lite', 'small', 'fast', 'nano']
 
+/** Whether a model looks small/fast by its id/name (see {@link FAST_HINTS}). */
+export function isFastModel(m: CopilotModel): boolean {
+  const s = `${m.id} ${m.name}`.toLowerCase()
+  return FAST_HINTS.some((h) => s.includes(h))
+}
+
 /**
  * Pick a fast/cheap model id for one-shot, latency-sensitive generation (e.g. the
- * design-mode "Generate with AI" placeholder). Matches a name/id against
- * {@link FAST_HINTS}; returns `undefined` when none match (caller falls back to
- * the engine default).
+ * design-mode "Generate with AI" placeholder). Returns `undefined` when none
+ * match (caller falls back to the engine default).
  */
 export function pickFastModel(models: CopilotModel[]): string | undefined {
-  const hit = models.find((m) => {
-    const s = `${m.id} ${m.name}`.toLowerCase()
-    return FAST_HINTS.some((h) => s.includes(h))
-  })
-  return hit?.id
+  return models.find(isFastModel)?.id
 }

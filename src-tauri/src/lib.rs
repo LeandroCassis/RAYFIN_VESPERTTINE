@@ -226,6 +226,7 @@ pub fn run() {
       services::preview::preview_design_drain,
       services::preview::preview_design_drain_ai,
       services::preview::preview_design_apply_generated,
+      services::preview::preview_design_set_models,
       commands::design::design_generate_html,
     ])
     .build(tauri::generate_context!())

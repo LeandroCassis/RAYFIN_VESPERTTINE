@@ -996,6 +996,8 @@ export interface PreviewDesignStatus {
   handoffReady: boolean
   /** True once the user asked to "Generate with AI" on a placeholder. */
   aiPending?: boolean
+  /** Whether the controller currently holds the AI model list (re-pushed if not). */
+  hasModels?: boolean
 }
 
 /**
@@ -1008,6 +1010,8 @@ export interface PreviewDesignAiRequest {
   description: string
   width: number
   height: number
+  /** Model id chosen in the picker (undefined → host default / fast model). */
+  model?: string
 }
 
 /**
@@ -1497,6 +1501,8 @@ export interface RayfinStudioApi {
       drainAi: () => Promise<PreviewDesignAiRequest | null>
       /** Inject AI-generated HTML into the placeholder `id` (controller sanitizes it). */
       applyGenerated: (id: string, html: string) => Promise<void>
+      /** Supply the placeholder AI model picker with the available models. */
+      setModels: (models: { id: string; name: string; fast: boolean }[]) => Promise<void>
       /**
        * Generate a self-contained HTML/CSS snippet for a placeholder from a
        * description, on a transient fast-model session. Returns the raw HTML

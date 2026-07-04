@@ -215,6 +215,8 @@ export const api: RayfinStudioApi = {
       drainAi: () => invoke('preview_design_drain_ai'),
       applyGenerated: (id: string, html: string) =>
         invoke('preview_design_apply_generated', { id, html }),
+      setModels: (models: { id: string; name: string; fast: boolean }[]) =>
+        invoke('preview_design_set_models', { models }),
       generateHtml: (
         projectId: string,
         description: string,
