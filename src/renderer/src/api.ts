@@ -201,14 +201,18 @@ export const api: RayfinStudioApi = {
     setBounds: (bounds: PreviewBounds) => invoke('preview_set_bounds', { bounds }),
     hide: () => invoke('preview_hide'),
     reload: () => invoke('preview_reload'),
-    openDevtools: () => invoke('preview_open_devtools'),
     back: () => invoke('preview_back'),
     forward: () => invoke('preview_forward'),
     capture: () => invoke('preview_capture'),
     onNavState: (cb: (state: PreviewNavState) => void) =>
       subscribe<PreviewNavState>(IpcChannels.previewNav, cb),
     onAgentPreview: (cb: (event: PreviewAgentEvent) => void) =>
-      subscribe<PreviewAgentEvent>(IpcChannels.previewAgent, cb)
+      subscribe<PreviewAgentEvent>(IpcChannels.previewAgent, cb),
+    design: {
+      setEnabled: (enabled: boolean) => invoke('preview_design_set', { enabled }),
+      poll: () => invoke('preview_design_poll'),
+      drain: () => invoke('preview_design_drain')
+    }
   },
 
   onProcLog: (cb: (event: ProcLogEvent) => void) =>

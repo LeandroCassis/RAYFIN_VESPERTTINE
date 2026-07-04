@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { DeployResult, PreviewBounds, PreviewMode, StudioProject } from '@shared/ipc'
+import type {
+  DeployResult,
+  PreviewBounds,
+  PreviewDesignHandoff,
+  PreviewMode,
+  StudioProject
+} from '@shared/ipc'
 import { usePreviewSuppressed } from '../overlay'
 import AnnotateOverlay from './AnnotateOverlay'
 import {
@@ -8,7 +14,7 @@ import {
   ReloadIcon,
   FabricIcon,
   AnnotateIcon,
-  DevToolsIcon,
+  DesignIcon,
   ExpandIcon,
   CollapseIcon
 } from './icons'
@@ -43,6 +49,12 @@ interface Props {
   /** Notify the parent that the persisted preview mode changed (so it can refresh
    *  project state — the selection lives on the project, store-backed). */
   onPreviewModeChanged?: () => void
+  /** Experiment (`previewDesignMode`): show the in-preview "Design" toggle that
+   *  lets the user click + live-edit elements, then hand the changes to chat. */
+  designModeEnabled?: boolean
+  /** Hand a composed design-mode instruction (+ optional highlighted screenshot)
+   *  to the chat composer for review. Fired when the user hits "Send to chat". */
+  onDesignHandoff?: (instruction: string, shot?: PendingShot) => void
 }
 
 function statusLabel(running: boolean, status: string | undefined): string {
@@ -75,13 +87,41 @@ function prettyUrl(url: string): string {
   }
 }
 
+/** Downscale a PNG `data:` URL to a small thumbnail data URL for a chat chip.
+ *  Falls back to the original URL if the image can't be decoded. */
+function makeThumbFromDataUrl(dataUrl: string): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const maxW = 176
+      const scale = Math.min(1, maxW / (img.naturalWidth || maxW))
+      const w = Math.max(1, Math.round((img.naturalWidth || maxW) * scale))
+      const hgt = Math.max(1, Math.round((img.naturalHeight || maxW) * scale))
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = hgt
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        resolve(dataUrl)
+        return
+      }
+      ctx.drawImage(img, 0, 0, w, hgt)
+      resolve(canvas.toDataURL('image/png'))
+    }
+    img.onerror = () => resolve(dataUrl)
+    img.src = dataUrl
+  })
+}
+
 export default function PreviewPane({
   project,
   deploy,
   onCapture,
   focused,
   onToggleFocus,
-  onPreviewModeChanged
+  onPreviewModeChanged,
+  designModeEnabled,
+  onDesignHandoff
 }: Props): JSX.Element {
   const suppressed = usePreviewSuppressed()
   const running = deploy?.running ?? false
@@ -398,11 +438,6 @@ export default function PreviewPane({
   const reload = useCallback((): void => {
     void window.api.preview.reload()
   }, [])
-  // Open the browser devtools (web inspector) for the preview so the user can
-  // inspect their deployed app's DOM, console and network.
-  const openDevtools = useCallback((): void => {
-    void window.api.preview.openDevtools()
-  }, [])
   const goBack = useCallback((): void => {
     void window.api.preview.back()
   }, [])
@@ -427,6 +462,129 @@ export default function PreviewPane({
       setCapturing(false)
     }
   }, [])
+
+  // ── In-preview design mode (experiment) ──────────────────────────────────
+  // A click-to-edit controller injected into the preview webview lets the user
+  // tweak live elements (move/resize/recolor/text + a Graphein spec editor); the
+  // collected changes are handed to the chat composer. See `preview.design.*`
+  // and the injected `design_agent.js`.
+  const [designActive, setDesignActive] = useState(false)
+  const [designBusy, setDesignBusy] = useState(false)
+  const [designCount, setDesignCount] = useState(0)
+  const handoffRef = useRef(false)
+
+  const toggleDesign = useCallback((): void => {
+    setDesignActive((prev) => {
+      const next = !prev
+      void window.api.preview.design.setEnabled(next)
+      if (!next) setDesignCount(0)
+      return next
+    })
+  }, [])
+
+  // Capture the highlighted screenshot, drain the composed instruction, hand it
+  // to chat, then leave design mode. Fired when the poll sees `handoffReady`.
+  // Every step is best-effort so this never rejects — a rejection would strand
+  // the poll's `handoffRef` guard and wedge design mode.
+  const finishDesignHandoff = useCallback(async (): Promise<void> => {
+    setDesignBusy(true)
+    try {
+      // The controller has drawn highlight rings + hidden its chrome, so a
+      // capture now shows exactly what changed. Screenshot is best-effort.
+      let shot: PendingShot | undefined
+      try {
+        const dataUrl = await window.api.preview.capture()
+        const path = await window.api.screenshot.save(dataUrl)
+        const thumb = await makeThumbFromDataUrl(dataUrl)
+        shot = { path, thumb }
+      } catch {
+        // no screenshot — still hand off the instruction
+      }
+      let handoff: PreviewDesignHandoff | null = null
+      try {
+        handoff = await window.api.preview.design.drain()
+      } catch {
+        // drain failed — still leave design mode cleanly below
+      }
+      try {
+        await window.api.preview.design.setEnabled(false)
+      } catch {
+        // ignore — local state is reset regardless
+      }
+      setDesignActive(false)
+      setDesignCount(0)
+      if (handoff) onDesignHandoff?.(handoff.instruction, shot)
+    } finally {
+      setDesignBusy(false)
+    }
+  }, [onDesignHandoff])
+
+  // Poll the controller while design mode is on: track the change count and
+  // trigger the hand-off once the user hits "Send to chat". `finishDesignHandoff`
+  // is read through a ref so frequent parent re-renders don't restart the timer
+  // (which could otherwise starve the 250ms poll and miss the handoff).
+  const finishRef = useRef(finishDesignHandoff)
+  useEffect(() => {
+    finishRef.current = finishDesignHandoff
+  }, [finishDesignHandoff])
+  useEffect(() => {
+    if (!designActive) return
+    let cancelled = false
+    let timer: number | null = null
+    const tick = async (): Promise<void> => {
+      try {
+        const status = await window.api.preview.design.poll()
+        if (cancelled) return
+        if (status) setDesignCount(status.changeCount)
+        if (status?.handoffReady && !handoffRef.current) {
+          handoffRef.current = true
+          try {
+            await finishRef.current()
+          } finally {
+            // Always clear the guard, even if the handoff threw, so a transient
+            // failure doesn't permanently wedge design mode.
+            handoffRef.current = false
+          }
+          return
+        }
+      } catch {
+        // ignore transient poll errors
+      }
+      if (!cancelled) timer = window.setTimeout(() => void tick(), 250)
+    }
+    timer = window.setTimeout(() => void tick(), 250)
+    return () => {
+      cancelled = true
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [designActive])
+
+  // Leave design mode if the preview goes away (project switch / undeploy) or the
+  // experiment is turned off, and always disable on unmount.
+  useEffect(() => {
+    if (designActive && (!showWebview || !designModeEnabled)) {
+      setDesignActive(false)
+      setDesignCount(0)
+      void window.api.preview.design.setEnabled(false)
+    }
+  }, [designActive, showWebview, designModeEnabled])
+  useEffect(() => () => void window.api.preview.design.setEnabled(false), [])
+
+  // End the design session whenever the preview navigates to a different URL — a
+  // project switch, the Fabric-view toggle, or a redeploy to a new URL. Rust's
+  // `reset_to` clears `design_active` on the new root URL (so the controller
+  // isn't re-injected); this keeps the renderer's toggle + count in sync (this
+  // component isn't remounted per project, so an effect is needed). Keyed on
+  // `previewUrl` rather than `project.id` so the Fabric toggle — a URL change
+  // with the same project — doesn't leave a lit-but-dead Design button.
+  const prevPreviewUrlRef = useRef(previewUrl)
+  useEffect(() => {
+    if (prevPreviewUrlRef.current === previewUrl) return
+    prevPreviewUrlRef.current = previewUrl
+    setDesignActive(false)
+    setDesignCount(0)
+    void window.api.preview.design.setEnabled(false)
+  }, [previewUrl])
 
   const dotClass =
     status === 'success'
@@ -511,6 +669,23 @@ export default function PreviewPane({
               <FabricIcon />
               <span className="seg-btn-label">Fabric</span>
             </button>
+            {designModeEnabled && (
+              <button
+                className={`seg-btn ${designActive ? 'seg-btn--on' : ''}`}
+                onClick={toggleDesign}
+                disabled={!showWebview || transitioning || designBusy}
+                title="Design mode — click elements in the preview to tweak them (move, resize, color, text, chart specs), then send the changes to chat"
+              >
+                <DesignIcon />
+                <span className="seg-btn-label">
+                  {designBusy
+                    ? 'Sending…'
+                    : designActive
+                      ? `Design${designCount ? ` · ${designCount}` : ''}`
+                      : 'Design'}
+                </span>
+              </button>
+            )}
             <button
               className="seg-btn"
               onClick={() => void startAnnotate()}
@@ -519,15 +694,6 @@ export default function PreviewPane({
             >
               <AnnotateIcon />
               <span className="seg-btn-label">{capturing ? 'Capturing…' : 'Annotate'}</span>
-            </button>
-            <button
-              className="seg-btn seg-btn--icon"
-              onClick={openDevtools}
-              disabled={!showWebview || transitioning}
-              aria-label="Open devtools"
-              title="Open the browser devtools (inspector) for the preview — inspect the deployed app's DOM, console and network"
-            >
-              <DevToolsIcon />
             </button>
             <button
               className={`seg-btn seg-btn--icon ${focused ? 'seg-btn--on' : ''}`}

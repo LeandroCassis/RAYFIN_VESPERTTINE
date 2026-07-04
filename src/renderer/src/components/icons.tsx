@@ -83,17 +83,6 @@ export function HomeIcon(props: IconProps): JSX.Element {
   )
 }
 
-/** Code angle-brackets `</>` — open the preview's browser devtools / inspector. */
-export function DevToolsIcon(props: IconProps): JSX.Element {
-  return (
-    <Icon {...props}>
-      <path d="m8 8-4 4 4 4" />
-      <path d="m16 8 4 4-4 4" />
-      <path d="m13.5 6-3 12" />
-    </Icon>
-  )
-}
-
 /** Stacked layers — view inside the Fabric portal shell. */
 export function FabricIcon(props: IconProps): JSX.Element {
   return (
@@ -111,6 +100,16 @@ export function AnnotateIcon(props: IconProps): JSX.Element {
     <Icon {...props}>
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
+    </Icon>
+  )
+}
+
+/** Cursor selecting inside a frame — the in-preview design / tweak mode. */
+export function DesignIcon(props: IconProps): JSX.Element {
+  return (
+    <Icon {...props}>
+      <path d="M14 3H3v11" opacity="0.5" />
+      <path d="m8 8 12 5-5 2-2 5-5-12Z" />
     </Icon>
   )
 }

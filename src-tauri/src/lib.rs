@@ -218,10 +218,12 @@ pub fn run() {
       services::preview::preview_set_bounds,
       services::preview::preview_hide,
       services::preview::preview_reload,
-      services::preview::preview_open_devtools,
       services::preview::preview_back,
       services::preview::preview_forward,
       services::preview::preview_capture,
+      services::preview::preview_design_set,
+      services::preview::preview_design_poll,
+      services::preview::preview_design_drain,
     ])
     .build(tauri::generate_context!())
     .expect("error while building tauri application")

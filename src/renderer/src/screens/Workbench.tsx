@@ -914,6 +914,20 @@ export default function Workbench({
                         setFocusPane((f) => (f === 'preview' ? null : 'preview'))
                       }
                       onPreviewModeChanged={() => void refreshProjects()}
+                      designModeEnabled={Boolean(settings?.experiments?.previewDesignMode)}
+                      onDesignHandoff={(instruction, shot) => {
+                        if (shot) addShot(active.id, shot)
+                        // Make the composer visible (design mode may have focused
+                        // the preview), then stage the instruction for review.
+                        setFocusPane((f) => (f === 'preview' ? null : f))
+                        setChatOutbound({
+                          id: `design-${Date.now()}`,
+                          projectId: active.id,
+                          display: 'Design-mode tweaks',
+                          prompt: instruction,
+                          stage: true
+                        })
+                      }}
                     />
                   </section>
                   {resizing && (

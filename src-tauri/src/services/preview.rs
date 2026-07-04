@@ -102,6 +102,25 @@ const CONSOLE_INIT_JS: &str = r#";(function () {
   } catch (e) {}
 })();"#;
 
+/// The in-page "design mode" controller (see `services/design_agent.js`).
+/// Evaluated on demand by [`preview_design_set`] (never bundled into the
+/// document-start script, so the deployed app stays untouched unless the user
+/// opens design mode). Idempotent: defines `window.__rayfinDesign` once. Combined
+/// with a trailing `.enable()` when turning design mode on; re-evaluated on every
+/// finished page load while a design session is active so it survives SPA
+/// navigations and reloads.
+const DESIGN_AGENT_JS: &str = include_str!("design_agent.js");
+
+/// JS that reads the design controller's lightweight status (returns an object or
+/// `null`). WebView2 serializes the completion value to JSON for the callback.
+const DESIGN_POLL_JS: &str =
+  "(function(){try{return window.__rayfinDesign?window.__rayfinDesign.peek():null}catch(e){return null}})()";
+
+/// JS that drains a pending "Send to chat" handoff (returns an object once, then
+/// clears the change-set), or `null` when nothing is pending.
+const DESIGN_DRAIN_JS: &str =
+  "(function(){try{return window.__rayfinDesign?window.__rayfinDesign.drain():null}catch(e){return null}})()";
+
 /// Logical-pixel rectangle reported by the renderer (its host element's bounds,
 /// relative to the window client area — i.e. `getBoundingClientRect()`).
 #[derive(Debug, Clone, Copy, serde::Deserialize)]
@@ -171,6 +190,10 @@ struct Inner {
   /// the whole app — so [`capture_preview_bytes`] refuses to capture unless this
   /// is `true`.
   visible: bool,
+  /// Whether an in-preview "design mode" session is active. Drives re-injection
+  /// of the design controller on every finished page load (so it survives SPA
+  /// navigations / reloads) — see [`preview_design_set`] and [`on_page_load`].
+  design_active: bool,
 }
 
 impl Inner {
@@ -188,6 +211,10 @@ impl Inner {
     self.stack = vec![url.to_string()];
     self.cursor = 0;
     self.programmatic = false;
+    // A genuinely new root URL (project switch, redeploy-navigate, Fabric
+    // toggle) is a different app — end any active design session so the
+    // controller isn't re-injected into it (see `on_page_load`).
+    self.design_active = false;
   }
 }
 
@@ -206,10 +233,10 @@ fn build(app: &AppHandle, url: Url, bounds: PreviewBounds) -> AppResult<()> {
 
   let builder = WebviewBuilder::new(PREVIEW_LABEL, WebviewUrl::External(url))
     .focused(false)
-    // Expose the web inspector on the preview so users can open browser devtools
-    // for their deployed app (see `preview_open_devtools`). Devtools default to on
-    // in debug but off in release wry; the `devtools` cargo feature (Cargo.toml)
-    // makes `with_devtools`/`open_devtools` available, and this keeps it on.
+    // Expose the web inspector on the preview so users can right-click → Inspect
+    // to open browser devtools for their deployed app. Devtools default to on in
+    // debug but off in release wry; the `devtools` cargo feature (Cargo.toml)
+    // enables `with_devtools` + the context-menu inspector, and this keeps it on.
     .devtools(true)
     // Capture the deployed app's console output/errors so the agent can read
     // them back later via `fabricator_console`. Must be set before the webview
@@ -262,7 +289,7 @@ fn on_navigation(app: &AppHandle, u: &Url) {
 fn on_page_load(app: &AppHandle, event: PageLoadEvent, u: &Url) {
   let loading = matches!(event, PageLoadEvent::Started);
   let state = app.state::<PreviewState>();
-  let (can_back, can_fwd) = {
+  let (can_back, can_fwd, design_active) = {
     let mut inner = state.inner.lock().unwrap();
     // A finished load releases anyone blocked in `navigate_and_wait`.
     if !loading {
@@ -270,8 +297,16 @@ fn on_page_load(app: &AppHandle, event: PageLoadEvent, u: &Url) {
         let _ = tx.send(());
       }
     }
-    (inner.can_back(), inner.can_forward())
+    (inner.can_back(), inner.can_forward(), inner.design_active)
   };
+  // Re-inject + re-enable the design controller after a finished load so an
+  // active design session survives SPA navigations and reloads (eval'd code,
+  // unlike an initialization_script, does not persist across page loads).
+  if !loading && design_active {
+    if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
+      let _ = wv.eval(design_enable_js());
+    }
+  }
   emit_nav(app, &u.to_string(), loading, can_back, can_fwd);
 }
 
@@ -437,23 +472,6 @@ pub fn preview_reload(app: AppHandle) -> AppResult<()> {
   Ok(())
 }
 
-/// Open the browser devtools (web inspector) window for the preview webview, so a
-/// user can inspect their deployed app's DOM, console, network and storage. On
-/// Windows this opens WebView2's `OpenDevToolsWindow` in a separate window. The
-/// call is dispatched to the runtime (non-blocking, hidden-safe), so it never
-/// pumps/deadlocks the UI thread the way a capture would.
-///
-/// Requires the `devtools` cargo feature on `tauri` (see Cargo.toml), which also
-/// makes `Webview::open_devtools` compile in release builds; without it this API
-/// is gated out entirely.
-#[tauri::command]
-pub fn preview_open_devtools(app: AppHandle) -> AppResult<()> {
-  if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
-    wv.open_devtools();
-  }
-  Ok(())
-}
-
 /// Navigate back one entry in the preview's history (no-op if at the start).
 #[tauri::command]
 pub fn preview_back(app: AppHandle, state: State<'_, PreviewState>) -> AppResult<()> {
@@ -493,6 +511,103 @@ fn navigate_to(app: &AppHandle, target: Option<String>) {
       let _ = wv.navigate(parsed);
     }
   }
+}
+
+/// Lightweight status of the in-preview design session, read by the renderer's
+/// poll while design mode is active. Mirrors `window.__rayfinDesign.peek()`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesignStatus {
+  pub enabled: bool,
+  pub version: u64,
+  pub change_count: u32,
+  /// True once the user hit "Send to chat" — the renderer then captures a
+  /// (highlighted) screenshot and drains the handoff.
+  pub handoff_ready: bool,
+}
+
+/// A drained "Send to chat" handoff: the composed instruction + change count.
+/// Mirrors `window.__rayfinDesign.drain()`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DesignHandoff {
+  pub instruction: String,
+  pub change_count: u32,
+}
+
+/// The controller source plus a guarded `enable()` call, evaluated to (re)install
+/// and turn on design mode.
+fn design_enable_js() -> String {
+  format!("{DESIGN_AGENT_JS}\n;try{{window.__rayfinDesign&&window.__rayfinDesign.enable()}}catch(e){{}}")
+}
+
+/// Evaluate `js` on the preview webview and return its JSON completion value
+/// parsed into `T` (or `None` when the webview is gone / the value is `null`).
+/// WebView2 serializes the result to JSON for the callback; the whole round-trip
+/// is time-bounded so a stalled dispatch can never wedge the caller.
+async fn design_eval<T: serde::de::DeserializeOwned>(app: &AppHandle, js: &str) -> AppResult<Option<T>> {
+  let Some(wv) = app.get_webview(PREVIEW_LABEL) else {
+    return Ok(None);
+  };
+  let (tx, rx) = oneshot::channel::<String>();
+  let tx = Mutex::new(Some(tx));
+  wv.eval_with_callback(js.to_string(), move |res| {
+    if let Ok(mut guard) = tx.lock() {
+      if let Some(tx) = guard.take() {
+        let _ = tx.send(res);
+      }
+    }
+  })
+  .map_err(|e| AppError::Msg(format!("failed to eval on preview: {e}")))?;
+  let res = match tokio::time::timeout(Duration::from_secs(4), rx).await {
+    Ok(Ok(s)) => s,
+    _ => return Ok(None),
+  };
+  let trimmed = res.trim();
+  if trimmed.is_empty() || trimmed == "null" {
+    return Ok(None);
+  }
+  match serde_json::from_str::<T>(trimmed) {
+    Ok(v) => Ok(Some(v)),
+    Err(_) => Ok(None),
+  }
+}
+
+/// Turn the in-preview "design mode" on/off. Evaluates (and, when enabling,
+/// re-installs) the design controller in the preview webview and records the
+/// session state so the controller is re-injected on subsequent page loads.
+#[tauri::command]
+pub fn preview_design_set(
+  app: AppHandle,
+  state: State<'_, PreviewState>,
+  enabled: bool,
+) -> AppResult<()> {
+  state.inner.lock().unwrap().design_active = enabled;
+  if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
+    let js = if enabled {
+      design_enable_js()
+    } else {
+      "try{window.__rayfinDesign&&window.__rayfinDesign.disable()}catch(e){}".to_string()
+    };
+    wv.eval(js).map_err(|e| AppError::Msg(e.to_string()))?;
+  }
+  Ok(())
+}
+
+/// Read the design controller's current status (changes count + whether a
+/// "Send to chat" handoff is ready). Polled by the renderer while design mode is
+/// on. Returns `None` if design mode isn't installed/active.
+#[tauri::command]
+pub async fn preview_design_poll(app: AppHandle) -> AppResult<Option<DesignStatus>> {
+  design_eval(&app, DESIGN_POLL_JS).await
+}
+
+/// Drain a pending "Send to chat" handoff (the composed instruction), clearing
+/// the in-preview change-set. The renderer captures the highlighted screenshot
+/// *before* calling this. Returns `None` when nothing is pending.
+#[tauri::command]
+pub async fn preview_design_drain(app: AppHandle) -> AppResult<Option<DesignHandoff>> {
+  design_eval(&app, DESIGN_DRAIN_JS).await
 }
 
 /// Capture the current preview content as a PNG and return it as a `data:` URL.

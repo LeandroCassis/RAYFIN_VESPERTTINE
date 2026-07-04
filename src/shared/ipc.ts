@@ -458,6 +458,13 @@ export interface ExperimentFlags {
    * in the standard Agent mode.
    */
   chatModeSelector?: boolean
+  /**
+   * Preview design mode: enable the in-preview click-to-edit "design mode" —
+   * select live elements and edit them (move / resize / recolor / text, plus a
+   * structured Graphein chart-spec editor), then hand the collected changes to
+   * the chat composer as a structured instruction for review.
+   */
+  previewDesignMode?: boolean
 }
 
 export interface CreateProjectInput {
@@ -974,6 +981,30 @@ export interface PreviewAgentEvent {
   url?: string
 }
 
+/**
+ * Lightweight status of the in-preview "design mode" session (experiment),
+ * polled by the renderer while design mode is on. Mirrors the injected
+ * controller's `peek()` (see the native `DesignStatus`).
+ */
+export interface PreviewDesignStatus {
+  enabled: boolean
+  /** Bumped on every recorded change — lets the poll detect activity cheaply. */
+  version: number
+  /** Number of tweaks recorded so far. */
+  changeCount: number
+  /** True once the user hit "Send to chat"; the renderer then captures + drains. */
+  handoffReady: boolean
+}
+
+/**
+ * A drained design-mode "Send to chat" hand-off: the composed natural-language
+ * instruction describing every tweak, plus the change count.
+ */
+export interface PreviewDesignHandoff {
+  instruction: string
+  changeCount: number
+}
+
 /* ------------------------------------------------------------------ *
  * IPC channels
  * ------------------------------------------------------------------ */
@@ -1416,12 +1447,6 @@ export interface RayfinStudioApi {
     hide: () => Promise<void>
     /** Reload the current page. */
     reload: () => Promise<void>
-    /**
-     * Open the browser devtools (web inspector) window for the preview, so you
-     * can inspect the deployed app's DOM, console, network and storage. On
-     * Windows this opens WebView2's DevTools in a separate window.
-     */
-    openDevtools: () => Promise<void>
     /** Navigate back one entry in the preview's history. */
     back: () => Promise<void>
     /** Navigate forward one entry in the preview's history. */
@@ -1441,6 +1466,20 @@ export interface RayfinStudioApi {
      * running app). Returns an unsubscribe function.
      */
     onAgentPreview: (cb: (event: PreviewAgentEvent) => void) => () => void
+    /**
+     * In-preview "design mode" (experiment, `previewDesignMode`). Injects a
+     * click-to-edit controller into the preview webview so the user can tweak
+     * live elements (move / resize / recolor / text + a Graphein spec editor),
+     * then hand the collected changes to the chat composer.
+     */
+    design: {
+      /** Turn design mode on/off (installs + enables/disables the controller). */
+      setEnabled: (enabled: boolean) => Promise<void>
+      /** Read the controller status (change count + handoff-ready). Polled while on. */
+      poll: () => Promise<PreviewDesignStatus | null>
+      /** Drain a pending "Send to chat" hand-off (call after capturing a shot). */
+      drain: () => Promise<PreviewDesignHandoff | null>
+    }
   }
 
   /** Subscribe to streamed process output. Returns an unsubscribe function. */
