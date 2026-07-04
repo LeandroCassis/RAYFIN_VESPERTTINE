@@ -39,6 +39,9 @@ export interface PendingShot {
   thumb: string
 }
 
+/** localStorage key persisting the design-mode AI model choice across sessions. */
+const DESIGN_MODEL_KEY = 'rayfin.design.aiModel'
+
 interface Props {
   project: StudioProject
   deploy: DeployUiState | undefined
@@ -481,9 +484,15 @@ export default function PreviewPane({
   // The resolved model list for the placeholder AI picker, cached so the poll can
   // re-push it if the controller is re-injected empty (preview reload).
   const designModelsRef = useRef<{ id: string; name: string; fast: boolean }[] | null>(null)
+  // The user's chosen AI model id, persisted across sessions (localStorage) so the
+  // picker preselects it. Seeded from storage; updated when the poll sees a change.
+  const designModelRef = useRef<string | null>(
+    typeof localStorage !== 'undefined' ? localStorage.getItem(DESIGN_MODEL_KEY) : null
+  )
 
   // Resolve a fast model once design mode is on, and push the model list to the
-  // controller's placeholder AI picker (fast models first). Best-effort.
+  // controller's placeholder AI picker (fast models first), preselecting the
+  // persisted choice when present. Best-effort.
   useEffect(() => {
     if (!designActive) return
     let cancelled = false
@@ -496,7 +505,7 @@ export default function PreviewPane({
           .sort((a, b) => (a.fast === b.fast ? 0 : a.fast ? -1 : 1))
         if (list.length) {
           designModelsRef.current = list
-          void window.api.preview.design.setModels(list)
+          void window.api.preview.design.setModels(list, designModelRef.current ?? undefined)
         }
       })
       .catch(() => {
@@ -604,10 +613,22 @@ export default function PreviewPane({
         const status = await window.api.preview.design.poll()
         if (cancelled) return
         if (status) setDesignCount(status.changeCount)
+        // Persist the AI model choice when the user changes it in the picker.
+        if (status?.aiModel && status.aiModel !== designModelRef.current) {
+          designModelRef.current = status.aiModel
+          try {
+            localStorage.setItem(DESIGN_MODEL_KEY, status.aiModel)
+          } catch {
+            /* storage unavailable — keep the in-memory ref */
+          }
+        }
         // Re-push the model list if the controller was re-injected empty (a
-        // preview reload drops its in-page state).
+        // preview reload drops its in-page state), preselecting the saved choice.
         if (status && status.hasModels === false && designModelsRef.current) {
-          void window.api.preview.design.setModels(designModelsRef.current)
+          void window.api.preview.design.setModels(
+            designModelsRef.current,
+            designModelRef.current ?? undefined
+          )
         }
         if (status?.aiPending && !aiRef.current) {
           aiRef.current = true

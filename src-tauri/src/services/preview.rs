@@ -537,6 +537,10 @@ pub struct DesignStatus {
   /// empty on page reloads, so the renderer re-pushes when this is false).
   #[serde(default)]
   pub has_models: bool,
+  /// The placeholder AI picker's currently selected model id (the renderer
+  /// persists this so the choice survives across sessions). `None` when unset.
+  #[serde(default)]
+  pub ai_model: Option<String>,
 }
 
 /// A drained "Send to chat" handoff: the composed instruction + change count.
@@ -671,12 +675,21 @@ pub struct DesignModel {
 }
 
 /// Supply the design controller's placeholder AI model picker with the available
-/// models (the renderer resolves + fast-flags them). Pushed once per design session.
+/// models (the renderer resolves + fast-flags them) plus the user's `preferred`
+/// (persisted) model id to preselect. Pushed on session start and re-pushed if a
+/// preview reload re-injects the controller empty.
 #[tauri::command]
-pub fn preview_design_set_models(app: AppHandle, models: Vec<DesignModel>) -> AppResult<()> {
+pub fn preview_design_set_models(
+  app: AppHandle,
+  models: Vec<DesignModel>,
+  preferred: Option<String>,
+) -> AppResult<()> {
   if let Some(wv) = app.get_webview(PREVIEW_LABEL) {
     let json = serde_json::to_string(&models).unwrap_or_else(|_| "[]".into());
-    let js = format!("try{{window.__rayfinDesign&&window.__rayfinDesign.setModels({json})}}catch(e){{}}");
+    let pref = serde_json::to_string(&preferred).unwrap_or_else(|_| "null".into());
+    let js = format!(
+      "try{{window.__rayfinDesign&&window.__rayfinDesign.setModels({json},{pref})}}catch(e){{}}"
+    );
     wv.eval(js).map_err(|e| AppError::Msg(e.to_string()))?;
   }
   Ok(())

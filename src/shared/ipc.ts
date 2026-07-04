@@ -998,6 +998,8 @@ export interface PreviewDesignStatus {
   aiPending?: boolean
   /** Whether the controller currently holds the AI model list (re-pushed if not). */
   hasModels?: boolean
+  /** The AI picker's currently selected model id — persisted by the renderer. */
+  aiModel?: string | null
 }
 
 /**
@@ -1502,7 +1504,7 @@ export interface RayfinStudioApi {
       /** Inject AI-generated HTML into the placeholder `id` (controller sanitizes it). */
       applyGenerated: (id: string, html: string) => Promise<void>
       /** Supply the placeholder AI model picker with the available models. */
-      setModels: (models: { id: string; name: string; fast: boolean }[]) => Promise<void>
+      setModels: (models: { id: string; name: string; fast: boolean }[], preferred?: string) => Promise<void>
       /**
        * Generate a self-contained HTML/CSS snippet for a placeholder from a
        * description, on a transient fast-model session. Returns the raw HTML

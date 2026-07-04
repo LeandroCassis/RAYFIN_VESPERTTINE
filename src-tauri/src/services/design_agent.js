@@ -314,12 +314,15 @@
     '.insp-actions{display:flex;gap:6px;padding:8px 12px;border-top:1px solid ' + BORDER + '}',
     // AI generate card
     '.ai-card{margin:2px 0 4px;padding:11px 12px 12px;border:1px solid ' + TEAL + '3d;border-radius:11px;background:linear-gradient(155deg,' + TEAL + '1f,rgba(20,184,186,0) 72%)}',
-    '.ai-card h5{margin:0;color:' + TEAL_HI + ';font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;display:flex;align-items:center;gap:6px}',
-    '.ai-card textarea{background:' + PANEL_BG + 'cc}',
-    '.ai-row{display:flex;gap:6px;margin-top:8px;align-items:stretch}',
-    '.ai-model{flex:1 1 auto;min-width:0;max-width:none;background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:8px;padding:0 8px;font-size:11px;height:32px}',
-    '.ai-btn{flex:none;font-size:12px;font-weight:700;color:#04211f;background:' + TEAL + ';border-radius:8px;padding:0 14px;height:32px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:0 2px 12px ' + TEAL + '55}',
-    '.ai-btn:hover{background:' + TEAL_HI + ';box-shadow:0 3px 16px ' + TEAL + '77}',
+    '.ai-card h5{margin:0 0 8px;color:' + TEAL_HI + ';font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}',
+    '.ai-box{border:1px solid ' + BORDER + ';border-radius:9px;background:' + PANEL_BG + 'cc;overflow:hidden;transition:border-color .15s}',
+    '.ai-box:focus-within{border-color:' + TEAL + '}',
+    '.ai-box textarea{width:100%;max-width:100%;background:transparent;border:0;border-radius:0;margin:0;min-height:60px;resize:none;padding:9px 10px;font-size:12px;line-height:1.45;color:' + TXT + '}',
+    '.ai-box textarea:focus{outline:none}',
+    '.ai-foot{display:flex;align-items:center;gap:6px;padding:6px;border-top:1px solid ' + BORDER + '}',
+    '.ai-foot .ai-model{flex:1 1 auto;width:auto;min-width:0;max-width:none;background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:7px;padding:0 7px;font-size:11px;height:28px}',
+    '.ai-btn{flex:none;font-size:12px;font-weight:700;color:#04211f;background:' + TEAL + ';border-radius:7px;padding:0 13px;height:28px;display:inline-flex;align-items:center;white-space:nowrap}',
+    '.ai-btn:hover{background:' + TEAL_HI + '}',
     '.ai-btn.busy{opacity:.7;pointer-events:none}',
     '.ai-note{margin-top:9px;font-size:10px;color:' + TXT_DIM + ';line-height:1.45}',
     // toolbar actions (count / undo / discard / send)
@@ -675,31 +678,34 @@
   // describe the component + pick a model → a model draws HTML/CSS into the box.
   function aiGroup(ph) {
     var card = h('div', { class: 'ai-card' });
-    card.appendChild(h('h5', { text: '✨ Generate with AI' }));
+    card.appendChild(h('h5', { text: 'Generate with AI' }));
     var generating = ph.getAttribute('data-rayfin-gen') === '1';
     var entry = findInsertEntry(ph);
     var hasGen = !!(entry && entry.generatedHtml);
+
+    var box = h('div', { class: 'ai-box' });
     var ta = h('textarea', { placeholder: 'Describe this component — e.g. “a KPI card showing total revenue with a small up-trend”', text: phDesc(ph) });
     ta.oninput = function () { ph.setAttribute('data-rayfin-desc', ta.value); };
-    card.appendChild(ta);
+    box.appendChild(ta);
 
-    var row = h('div', { class: 'ai-row' });
-    var sel = h('select', { class: 'ai-model', title: 'Model (⚡ = fast)' });
+    var foot = h('div', { class: 'ai-foot' });
+    var sel = h('select', { class: 'ai-model', title: 'Model' });
     var models = (state.models && state.models.length) ? state.models : [{ id: '', name: 'Fast model', fast: true }];
     models.forEach(function (m) {
-      var o = h('option', { value: m.id, text: (m.fast ? '⚡ ' : '') + m.name });
+      var o = h('option', { value: m.id, text: m.name });
       if (m.id === state.aiModel) o.setAttribute('selected', 'selected');
       sel.appendChild(o);
     });
     sel.onchange = function () { state.aiModel = sel.value; };
     if (generating) { sel.disabled = true; }
-    row.appendChild(sel);
-    var btn = h('button', { class: 'ai-btn' + (generating ? ' busy' : ''), text: generating ? '✨ Generating…' : (hasGen ? 'Regenerate' : '✨ Generate') });
+    foot.appendChild(sel);
+    var btn = h('button', { class: 'ai-btn' + (generating ? ' busy' : ''), text: generating ? 'Generating…' : (hasGen ? 'Regenerate' : 'Generate') });
     btn.onclick = function (e) { e.stopPropagation(); requestAiGenerate(ph, ta.value); };
-    row.appendChild(btn);
-    card.appendChild(row);
+    foot.appendChild(btn);
+    box.appendChild(foot);
+    card.appendChild(box);
 
-    card.appendChild(h('div', { class: 'ai-note', text: hasGen ? '✓ Preview generated — sent to chat as the starting point.' : 'HTML/CSS only, drawn into the box and sent to chat as a starting point.' }));
+    card.appendChild(h('div', { class: 'ai-note', text: hasGen ? 'Preview generated — sent to chat as the starting point.' : 'HTML/CSS only, drawn into the box and sent to chat as a starting point.' }));
     return card;
   }
 
@@ -1128,7 +1134,7 @@
     });
     setTool('select');
     select(ph);
-    showHint('Describe it (with AI ✨) or resize + sketch inside it');
+    showHint('Describe it with AI, or resize + sketch inside it');
     setTimeout(function () { if (state.selected === ph) hideHint(); }, 2800);
   }
 
@@ -1453,7 +1459,7 @@
     __v: VERSION,
     enable: function () { try { enable(); } catch (e) {} },
     disable: function () { try { disable(); } catch (e) {} },
-    peek: function () { return { enabled: state.enabled, version: state.version, changeCount: state.changes.length, handoffReady: !!state.handoff, aiPending: !!state.aiRequest, hasModels: !!(state.models && state.models.length) }; },
+    peek: function () { return { enabled: state.enabled, version: state.version, changeCount: state.changes.length, handoffReady: !!state.handoff, aiPending: !!state.aiRequest, hasModels: !!(state.models && state.models.length), aiModel: state.aiModel || null }; },
     drain: function () {
       var hf = state.handoff; if (!hf) return null;
       state.handoff = null;
@@ -1476,12 +1482,19 @@
     applyGenerated: function (id, html) { try { applyGenerated(id, html); } catch (e) {} },
     // Supply the model list for the placeholder AI picker (host resolves it);
     // `[{id,name,fast}]`. Defaults the selection to the first fast model.
-    setModels: function (list) {
+    setModels: function (list, preferred) {
       try {
         state.models = Array.isArray(list) ? list : null;
-        if (!state.aiModel && state.models && state.models.length) {
-          var fast = state.models.filter(function (m) { return m.fast; })[0];
-          state.aiModel = (fast || state.models[0]).id;
+        var ids = (state.models || []).map(function (m) { return m.id; });
+        // Preselect: keep the current pick if still offered; otherwise the
+        // caller's preferred (persisted) model; otherwise the first fast / first.
+        if (!state.aiModel || ids.indexOf(state.aiModel) < 0) {
+          if (preferred && ids.indexOf(preferred) >= 0) {
+            state.aiModel = preferred;
+          } else if (state.models && state.models.length) {
+            var fast = state.models.filter(function (m) { return m.fast; })[0];
+            state.aiModel = (fast || state.models[0]).id;
+          }
         }
         if (state.selected && isPlaceholder(state.selected)) renderInspector();
       } catch (e) {}
