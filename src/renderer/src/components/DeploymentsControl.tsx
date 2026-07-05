@@ -188,7 +188,7 @@ export default function DeploymentsControl({
           onClick={() => setOpen((o) => !o)}
         >
           <span className={`seg-dot${hasDeployment ? ' seg-dot--set' : ''}`} />
-          <span className="dep-chip-prefix">Workspace:</span>
+          <span className="dep-chip-prefix">Deployment:</span>
           <span className="dep-chip-label">
             {activeLabel || (reconciling ? 'Checking…' : 'Not deployed')}
           </span>

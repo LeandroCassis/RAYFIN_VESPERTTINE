@@ -29,6 +29,7 @@ import ChatPanel, { type UIChatMessage, type OutboundPrompt } from '../component
 import PreviewPane, { type DeployUiState, type PendingShot } from '../components/PreviewPane'
 import DeploymentsControl from '../components/DeploymentsControl'
 import GitControl from '../components/GitControl'
+import WorkspaceStatus from '../components/WorkspaceStatus'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
 import AdvisorView, { categoryMeta } from '../components/AdvisorView'
@@ -1047,6 +1048,12 @@ export default function Workbench({
           <>
             <span className="statusbar-sep">·</span>
             <RayfinVersionControl info={rayfinVer} onUpdate={requestRayfinUpdate} />
+          </>
+        )}
+        {active && (active.workspaceName || active.workspace) && (
+          <>
+            <span className="statusbar-sep">·</span>
+            <WorkspaceStatus project={active} />
           </>
         )}
         <span className="statusbar-spacer" />

@@ -414,6 +414,43 @@ code {
   opacity: 0.85;
 }
 
+/* Deployed project's Fabric workspace — a quiet link (mirrors the Report-an-issue
+   affordance) that opens the workspace in the Fabric portal. */
+.statusbar-ws {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 240px;
+  padding: 3px 6px;
+  margin: -3px -6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text-dim);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.statusbar-ws:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+.statusbar-ws-ico {
+  font-size: 13px;
+  opacity: 0.75;
+}
+
+.statusbar-ws-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Git lives in the footer status bar now (leading item). Blend it with the bar's
    12px dim type — no pill/border, just a quiet hover — and flip its popover to open
    upward (the bar is pinned to the window's bottom edge) so it never clips. */
