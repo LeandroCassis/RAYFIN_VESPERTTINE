@@ -402,7 +402,7 @@
     // so the prompt has space to breathe. Nested padding was trimmed so the textarea
     // gets the panel width rather than stacking card + box + textarea insets.
     '.ai-card{margin:0 0 9px;padding:10px 10px 11px;border:1px solid ' + TEAL + '2e;border-radius:11px;background:' + TEAL + '12}',
-    '.ai-card h5{margin:0 0 8px;color:' + TEAL_HI + ';font-size:var(--fs-small);font-weight:700;letter-spacing:.04em;text-transform:uppercase}',
+    '.ai-card h5{margin:0 0 8px;color:' + TEAL + ';font-size:var(--fs-small);font-weight:700;letter-spacing:.04em;text-transform:uppercase}',
     '.ai-box{border:1px solid ' + BORDER + ';border-radius:9px;background:' + PANEL_BG + ';overflow:hidden;transition:border-color .15s,box-shadow .15s}',
     '.ai-box:focus-within{border-color:' + TEAL + ';box-shadow:0 0 0 2px ' + TEAL + '33}',
     '.ai-box textarea{width:100%;max-width:100%;display:block;background:transparent;border:0;border-radius:0;margin:0;min-height:104px;resize:none;padding:9px 10px;font-size:var(--fs-base);line-height:1.5;color:' + TXT + '}',
