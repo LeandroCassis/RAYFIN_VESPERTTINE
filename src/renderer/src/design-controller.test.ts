@@ -21,6 +21,7 @@ interface DesignApi {
   disable: () => void
   peek: () => Record<string, unknown> | null
   setTheme: (theme: Record<string, unknown>) => void
+  setModels: (list: { id: string; name: string; fast?: boolean }[], preferred?: string) => void
   applyRestyle: (id: string, patch: Record<string, unknown>) => void
 }
 
@@ -94,6 +95,18 @@ describe('design controller — theme + AI restyle', () => {
     expect((wrap.querySelector('.btn') as HTMLElement).style.borderRadius).toBe('999px')
     // two descendant props applied → two change-set entries
     expect(d.peek()).toMatchObject({ changeCount: 2 })
+  })
+
+  it('defaults the model to Auto and persists an explicit Auto choice', () => {
+    const d = install()
+    d.enable('direct')
+    expect(d.peek()).toMatchObject({ aiModel: 'auto' }) // default for first-time users
+    d.setModels([{ id: 'gpt-x', name: 'GPT-X', fast: true }], undefined)
+    expect(d.peek()).toMatchObject({ aiModel: 'auto' }) // stays Auto when nothing persisted
+    d.setModels([{ id: 'gpt-x', name: 'GPT-X', fast: true }], 'gpt-x')
+    expect(d.peek()).toMatchObject({ aiModel: 'gpt-x' }) // honours a persisted model
+    d.setModels([{ id: 'gpt-x', name: 'GPT-X', fast: true }], 'auto')
+    expect(d.peek()).toMatchObject({ aiModel: 'auto' }) // honours a persisted Auto (the fix)
   })
 
   it('ignores non-whitelisted properties in a restyle patch', () => {

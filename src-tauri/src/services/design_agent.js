@@ -92,7 +92,7 @@
     theme: null, // Fabricator theme pushed by the host via setTheme()
     hasTheme: false, // re-pushed by the renderer after a reload when false
     models: null, // [{id,name,fast}] supplied by the host for the AI model picker
-    aiModel: '' // selected model id ('' → host default / fast)
+    aiModel: 'auto' // selected model id; 'auto' → let the engine pick (default)
   };
 
   // ---- constants -----------------------------------------------------------
@@ -985,7 +985,7 @@
 
     var foot = h('div', { class: 'ai-foot' });
     var sel = h('select', { class: 'ai-model', title: 'Model' });
-    var models = [{ id: '', name: 'Auto' }].concat(state.models && state.models.length ? state.models : []);
+    var models = [{ id: 'auto', name: 'Auto' }].concat(state.models && state.models.length ? state.models : []);
     models.forEach(function (m) {
       var o = h('option', { value: m.id, text: m.name });
       if (m.id === state.aiModel) o.setAttribute('selected', 'selected');
@@ -1026,7 +1026,7 @@
     box.appendChild(ta);
     var foot = h('div', { class: 'ai-foot' });
     var sel = h('select', { class: 'ai-model', title: 'Model' });
-    var models = [{ id: '', name: 'Auto' }].concat(state.models && state.models.length ? state.models : []);
+    var models = [{ id: 'auto', name: 'Auto' }].concat(state.models && state.models.length ? state.models : []);
     models.forEach(function (m) {
       var o = h('option', { value: m.id, text: m.name });
       if (m.id === state.aiModel) o.setAttribute('selected', 'selected');
@@ -1601,7 +1601,7 @@
     ph.classList.add('__rf_gen');
     ph.innerHTML = '<span class="__rf_grid"></span><span class="__rf_gscan"></span>' +
       '<span class="__rf_glab"><span class="__rf_gspark">✦</span><span>Building<span class="__rf_gdots"></span></span></span>';
-    state.aiRequest = { id: id, description: desc, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), model: state.aiModel || undefined };
+    state.aiRequest = { id: id, description: desc, width: Math.max(1, Math.round(r.width)), height: Math.max(1, Math.round(r.height)), model: selectedModel() };
     bump();
     renderInspector();
   }
@@ -1700,7 +1700,7 @@
     var id = el.getAttribute('data-rayfin-edit-id');
     if (!id) { id = 'e' + (++editSeq) + '_' + Date.now(); el.setAttribute('data-rayfin-edit-id', id); }
     el.setAttribute('data-rayfin-editing', '1');
-    state.aiEditQueue.push({ id: id, description: desc, model: state.aiModel || undefined, context: restyleContext(el) });
+    state.aiEditQueue.push({ id: id, description: desc, model: selectedModel(), context: restyleContext(el) });
     bump();
     if (state.selected === el) renderInspector();
   }
@@ -1722,7 +1722,7 @@
       ids.push(id);
     });
     var primary = (state.selected && sel.indexOf(state.selected) >= 0) ? state.selected : sel[0];
-    state.aiEditQueue.push({ id: ids[0], ids: ids, description: desc, model: state.aiModel || undefined, context: restyleContext(primary) });
+    state.aiEditQueue.push({ id: ids[0], ids: ids, description: desc, model: selectedModel(), context: restyleContext(primary) });
     bump();
     renderInspector();
   }
@@ -2180,16 +2180,19 @@
     try {
       state.models = Array.isArray(list) ? list : null;
       var ids = (state.models || []).map(function (m) { return m.id; });
-      // '' = Auto (the engine picks) and is the default. Honour a persisted
-      // `preferred` when given; else keep a still-valid pick; else fall back to Auto.
+      var valid = function (v) { return v === 'auto' || ids.indexOf(v) >= 0; };
+      // 'auto' = the engine picks, and is the default. Honour a persisted
+      // `preferred` when valid; else keep a still-valid pick; else fall back to Auto.
       if (preferred !== undefined && preferred !== null) {
-        state.aiModel = (preferred === '' || ids.indexOf(preferred) >= 0) ? preferred : '';
-      } else if (state.aiModel && ids.indexOf(state.aiModel) < 0) {
-        state.aiModel = '';
+        state.aiModel = valid(preferred) ? preferred : 'auto';
+      } else if (!valid(state.aiModel)) {
+        state.aiModel = 'auto';
       }
       if (state.selected) renderInspector();
     } catch (e) {}
   }
+  // The model id to send to the engine for a generation ('auto' → none/default).
+  function selectedModel() { return (state.aiModel && state.aiModel !== 'auto') ? state.aiModel : undefined; }
   // Apply a Fabricator theme (accent/surfaces/text/border/scale) and repaint.
   function localSetTheme(theme) {
     if (!theme) return;
