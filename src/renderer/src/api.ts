@@ -78,6 +78,13 @@ export const api: RayfinStudioApi = {
     logoutRayfin: () => invoke('auth_logout_rayfin')
   },
 
+  github: {
+    status: () => invoke('github_status'),
+    login: () => invoke('github_login'),
+    listRepos: () => invoke('github_list_repos'),
+    clone: (repo: string) => invoke('github_clone', { input: repo })
+  },
+
   fabric: {
     listWorkspaces: () => invoke('fabric_workspaces'),
     listCapacities: () => invoke('fabric_capacities'),

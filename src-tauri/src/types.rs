@@ -475,6 +475,51 @@ pub struct ProjectActionResult {
   pub project: Option<StudioProject>,
 }
 
+/* ----------------------------- github ----------------------------- */
+
+/// Sign-in / availability state for the optional `gh` CLI, powering the
+/// "Clone from GitHub" flow's gating (install → sign in → browse).
+#[derive(Serialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubStatus {
+  /// True when the `gh` binary is resolvable on `PATH`.
+  pub gh_installed: bool,
+  /// True when `gh auth status` reports a signed-in account.
+  pub signed_in: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub user: Option<String>,
+}
+
+/// One repository entry from `gh repo list` (fields flattened/normalized for the UI).
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubRepo {
+  pub name_with_owner: String,
+  pub name: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub description: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub visibility: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub updated_at: Option<String>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub url: Option<String>,
+  pub is_private: bool,
+  pub is_fork: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub primary_language: Option<String>,
+}
+
+/// Result of listing the signed-in user's repositories.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GithubReposResult {
+  pub ok: bool,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub error: Option<String>,
+  pub repos: Vec<GithubRepo>,
+}
+
 /* ----------------------------- git ----------------------------- */
 
 #[derive(Serialize, Clone)]

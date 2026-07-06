@@ -108,6 +108,21 @@ static TOOLS: Lazy<Vec<ToolDef>> = Lazy::new(|| {
       install_hint: "Required to sign in to Azure.",
       install_url: Some("https://learn.microsoft.com/cli/azure/install-azure-cli"),
     },
+    ToolDef {
+      id: "gh",
+      name: "GitHub CLI",
+      bin: "gh",
+      version_args: &["--version"],
+      required: false,
+      npm_package: None,
+      system: Some(SystemPkg {
+        winget: Some("GitHub.cli"),
+        brew: Some("gh"),
+      }),
+      min_version: None,
+      install_hint: "Optional — enables signing in to GitHub to clone your repositories.",
+      install_url: Some("https://cli.github.com"),
+    },
   ]
 });
 
@@ -216,6 +231,7 @@ pub async fn doctor_install(app: AppHandle, id: String) -> InstallResult {
     "git" => "install:git",
     "rayfin" => "install:rayfin",
     "az" => "install:az",
+    "gh" => "install:gh",
     _ => "install:setup",
   };
   let on_data = proc_streamer(&app, channel);
@@ -534,5 +550,18 @@ mod tests {
     assert!(!meets_min_version(Some("18.20.4"), node.min_version.unwrap()));
     assert!(meets_min_version(Some("20.11.0"), node.min_version.unwrap()));
     assert!(meets_min_version(Some("22.14.0"), node.min_version.unwrap()));
+  }
+
+  #[test]
+  fn gh_tool_is_optional_and_system_installable() {
+    // The GitHub CLI powers the optional "Clone from GitHub" flow, so it must be
+    // present as a non-required, auto-installable tool (winget/brew) and never
+    // gate setup readiness.
+    let gh = tool_by_id("gh").expect("gh tool def");
+    assert!(!gh.required);
+    assert!(is_auto_installable(gh));
+    let sys = gh.system.as_ref().expect("gh system pkg");
+    assert_eq!(sys.winget, Some("GitHub.cli"));
+    assert_eq!(sys.brew, Some("gh"));
   }
 }

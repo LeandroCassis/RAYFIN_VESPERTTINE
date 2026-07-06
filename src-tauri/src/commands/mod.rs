@@ -11,6 +11,7 @@ pub mod doctor;
 pub mod fabric;
 pub mod files;
 pub mod git;
+pub mod github;
 pub mod misc;
 pub mod projects;
 pub mod projects_impl;

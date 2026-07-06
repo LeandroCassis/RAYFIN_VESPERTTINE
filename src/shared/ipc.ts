@@ -51,7 +51,7 @@ export interface DeleteProgressEvent {
  * Environment doctor
  * ------------------------------------------------------------------ */
 
-export type ToolId = 'node' | 'npm' | 'git' | 'rayfin' | 'copilot' | 'az'
+export type ToolId = 'node' | 'npm' | 'git' | 'rayfin' | 'copilot' | 'az' | 'gh'
 
 export interface ToolStatus {
   id: ToolId
@@ -103,6 +103,39 @@ export interface AuthStatus {
   copilot: CopilotAuthStatus
   rayfin: RayfinAuthStatus
   az: AzAuthStatus
+}
+
+/* ------------------------------------------------------------------ *
+ * GitHub (optional gh CLI: clone-from-GitHub)
+ * ------------------------------------------------------------------ */
+
+/** Availability + sign-in state for the optional `gh` CLI. */
+export interface GithubStatus {
+  /** True when the `gh` binary is on PATH. */
+  ghInstalled: boolean
+  /** True when `gh auth status` reports a signed-in account. */
+  signedIn: boolean
+  user?: string
+}
+
+/** One repository from `gh repo list` (fields normalized for the picker). */
+export interface GithubRepo {
+  nameWithOwner: string
+  name: string
+  description?: string
+  /** 'PUBLIC' | 'PRIVATE' | 'INTERNAL' (as reported by gh). */
+  visibility?: string
+  updatedAt?: string
+  url?: string
+  isPrivate: boolean
+  isFork: boolean
+  primaryLanguage?: string
+}
+
+export interface GithubReposResult {
+  ok: boolean
+  error?: string
+  repos: GithubRepo[]
 }
 
 /** A Fabric workspace the signed-in user can access, with capacity details. */
@@ -194,8 +227,10 @@ export type ProcStreamId =
   | 'install:copilot'
   | 'install:node'
   | 'install:git'
+  | 'install:gh'
   | 'install:setup'
   | 'create:project'
+  | 'clone:project'
   | 'deploy:run'
 
 export interface ProcLogEvent {
@@ -1107,6 +1142,11 @@ export const IpcChannels = {
   authLoginAz: 'auth:loginAz',
   authLogoutRayfin: 'auth:logoutRayfin',
 
+  githubStatus: 'github:status',
+  githubLogin: 'github:login',
+  githubListRepos: 'github:listRepos',
+  githubClone: 'github:clone',
+
   fabricWorkspaces: 'fabric:workspaces',
   fabricDeleteApps: 'fabric:deleteApps',
 
@@ -1235,6 +1275,21 @@ export interface RayfinStudioApi {
     loginRayfin: (tenant?: string) => Promise<ProcResult>
     loginAz: () => Promise<ProcResult>
     logoutRayfin: () => Promise<ProcResult>
+  }
+
+  /** Optional GitHub integration (backed by the `gh` CLI) for cloning repos. */
+  github: {
+    /** gh CLI availability + sign-in state. */
+    status: () => Promise<GithubStatus>
+    /** Launch an external terminal running `gh auth login --web` (browser flow). */
+    login: () => Promise<ProcResult>
+    /** List the signed-in user's repositories. */
+    listRepos: () => Promise<GithubReposResult>
+    /**
+     * Clone a repo (`owner/name` or a GitHub URL) into the workspace, then
+     * register + open it. Fails if the clone isn't a Rayfin project.
+     */
+    clone: (repo: string) => Promise<ProjectActionResult>
   }
 
   fabric: {

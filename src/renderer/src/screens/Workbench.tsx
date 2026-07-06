@@ -21,6 +21,7 @@ import {
   type StudioProject
 } from '@shared/ipc'
 import CreateProjectScreen from '../components/CreateProjectScreen'
+import CloneFromGitHubScreen from '../components/CloneFromGitHubScreen'
 import HomeView from '../components/HomeView'
 import DeleteProjectModal from '../components/DeleteProjectModal'
 import ConfirmModal from '../components/ConfirmModal'
@@ -103,6 +104,8 @@ export default function Workbench({
   const [projects, setProjects] = useState<ProjectsState | null>(null)
   /** Fullscreen create/deploy flow: 'create' = new-project wizard, 'deploy' = first-deploy gate CTA. */
   const [createMode, setCreateMode] = useState<'create' | 'deploy' | null>(null)
+  /** Fullscreen "Open existing… → Clone from GitHub" flow. */
+  const [showClone, setShowClone] = useState(false)
   const [opening, setOpening] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   /** Lazy-mount the Advisor view on first visit, then keep it mounted (hidden when
@@ -735,7 +738,15 @@ export default function Workbench({
         </div>
       </header>
 
-      {createMode ? (
+      {showClone ? (
+        <CloneFromGitHubScreen
+          onCancel={() => setShowClone(false)}
+          onCloned={() => {
+            void refreshProjects()
+            setShowClone(false)
+          }}
+        />
+      ) : createMode ? (
         <CreateProjectScreen
           mode={createMode}
           projectName={active?.name}
@@ -1012,6 +1023,7 @@ export default function Workbench({
                 }}
                 onNewProject={() => setCreateMode('create')}
                 onOpenExisting={openExisting}
+                onCloneFromGitHub={() => setShowClone(true)}
                 onChangeWorkspaceRoot={changeWorkspaceRoot}
               />
             </>

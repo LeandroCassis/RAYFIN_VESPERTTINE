@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react'
+import { useEffect, useState, type CSSProperties, type Dispatch, type SetStateAction } from 'react'
 import { createPortal } from 'react-dom'
 import type { StudioProject } from '@shared/ipc'
 import logo from '../assets/logo.png'
@@ -50,6 +50,8 @@ interface Props {
   onDeleteFromDisk: (p: StudioProject) => void
   onNewProject: () => void
   onOpenExisting: () => void
+  /** Start the "Clone from GitHub" flow (sign in + browse repos + clone). */
+  onCloneFromGitHub: () => void
   onChangeWorkspaceRoot: () => void
 }
 
@@ -78,9 +80,21 @@ export default function HomeView({
   onDeleteFromDisk,
   onNewProject,
   onOpenExisting,
+  onCloneFromGitHub,
   onChangeWorkspaceRoot
 }: Props): JSX.Element {
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null)
+  // Anchor rect for the "Open existing…" dropdown (folder vs. GitHub). Null = closed.
+  const [openMenuRect, setOpenMenuRect] = useState<DOMRect | null>(null)
+
+  // Close the "Open existing…" dropdown on any outside click (the button and the
+  // menu itself stopPropagation, so this only fires for genuine outside clicks).
+  useEffect(() => {
+    if (!openMenuRect) return
+    const close = (): void => setOpenMenuRect(null)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [openMenuRect])
 
   return (
     <div className="home">
@@ -95,9 +109,49 @@ export default function HomeView({
             <button className="btn btn--primary" onClick={onNewProject}>
               + New project
             </button>
-            <button className="btn btn--ghost" disabled={opening} onClick={onOpenExisting}>
+            <button
+              className="btn btn--ghost"
+              disabled={opening}
+              aria-haspopup="menu"
+              aria-expanded={openMenuRect ? true : false}
+              onClick={(e) => {
+                e.stopPropagation()
+                setOpenMenuRect(openMenuRect ? null : e.currentTarget.getBoundingClientRect())
+              }}
+            >
               {opening ? 'Opening…' : 'Open existing…'}
             </button>
+            {openMenuRect &&
+              createPortal(
+                <div
+                  className="project-menu"
+                  role="menu"
+                  style={floatingMenuStyle(openMenuRect)}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <button
+                    className="project-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenMenuRect(null)
+                      onOpenExisting()
+                    }}
+                  >
+                    Browse folder…
+                  </button>
+                  <button
+                    className="project-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setOpenMenuRect(null)
+                      onCloneFromGitHub()
+                    }}
+                  >
+                    Clone from GitHub…
+                  </button>
+                </div>,
+                document.body
+              )}
           </div>
         </header>
 

@@ -142,6 +142,11 @@ pub fn run() {
       commands::auth::auth_login_rayfin,
       commands::auth::auth_login_az,
       commands::auth::auth_logout_rayfin,
+      // github (optional gh CLI: clone-from-GitHub)
+      commands::github::github_status,
+      commands::github::github_login,
+      commands::github::github_list_repos,
+      commands::github::github_clone,
       // fabric
       commands::fabric::fabric_workspaces,
       commands::fabric::fabric_capacities,

@@ -10147,6 +10147,16 @@ code {
   margin-top: 2px;
 }
 
+/* Scrollable list of GitHub repositories in the Clone-from-GitHub screen. */
+.gh-repo-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-top: 8px;
+}
+
 /* Visually-hidden live region used for screen-reader phase announcements. */
 .sr-only {
   position: absolute;
