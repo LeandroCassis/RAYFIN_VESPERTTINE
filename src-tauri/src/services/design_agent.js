@@ -385,9 +385,12 @@
     '.row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 0;min-width:0}',
     '.row label{font-size:var(--fs-base);color:' + TXT + ';min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
     '.row .ctl{display:flex;align-items:center;gap:6px;flex:none}',
-    '.insp input[type=text],.insp input[type=number],.insp select,.insp textarea{background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:6px;padding:5px 7px;font-size:var(--fs-base);width:124px;max-width:58%}',
+    '.insp input[type=text],.insp input[type=number],.insp select,.insp textarea{background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:6px;padding:5px 8px;font-size:var(--fs-base);width:132px;max-width:60%}',
     '.insp textarea{width:100%;max-width:100%;min-height:74px;resize:none;margin-top:6px;line-height:1.45}',
-    '.insp input[type=number]{width:64px}',
+    // Number fields: wide enough for 4–5 digits, right-aligned, with the spin buttons
+    // removed (their arrows cropped the value in the old narrow field).
+    '.insp input[type=number]{width:88px;text-align:right;-moz-appearance:textfield;appearance:textfield}',
+    '.insp input[type=number]::-webkit-inner-spin-button,.insp input[type=number]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}',
     '.insp input[type=range]{width:104px;accent-color:' + TEAL + '}',
     '.insp input[type=color]{width:34px;height:24px;background:' + PANEL_BG2 + ';border:1px solid ' + BORDER + ';border-radius:5px;padding:2px}',
     '.insp .mini{color:' + TXT_DIM + ';font-size:var(--fs-small);font-weight:600;padding:4px 8px;border-radius:6px;background:' + PANEL_BG2 + '}',
@@ -395,19 +398,21 @@
     '.insp .mini.danger:hover{background:#5b1a1a;color:#fff}',
     '.insp-actions{display:flex;gap:6px;padding:7px 11px;border-top:1px solid ' + BORDER + '}',
     '.insp-multi{margin:2px 0 9px;padding:7px 10px;border-radius:8px;background:' + TEAL + '1f;border:1px solid ' + TEAL + '3d;color:' + TEAL_HI + ';font-size:var(--fs-small);font-weight:600}',
-    // AI generate card
-    '.ai-card{margin:2px 0 6px;padding:12px 13px 13px;border:1px solid ' + TEAL + '3d;border-radius:12px;background:linear-gradient(155deg,' + TEAL + '1f,transparent 72%)}',
-    '.ai-card h5{margin:0 0 9px;color:' + TEAL_HI + ';font-size:var(--fs-small);font-weight:700;letter-spacing:.04em;text-transform:uppercase}',
-    '.ai-box{border:1px solid ' + BORDER + ';border-radius:10px;background:' + PANEL_BG + 'cc;overflow:hidden;transition:border-color .15s}',
-    '.ai-box:focus-within{border-color:' + TEAL + '}',
-    '.ai-box textarea{width:100%;max-width:100%;background:transparent;border:0;border-radius:0;margin:0;min-height:82px;resize:none;padding:10px 11px;font-size:var(--fs-base);line-height:1.5;color:' + TXT + '}',
+    // Edit/Generate-with-AI card: flat (no gradient), light chrome, and a roomy box
+    // so the prompt has space to breathe. Nested padding was trimmed so the textarea
+    // gets the panel width rather than stacking card + box + textarea insets.
+    '.ai-card{margin:0 0 9px;padding:10px 10px 11px;border:1px solid ' + TEAL + '2e;border-radius:11px;background:' + TEAL + '12}',
+    '.ai-card h5{margin:0 0 8px;color:' + TEAL_HI + ';font-size:var(--fs-small);font-weight:700;letter-spacing:.04em;text-transform:uppercase}',
+    '.ai-box{border:1px solid ' + BORDER + ';border-radius:9px;background:' + PANEL_BG + ';overflow:hidden;transition:border-color .15s,box-shadow .15s}',
+    '.ai-box:focus-within{border-color:' + TEAL + ';box-shadow:0 0 0 2px ' + TEAL + '33}',
+    '.ai-box textarea{width:100%;max-width:100%;display:block;background:transparent;border:0;border-radius:0;margin:0;min-height:104px;resize:none;padding:9px 10px;font-size:var(--fs-base);line-height:1.5;color:' + TXT + '}',
     '.ai-box textarea:focus{outline:none}',
     '.ai-foot{display:flex;align-items:center;gap:6px;padding:6px;border-top:1px solid ' + BORDER + '}',
-    '.ai-foot .ai-model{flex:1 1 auto;width:auto;min-width:0;max-width:none;background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:7px;padding:0 7px;font-size:var(--fs-small);height:28px}',
-    '.ai-btn{flex:none;font-size:var(--fs-base);font-weight:700;color:' + ON_ACCENT + ';background:' + TEAL + ';border-radius:7px;padding:0 13px;height:28px;display:inline-flex;align-items:center;white-space:nowrap}',
+    '.ai-foot .ai-model{flex:1 1 auto;width:auto;min-width:0;max-width:none;background:' + PANEL_BG2 + ';color:' + TXT + ';border:1px solid ' + BORDER + ';border-radius:7px;padding:0 8px;font-size:var(--fs-small);height:30px}',
+    '.ai-btn{flex:none;font-size:var(--fs-base);font-weight:700;color:' + ON_ACCENT + ';background:' + TEAL + ';border-radius:7px;padding:0 15px;height:30px;display:inline-flex;align-items:center;white-space:nowrap}',
     '.ai-btn:hover{background:' + TEAL_HI + '}',
     '.ai-btn.busy{opacity:.7;pointer-events:none}',
-    '.ai-note{margin-top:9px;font-size:var(--fs-micro);color:' + TXT_DIM + ';line-height:1.45}',
+    '.ai-note{margin:8px 2px 0;font-size:var(--fs-micro);color:' + TXT_DIM + ';line-height:1.45}',
     // toolbar actions (count / undo / discard / send)
     '.tb-sep{width:1px;align-self:stretch;background:' + BORDER + ';margin:0 2px}',
     '.tb-count{font-size:var(--fs-small);font-weight:700;color:' + ON_ACCENT + ';background:' + TEAL + ';border-radius:999px;padding:1px 7px;min-width:8px;text-align:center;white-space:nowrap}',
