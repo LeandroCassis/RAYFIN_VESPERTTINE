@@ -332,6 +332,22 @@ fn to_patch(val: Value, allow_chart: bool) -> RestylePatch {
     patch
 }
 
+/// Chart-type-specific display fields the model may set, appended to the shared
+/// capability menu in the chart restyle prompt. Empty for types whose editable
+/// surface is fully covered by the shared (BaseSpec) fields.
+fn chart_type_hint(chart_type: Option<&str>) -> &'static str {
+    match chart_type.unwrap_or("").trim() {
+        "line" => "This line chart also supports: `curve` (\"linear\"|\"monotone\"|\"step\"|\"stepBefore\"|\"stepAfter\"|\"catmullRom\"), `points` (bool — show markers), `area` (bool — fill under the line).",
+        "area" => "This area chart also supports: `curve` (\"linear\"|\"monotone\"|\"step\"|\"stepBefore\"|\"stepAfter\"|\"catmullRom\"), `stack` (bool).",
+        "bar" => "This bar chart also supports: `orientation` (\"vertical\"|\"horizontal\"), `stack` (bool), `group` (bool — side-by-side series), `cornerRadius` (px).",
+        "scatter" => "This scatter chart also supports: `trendline` (see below).",
+        "histogram" => "This histogram also supports: `bin` ({ \"maxbins\": N } or { \"step\": N }), `density` (bool), `color` (bar color), `cornerRadius` (px).",
+        "pie" => "This pie/donut chart also supports: `donut` (true, or a 0..1 inner-radius ratio), `labels` (true|false, or { \"placement\": \"inside\"|\"outside\"|\"auto\" }).",
+        "combo" => "This combo (dual-axis) chart is composed of `layers`: [{ \"mark\": \"line\"|\"bar\"|\"area\"|\"scatter\", \"encoding\": { \"y\": … }, \"axis\": \"left\"|\"right\", \"curve\", \"points\", \"color\", \"name\" }].",
+        _ => "",
+    }
+}
+
 /// Build the restyle instruction. For charts we ask for a partial Graphein spec
 /// patch; otherwise a flat JSON object of whitelisted CSS props.
 fn build_restyle_prompt(description: &str, ctx: &RestyleContext) -> String {
@@ -355,15 +371,35 @@ fn build_restyle_prompt(description: &str, ctx: &RestyleContext) -> String {
             .filter(|s| !s.is_empty())
             .map(|s| format!("{s} "))
             .unwrap_or_default();
-        format!(
+        let type_hint = chart_type_hint(ctx.chart_type.as_deref());
+        let menu = r##"You change the chart by returning a PARTIAL Graphein spec patch (only the keys you change), which is deep-merged over the current spec. Use these EXACT field names:
+- TITLE: `title` — a string, or { "text": "…", "subtitle": "…", "align": "left"|"center"|"right" }.
+- THEME: `theme` — "light" or "dark".
+- COLORS: `palette` — a named scheme "graphein"|"colorblind"|"bright"|"muted", OR an array of hex colors (one per series). `background` — the plot background color.
+- AXES: `axes` = { "x": {…}, "y": {…} }. Each axis takes `show` (bool), `title` (string), `grid` (bool), `ticks` (approx count), `tickValues` (array), `labels` (bool), `labelAngle` (x only: 0|45|90), and `format`.
+    `format` is a number-format string: [$][,][.precision][type] — type f=fixed (".2f"→3.14), %=percent (".0%"→42%), s=SI (".1s"→1.2k), d=integer (",d"→1,234), e=exponential, g=significant. Examples: "$,.0f"→$1,234 · ".1%"→12.3% · ".2s"→3.4M.
+- LEGEND: `legend` — { "show": true, "position": "top"|"right"|"bottom"|"left", "title": "…", "interactive": true }, or a boolean.
+- TOOLTIP: `tooltip` — { "show": true }, or a boolean.
+- ANNOTATIONS: `annotations` — an array of reference overlays. Each: { "type": "line"|"band"|"zone"|"point", "axis": "x"|"y", "value": <for a line>, "from"/"to": <for a band/zone>, "x"/"y": <for a point>, "label": "…", "color": "#hex", "strokeWidth": 1.5, "strokeDash": [4,4], "fillOpacity": 0.12, "labelPosition": "start"|"middle"|"end" }. Examples — target line: { "type":"line","axis":"y","value":100,"label":"Target" } · danger band: { "type":"band","axis":"y","from":0,"to":50,"color":"#f43f5e","label":"Low" } · point callout: { "type":"point","x":"Q4","y":120,"label":"Peak" }.
+- INSIGHTS: `insights` — true (auto-mark the max + min points), or { "max":true, "min":true, "outliers":true }.
+- TRENDLINE: `trendline` — true, or { "method":"linear", "groupBy":true, "label":true, "color":"#hex" } (needs a continuous or temporal x-axis).
+- SKETCH: `sketch` — true for a hand-drawn look, or { "roughness":1, "font":true }.
+- PADDING: `padding` — { "top":8, "right":8, "bottom":8, "left":8 }."##;
+        let rules_note = r##"
+MERGING: nested OBJECTS are deep-merged, so send only the sub-keys you change (e.g. { "axes": { "y": { "format": "$,.0f" } } } keeps the existing x axis). But ARRAYS are REPLACED, not appended — to ADD to `annotations`, include the EXISTING annotations from the current spec above PLUS your new one(s).
+
+Return ONLY a single fenced ```json code block containing the partial patch — include ONLY the keys you are changing, use ONLY the real field names listed above, and NEVER include a `data` key. Return nothing else."##;
+        let mut p = format!(
             "You are editing a Graphein {kind}chart{comp} in a live app. Current spec (data omitted):\n\
 ```json\n{spec}\n```\n\n\
-Apply this change: \"{desc}\"\n\n\
-Return ONLY a single fenced ```json code block containing a JSON object with the \
-spec fields to change — a partial patch merged over the current spec. Include ONLY \
-changed keys and NEVER a `data` key. Example: {{\"type\":\"line\",\"title\":\"Revenue\"}}. \
-Return nothing else."
-        )
+Apply this change: \"{desc}\"\n\n{menu}"
+        );
+        if !type_hint.is_empty() {
+            p.push('\n');
+            p.push_str(type_hint);
+        }
+        p.push_str(rules_note);
+        p
     } else {
         let mut el = format!("<{}", ctx.tag);
         if let Some(c) = ctx.classes.as_deref().filter(|s| !s.trim().is_empty()) {
@@ -722,5 +758,69 @@ mod tests {
         });
         let patch = to_patch(v, false);
         assert!(patch.rules.is_empty()); // bad selector dropped, empty-styles rule dropped
+    }
+
+    #[test]
+    fn chart_type_hint_covers_common_types() {
+        assert!(chart_type_hint(Some("bar")).contains("orientation"));
+        assert!(chart_type_hint(Some("pie")).contains("donut"));
+        assert!(chart_type_hint(Some("line")).contains("curve"));
+        assert!(chart_type_hint(Some("combo")).contains("layers"));
+        assert_eq!(chart_type_hint(Some("gauge")), ""); // no distinctive hint → shared menu only
+        assert_eq!(chart_type_hint(None), "");
+    }
+
+    #[test]
+    fn chart_prompt_includes_capability_menu_and_type_hint() {
+        let ctx = RestyleContext {
+            is_chart: true,
+            chart_type: Some("line".into()),
+            spec: Some(serde_json::json!({
+                "type": "line",
+                "encoding": { "x": { "field": "month" }, "y": { "field": "revenue" } }
+            })),
+            ..Default::default()
+        };
+        let p = build_restyle_prompt("add a target line at 100 and format the axis as currency", &ctx);
+        // The request + current spec are present.
+        assert!(p.contains("add a target line at 100"));
+        assert!(p.contains("\"field\": \"revenue\"")); // spec dumped
+        // Shared capability menu: annotations, palette, axis format, legend, insights.
+        assert!(p.contains("annotations"));
+        assert!(p.contains("palette"));
+        assert!(p.contains("format"));
+        assert!(p.contains("legend"));
+        assert!(p.contains("insights"));
+        // Number-format cheatsheet + a concrete example.
+        assert!(p.contains("$,.0f"));
+        // Line-specific hint appended.
+        assert!(p.contains("curve"));
+        // Merge/array-replacement guidance + the never-data contract.
+        assert!(p.contains("ARRAYS are REPLACED"));
+        assert!(p.contains("deep-merged"));
+        assert!(p.contains("NEVER include a `data` key"));
+    }
+
+    #[test]
+    fn chart_prompt_pie_includes_donut_and_labels() {
+        let ctx = RestyleContext {
+            is_chart: true,
+            chart_type: Some("pie".into()),
+            spec: Some(serde_json::json!({ "type": "pie" })),
+            ..Default::default()
+        };
+        let p = build_restyle_prompt("turn it into a donut with outside labels", &ctx);
+        assert!(p.contains("donut"));
+        assert!(p.contains("labels"));
+        assert!(p.contains("annotations")); // shared menu still present
+    }
+
+    #[test]
+    fn non_chart_prompt_still_asks_for_whitelisted_css() {
+        let ctx = RestyleContext { tag: "div".into(), ..Default::default() };
+        let p = build_restyle_prompt("make it teal with rounded corners", &ctx);
+        assert!(p.contains("Allowed properties"));
+        assert!(p.contains("rules")); // descendant-targeting guidance
+        assert!(!p.contains("Graphein")); // not the chart branch
     }
 }
