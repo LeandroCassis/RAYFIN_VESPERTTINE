@@ -779,7 +779,11 @@ export default function PreviewPane({
       patch = { styles: {} }
     }
     try {
-      await window.api.preview.design.applyRestyle(req.id, patch)
+      const ids = req.ids && req.ids.length ? req.ids : [req.id]
+      // One patch, applied to every selected element (consistent multi-select edit).
+      for (const id of ids) {
+        await window.api.preview.design.applyRestyle(id, patch)
+      }
     } catch {
       // ignore — the controller clears its busy state on the next select
     }

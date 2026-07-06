@@ -1048,6 +1048,8 @@ export interface PreviewDesignRestyleContext {
  */
 export interface PreviewDesignAiEditRequest {
   id: string
+  /** All target element ids (multi-select) — the one patch applies to each. */
+  ids?: string[]
   description: string
   model?: string
   context: PreviewDesignRestyleContext

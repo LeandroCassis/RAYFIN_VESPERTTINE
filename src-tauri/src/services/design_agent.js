@@ -78,8 +78,10 @@
     version: 0, // bumped on every change so the host poll detects activity
     changes: [], // ordered change-set entries (each has .revert, .el|.pinEl|.node)
     redo: [], // reverted entries available to redo (cleared on any new edit)
-    selected: null,
-    selInline: null, // snapshot of the selected element's inline styles at select
+    selected: null, // the PRIMARY selected element (drives element-specific inspector bits)
+    selection: [], // all selected elements (multi-select); edits apply to every one
+    selInline: null, // primary's inline-style snapshot (at select) for value seeding
+    selInlineMap: null, // WeakMap el -> inline snapshot, for per-element revert on multi
     resizing: null,
     move: null, // active move gesture (or pending, pre-threshold)
     drawing: null, // active draw gesture
@@ -327,7 +329,7 @@
 
   // ---- Shadow-DOM UI -------------------------------------------------------
   var host, root;
-  var elHover, elLabel, elSel, elBadges, elHandles, elInsert, elToolbar, elInspector, elDraw, elPins, elLegend, elCommentEditor, elStyle;
+  var elHover, elLabel, elSel, elSels, elBadges, elHandles, elInsert, elToolbar, elInspector, elDraw, elPins, elLegend, elCommentEditor, elStyle;
   var elCount, btnUndo, btnRedo, btnDiscard, btnSend, btnChanges, elChanges, elGuides, elMorph;
   // Smart guides: snap resized edges to nearby sibling/parent edges + centers.
   var SNAP_THR = 6, snapOn = true;
@@ -345,6 +347,7 @@
     '.box{position:fixed;pointer-events:none;z-index:2147483640;border-radius:3px}',
     '.hover{border:1.5px solid ' + TEAL + '88;background:' + TEAL + '11}',
     '.sel{border:1.5px solid ' + TEAL + ';box-shadow:0 0 0 1px ' + TEAL + '55}',
+    '.selm{border:1.5px solid ' + TEAL + '99}',
     '.label{position:fixed;pointer-events:none;z-index:2147483644;background:' + TEAL + ';color:' + ON_ACCENT + ';font-size:var(--fs-small);font-weight:600;padding:2px 6px;border-radius:4px;white-space:nowrap}',
     '.badge{position:fixed;pointer-events:none;z-index:2147483644;background:' + TEAL + ';color:' + ON_ACCENT + ';font-size:var(--fs-micro);font-weight:700;padding:1px 5px;border-radius:4px}',
     '.ring{position:fixed;pointer-events:none;z-index:2147483639;border:2px solid ' + AMBER + ';border-radius:4px;box-shadow:0 0 0 2px ' + AMBER + '44}',
@@ -392,6 +395,7 @@
     '.insp .mini:hover{color:' + TXT + '}',
     '.insp .mini.danger:hover{background:#5b1a1a;color:#fff}',
     '.insp-actions{display:flex;gap:6px;padding:7px 11px;border-top:1px solid ' + BORDER + '}',
+    '.insp-multi{margin:2px 0 9px;padding:7px 10px;border-radius:8px;background:' + TEAL + '1f;border:1px solid ' + TEAL + '3d;color:' + TEAL_HI + ';font-size:var(--fs-small);font-weight:600}',
     // AI generate card
     '.ai-card{margin:2px 0 6px;padding:12px 13px 13px;border:1px solid ' + TEAL + '3d;border-radius:12px;background:linear-gradient(155deg,' + TEAL + '1f,transparent 72%)}',
     '.ai-card h5{margin:0 0 9px;color:' + TEAL_HI + ';font-size:var(--fs-small);font-weight:700;letter-spacing:.04em;text-transform:uppercase}',
@@ -533,6 +537,7 @@
     elHover = h('div', { class: 'box hover', style: 'display:none' });
     elLabel = h('div', { class: 'label', style: 'display:none' });
     elSel = h('div', { class: 'box sel', style: 'display:none' });
+    elSels = h('div', { style: 'display:none' }); // pool of selection boxes (multi-select)
     elBadges = h('div', { style: 'display:none' });
     elInsert = h('div', { class: 'insert', style: 'display:none' });
     elHandles = h('div', { style: 'display:none' });
@@ -541,7 +546,7 @@
     elChanges = h('div', { class: 'changes', style: 'display:none' });
     elGuides = h('div', { class: 'guides' });
     elMorph = h('div', { class: 'morphs', style: 'display:none' });
-    [elDraw, elPins, elGuides, elMorph, elHover, elLabel, elSel, elBadges, elInsert, elHandles, elToolbar, elInspector, elChanges]
+    [elDraw, elPins, elGuides, elMorph, elHover, elLabel, elSels, elSel, elBadges, elInsert, elHandles, elToolbar, elInspector, elChanges]
       .forEach(function (n) { root.appendChild(n); });
 
     makeDraggable(elToolbar, false);
@@ -796,11 +801,26 @@
       elLabel.style.left = hr.left + 'px';
       elLabel.style.top = Math.max(2, hr.top - 20) + 'px';
     } else { elHover.style.display = 'none'; elLabel.style.display = 'none'; }
-    // selection
-    if (state.selected && state.selected.isConnected) {
-      place(elSel, state.selected);
-      positionHandles(); positionBadges();
-    } else { elSel.style.display = 'none'; elHandles.style.display = 'none'; elBadges.style.display = 'none'; }
+    // selection — one box per selected element (primary a touch stronger); resize
+    // handles + size badge only for a single selection (multi is style/AI-only in v1)
+    var sel = (state.selection || []).filter(function (e) { return e && e.isConnected; });
+    if (sel.length) {
+      elSel.style.display = 'none';
+      while (elSels.children.length < sel.length) elSels.appendChild(h('div', {}));
+      while (elSels.children.length > sel.length) elSels.removeChild(elSels.lastChild);
+      for (var si = 0; si < sel.length; si++) {
+        var sr = sel[si].getBoundingClientRect(), sb = elSels.children[si];
+        sb.className = 'box ' + (sel[si] === state.selected ? 'sel' : 'selm');
+        sb.style.left = sr.left + 'px'; sb.style.top = sr.top + 'px';
+        sb.style.width = sr.width + 'px'; sb.style.height = sr.height + 'px';
+      }
+      elSels.style.display = 'block';
+      if (sel.length === 1) { positionHandles(); positionBadges(); }
+      else { elHandles.style.display = 'none'; elBadges.style.display = 'none'; }
+    } else {
+      elSel.style.display = 'none'; elSels.style.display = 'none';
+      elHandles.style.display = 'none'; elBadges.style.display = 'none';
+    }
     // comment pins track their anchor elements
     positionPins();
     positionMorphs();
@@ -825,14 +845,39 @@
   function select(el) {
     if (!el) return;
     if (state.editingText) commitText();
+    state.selection = [el];
+    state.selInlineMap = new WeakMap();
+    state.selInlineMap.set(el, snapshotInline(el));
     state.selected = el;
-    state.selInline = snapshotInline(el);
+    state.selInline = state.selInlineMap.get(el);
+    showHandles();
+    renderInspector();
+    reposition();
+  }
+  // Shift/Ctrl/Cmd-click: add/remove `el` from the multi-selection (primary =
+  // last touched). Edits then apply to every element in `state.selection`.
+  function toggleSelect(el) {
+    if (!el) return;
+    if (state.editingText) commitText();
+    if (!state.selection) state.selection = [];
+    if (!state.selInlineMap) state.selInlineMap = new WeakMap();
+    var i = state.selection.indexOf(el);
+    if (i >= 0) {
+      state.selection.splice(i, 1);
+      if (state.selected === el) state.selected = state.selection[state.selection.length - 1] || null;
+    } else {
+      state.selection.push(el);
+      state.selInlineMap.set(el, snapshotInline(el));
+      state.selected = el;
+    }
+    if (!state.selection.length) { deselect(); return; }
+    state.selInline = state.selInlineMap.get(state.selected) || snapshotInline(state.selected);
     showHandles();
     renderInspector();
     reposition();
   }
   function deselect() {
-    state.selected = null; state.selInline = null;
+    state.selection = []; state.selected = null; state.selInline = null; state.selInlineMap = null;
     closeInspector(); hideHandles();
     reposition();
   }
@@ -880,9 +925,12 @@
     var body = h('div', { class: 'insp-body' });
     elInspector.appendChild(body);
 
+    var multi = !!(state.selection && state.selection.length > 1);
+    if (multi) body.appendChild(h('div', { class: 'insp-multi', text: state.selection.length + ' elements selected — edits apply to all' }));
+
     if (isPlaceholder(el)) body.appendChild(aiGroup(el));
     else body.appendChild(aiEditGroup(el));
-    if (chartRoot(el)) body.appendChild(chartGroup(chartRoot(el)));
+    if (!multi && chartRoot(el)) body.appendChild(chartGroup(chartRoot(el)));
 
     // Layout & spacing
     body.appendChild(group('Layout', [
@@ -897,7 +945,7 @@
       selRow('Weight', 'fontWeight', WEIGHTS, String(cs.fontWeight), el),
       selRow('Align', 'textAlign', ALIGNS, cs.textAlign, el),
       colorRow('Color', 'color', cs.color, el),
-      textContentRow(el)
+      multi ? null : textContentRow(el)
     ]));
     // Appearance
     body.appendChild(group('Appearance', [
@@ -908,8 +956,8 @@
     ]));
 
     var actions = h('div', { class: 'insp-actions' });
-    var reset = h('button', { class: 'mini', text: 'Reset element' }); reset.onclick = function (e) { e.stopPropagation(); resetSelected(); };
-    var rm = h('button', { class: 'mini danger', text: 'Remove' }); rm.onclick = function (e) { e.stopPropagation(); removeSelected(); };
+    var reset = h('button', { class: 'mini', text: multi ? 'Reset all' : 'Reset element' }); reset.onclick = function (e) { e.stopPropagation(); resetSelected(); };
+    var rm = h('button', { class: 'mini danger', text: multi ? 'Remove all' : 'Remove' }); rm.onclick = function (e) { e.stopPropagation(); removeSelected(); };
     actions.appendChild(reset); actions.appendChild(rm);
     elInspector.appendChild(actions);
   }
@@ -988,7 +1036,7 @@
     if (busy) sel.disabled = true;
     foot.appendChild(sel);
     var btn = h('button', { class: 'ai-btn' + (busy ? ' busy' : ''), text: busy ? 'Applying…' : 'Apply' });
-    btn.onclick = function (e) { e.stopPropagation(); requestAiEdit(el, ta.value); };
+    btn.onclick = function (e) { e.stopPropagation(); requestAiEditSelection(ta.value); };
     foot.appendChild(btn);
     box.appendChild(foot);
     card.appendChild(box);
@@ -1003,7 +1051,8 @@
     // Placeholders are captured wholesale by their single 'insert' entry (live
     // size/label/position read at hand-off), so don't record per-property edits.
     if (isPlaceholder(el)) return;
-    var before = state.selInline[jsProp];
+    var snap = (state.selInlineMap && state.selInlineMap.get(el)) || state.selInline || {};
+    var before = snap[jsProp];
     record({
       kind: 'style', property: cssLabel, selector: cssPath(el), label: describe(el), el: el,
       from: undefined, to: display != null ? display : value,
@@ -1011,31 +1060,37 @@
       reapply: function () { el.style[jsProp] = value; }
     });
   }
+  // Apply a style change to EVERY selected element (multi-select); each is its own
+  // revertable change-set entry.
+  function editSelection(jsProp, cssLabel, value, display) {
+    var sel = (state.selection && state.selection.length) ? state.selection.slice() : (state.selected ? [state.selected] : []);
+    sel.forEach(function (el) { applyStyle(el, jsProp, cssLabel, value, display); });
+  }
 
   function numRow(label, jsProp, val, unit, el) {
     var inp = h('input', { type: 'number', value: String(val) });
-    inp.oninput = function () { applyStyle(el, jsProp, cssName(jsProp), inp.value === '' ? '' : (inp.value + unit), inp.value + unit); };
+    inp.oninput = function () { editSelection(jsProp, cssName(jsProp), inp.value === '' ? '' : (inp.value + unit), inp.value + unit); };
     return h('div', { class: 'row' }, [h('label', { text: label }), h('div', { class: 'ctl' }, [inp, h('span', { class: 'insp-sz', text: unit })])]);
   }
   function selRow(label, jsProp, opts, cur, el) {
     var sel = h('select');
     opts.forEach(function (o) { var op = h('option', { value: o, text: o }); if (String(o) === String(cur)) op.setAttribute('selected', 'selected'); sel.appendChild(op); });
-    sel.onchange = function () { applyStyle(el, jsProp, cssName(jsProp), sel.value); };
+    sel.onchange = function () { editSelection(jsProp, cssName(jsProp), sel.value); };
     return h('div', { class: 'row' }, [h('label', { text: label }), sel]);
   }
   function colorRow(label, jsProp, cur, el) {
     var inp = h('input', { type: 'color', value: rgbToHex(cur) });
-    inp.oninput = function () { applyStyle(el, jsProp, cssName(jsProp), inp.value); };
+    inp.oninput = function () { editSelection(jsProp, cssName(jsProp), inp.value); };
     return h('div', { class: 'row' }, [h('label', { text: label }), inp]);
   }
   function rangeRow(label, jsProp, cur, el) {
     var inp = h('input', { type: 'range', min: '0', max: '1', step: '0.05', value: String(isNaN(cur) ? 1 : cur) });
-    inp.oninput = function () { applyStyle(el, jsProp, cssName(jsProp), inp.value); };
+    inp.oninput = function () { editSelection(jsProp, cssName(jsProp), inp.value); };
     return h('div', { class: 'row' }, [h('label', { text: label }), inp]);
   }
   function textRow(label, jsProp, cur, el) {
     var inp = h('input', { type: 'text', value: cur || '' });
-    inp.onchange = function () { applyStyle(el, jsProp, cssName(jsProp), inp.value); };
+    inp.onchange = function () { editSelection(jsProp, cssName(jsProp), inp.value); };
     return h('div', { class: 'row' }, [h('label', { text: label }), inp]);
   }
   function textContentRow(el) {
@@ -1132,7 +1187,7 @@
   var HANDLE_DIRS = [['e', 1, 0.5, 'ew-resize'], ['s', 0.5, 1, 'ns-resize'], ['se', 1, 1, 'nwse-resize']];
   function hideHandles() { elHandles.style.display = 'none'; elHandles.textContent = ''; }
   function showHandles() {
-    if (!state.selected) return;
+    if (!state.selected || (state.selection && state.selection.length > 1)) { hideHandles(); return; }
     elHandles.textContent = ''; elHandles.style.display = 'block';
     HANDLE_DIRS.forEach(function (d) {
       var hd = h('div', { class: 'hnd' });
@@ -1296,8 +1351,14 @@
 
   // ---- keyboard nudge ------------------------------------------------------
   function nudge(dx, dy) {
-    var el = state.selected; if (!el) return;
-    var before = state.selInline ? state.selInline.transform : el.style.transform;
+    var sel = (state.selection && state.selection.length) ? state.selection.slice() : (state.selected ? [state.selected] : []);
+    sel.forEach(function (el) { nudgeOne(el, dx, dy); });
+    reposition();
+  }
+  function nudgeOne(el, dx, dy) {
+    if (!el) return;
+    var snap = state.selInlineMap && state.selInlineMap.get(el);
+    var before = snap ? snap.transform : el.style.transform;
     var m = /translate\((-?\d+)px,\s*(-?\d+)px\)/.exec(el.style.transform || '');
     var cx = m ? parseInt(m[1], 10) : 0, cy = m ? parseInt(m[2], 10) : 0;
     cx += dx; cy += dy;
@@ -1311,23 +1372,25 @@
         reapply: function () { el.style.transform = afterTransform; }
       });
     }
-    reposition();
   }
 
   // ---- remove / reset / discard --------------------------------------------
   function removeSelected() {
-    var el = state.selected; if (!el) return;
-    // Removing a placeholder deletes it entirely (undoes the insert).
-    if (isPlaceholder(el)) { var ins = findInsertEntry(el); if (ins) removeEntry(ins); deselect(); return; }
-    var beforeDisplay = el.style.display;
-    el.style.display = 'none';
-    record({ kind: 'remove', property: 'display', selector: cssPath(el), label: describe(el), el: el, from: 'visible', to: 'removed', revert: function () { el.style.display = beforeDisplay; }, reapply: function () { el.style.display = 'none'; } });
+    var sel = (state.selection && state.selection.length) ? state.selection.slice() : (state.selected ? [state.selected] : []);
+    sel.forEach(function (el) {
+      // Removing a placeholder deletes it entirely (undoes the insert).
+      if (isPlaceholder(el)) { var ins = findInsertEntry(el); if (ins) removeEntry(ins); return; }
+      var beforeDisplay = el.style.display;
+      el.style.display = 'none';
+      record({ kind: 'remove', property: 'display', selector: cssPath(el), label: describe(el), el: el, from: 'visible', to: 'removed', revert: function () { el.style.display = beforeDisplay; }, reapply: function () { el.style.display = 'none'; } });
+    });
     deselect();
   }
   function resetSelected() {
-    var el = state.selected; if (!el) return;
-    for (var i = state.changes.length - 1; i >= 0; i--) if (state.changes[i].el === el) revertEntry(state.changes[i]);
-    state.changes = state.changes.filter(function (c) { return c.el !== el; });
+    var sel = (state.selection && state.selection.length) ? state.selection.slice() : (state.selected ? [state.selected] : []);
+    if (!sel.length) return;
+    for (var i = state.changes.length - 1; i >= 0; i--) if (sel.indexOf(state.changes[i].el) >= 0) revertEntry(state.changes[i]);
+    state.changes = state.changes.filter(function (c) { return sel.indexOf(c.el) < 0; });
     bump(); renderInspector(); reposition(); renderBar();
   }
   function discardAll() {
@@ -1641,6 +1704,28 @@
     bump();
     if (state.selected === el) renderInspector();
   }
+  // Enqueue an "Edit with AI" for the current selection. For a multi-selection we
+  // send ONE request (the primary's context) and apply the resulting patch to
+  // EVERY selected element, so "make them the same X" is consistent (independent
+  // per-element requests can't agree on "the same"). All selected elements animate.
+  function requestAiEditSelection(description) {
+    var desc = (description || '').trim();
+    if (!desc) { showHint('Describe the change first', 'error'); return; }
+    var sel = (state.selection && state.selection.length) ? state.selection.slice() : (state.selected ? [state.selected] : []);
+    sel = sel.filter(function (el) { return el && el.isConnected && el.getAttribute('data-rayfin-editing') !== '1'; });
+    if (!sel.length) return;
+    var ids = [];
+    sel.forEach(function (el) {
+      var id = el.getAttribute('data-rayfin-edit-id');
+      if (!id) { id = 'e' + (++editSeq) + '_' + Date.now() + '_' + ids.length; el.setAttribute('data-rayfin-edit-id', id); }
+      el.setAttribute('data-rayfin-editing', '1');
+      ids.push(id);
+    });
+    var primary = (state.selected && sel.indexOf(state.selected) >= 0) ? state.selected : sel[0];
+    state.aiEditQueue.push({ id: ids[0], ids: ids, description: desc, model: state.aiModel || undefined, context: restyleContext(primary) });
+    bump();
+    renderInspector();
+  }
 
   // Apply one whitelisted inline-style change to `el` and record it (revert
   // restores the element's pre-edit inline value). Independent of the current
@@ -1879,6 +1964,7 @@
 
     // select mode
     e.preventDefault(); e.stopPropagation();
+    if (e.shiftKey || e.ctrlKey || e.metaKey) { toggleSelect(el); return; } // add/remove from multi-selection
     if (state.selected && (el === state.selected || state.selected.contains(target) || state.selected === target)) {
       beginPendingMove(e, state.selected, target); // drag the selection to move; click a child to drill in
     } else {
@@ -2088,7 +2174,7 @@
   function localDrainAiEdit() {
     var r = state.aiEditQueue.shift(); if (!r) return null;
     bump();
-    return { id: r.id, description: r.description, model: r.model, context: r.context };
+    return { id: r.id, ids: r.ids || [r.id], description: r.description, model: r.model, context: r.context };
   }
   function localSetModels(list, preferred) {
     try {
