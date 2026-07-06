@@ -663,6 +663,10 @@ pub struct DesignAiRequest {
 pub struct DesignAiEditRequest {
   /// Stable element id (`data-rayfin-edit-id`) to target with the patch.
   pub id: String,
+  /// All target element ids for a multi-selection — the one patch applies to each
+  /// (empty/absent for a single selection, which falls back to `id`).
+  #[serde(default)]
+  pub ids: Vec<String>,
   pub description: String,
   /// Model id chosen in the picker (`None` → the fast model resolved by the host).
   #[serde(default)]
@@ -1166,4 +1170,27 @@ unsafe fn snapshot_image_to_png(
     .representationUsingType_properties(NSBitmapImageFileType::PNG, &empty)
     .ok_or_else(|| "could not encode the snapshot as PNG".to_string())?;
   Ok(png.to_vec())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::DesignAiEditRequest;
+
+  // Guards the multi-select bug: the controller's drained request carries `ids`
+  // (all selected element ids); it must survive deserialization so the renderer
+  // applies the one patch to every element (not just the primary).
+  #[test]
+  fn design_ai_edit_request_roundtrips_ids() {
+    let json = r#"{"id":"a","ids":["a","b","c"],"description":"x","context":{}}"#;
+    let req: DesignAiEditRequest = serde_json::from_str(json).expect("parse");
+    assert_eq!(req.id, "a");
+    assert_eq!(req.ids, vec!["a", "b", "c"]);
+  }
+
+  #[test]
+  fn design_ai_edit_request_ids_default_empty() {
+    let req: DesignAiEditRequest =
+      serde_json::from_str(r#"{"id":"a","description":"x"}"#).expect("parse");
+    assert!(req.ids.is_empty());
+  }
 }
