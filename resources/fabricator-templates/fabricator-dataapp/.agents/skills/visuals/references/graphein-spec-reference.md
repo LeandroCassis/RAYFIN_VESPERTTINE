@@ -5,11 +5,13 @@ functions, colors, or callbacks). You author it and drop it into
 `<ChartCard spec={…} />` or `<DataTableCard spec={…} />`. This file is the
 field-by-field reference; the `visuals` SKILL has the workflow and recipes.
 
-> Adapted for Graphein 0.16. The template depends on `graphein` from npm
-> (`^0.16.1`). `validateSpec(spec)` (re-exported from `@/components/dashboard`)
+> Adapted for Graphein 0.17. The template depends on `graphein` from npm
+> (`^0.17.0`). `validateSpec(spec)` (re-exported from `@/components/dashboard`)
 > checks a spec against the real schema; `repairSpec(spec)` auto-fixes many
 > mistakes. Render a spec headlessly against live data with `npm run preview`
-> (see the **headless-preview** skill).
+> (see the **headless-preview** skill). To inspect a spec that renders wrong, set
+> `debug: true` on it — Graphein replaces the chart with a live preview plus the
+> resolved spec, a data sample, validation errors, and a render report.
 
 ## The one rule
 

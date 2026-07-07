@@ -33,7 +33,7 @@
  */
 (function () {
   var NS = '__rayfinDesign';
-  var VERSION = 4;
+  var VERSION = 5;
   if (window[NS] && window[NS].__v === VERSION) return;
 
   var HOST_ID = '__rayfin_design_host';
@@ -92,11 +92,28 @@
     theme: null, // Fabricator theme pushed by the host via setTheme()
     hasTheme: false, // re-pushed by the renderer after a reload when false
     models: null, // [{id,name,fast}] supplied by the host for the AI model picker
-    aiModel: 'auto' // selected model id; 'auto' → let the engine pick (default)
+    aiModel: 'auto', // selected model id; 'auto' → let the engine pick (default)
+    debugView: null, // active transient full-screen Graphein debug inspection ({el,target,prevSpecAttr,prevTargetStyle,neutralized}) or null
+    debugBar: null // shadow-host "Exit debug" bar element while debugView is active
   };
 
   // ---- constants -----------------------------------------------------------
-  var CHART_TYPES = ['bar', 'line', 'area', 'scatter', 'combo', 'histogram', 'pie', 'funnel', 'waterfall', 'treemap', 'heatmap'];
+  // Every Graphein VISUAL chart type (spec/types.ts CHART_TYPES minus the five
+  // slicer controls — dropdown/search/list/range/dateRange — which are filters,
+  // not chart marks, and never appear in the chart-spec inspector's Type row).
+  var CHART_TYPES = ['bar', 'line', 'area', 'scatter', 'combo', 'histogram', 'pie', 'heatmap', 'funnel', 'treemap', 'waterfall', 'box', 'slope', 'dumbbell', 'sankey', 'choropleth', 'calendarHeatmap', 'kpi', 'gauge', 'bullet', 'table', 'matrix'];
+  // Grouping for the Type dropdown's <optgroup>s (purely presentational).
+  var TYPE_GROUPS = [
+    ['Cartesian', ['bar', 'line', 'area', 'scatter', 'box', 'histogram', 'combo']],
+    ['Part-to-whole', ['pie', 'funnel', 'treemap', 'waterfall']],
+    ['Comparison', ['slope', 'dumbbell']],
+    ['Grid / time', ['heatmap', 'calendarHeatmap']],
+    ['Flow / geo', ['sankey', 'choropleth']],
+    ['Single value', ['kpi', 'gauge', 'bullet']],
+    ['Tabular', ['table', 'matrix']]
+  ];
+  var TYPE_LABELS = { calendarHeatmap: 'Calendar heatmap', kpi: 'KPI' };
+  function typeLabel(t) { return TYPE_LABELS[t] || (t.charAt(0).toUpperCase() + t.slice(1)); }
   var PALETTES = ['graphein', 'colorblind', 'bright', 'muted'];
   var FORMATS = [['', 'Default'], [',.0f', '1,234'], [',.2f', '1,234.56'], ['$,.0f', '$1,234'], ['.1%', '12.3%'], ['.2s', '1.2k']];
   var WEIGHTS = ['300', '400', '500', '600', '700', '800'];
@@ -396,6 +413,10 @@
     '.insp .mini{color:' + TXT_DIM + ';font-size:var(--fs-small);font-weight:600;padding:4px 8px;border-radius:6px;background:' + PANEL_BG2 + '}',
     '.insp .mini:hover{color:' + TXT + '}',
     '.insp .mini.danger:hover{background:#5b1a1a;color:#fff}',
+    // Row-level action button — sized to sit in the same right-hand control column
+    // as the dropdowns/inputs (width matches .insp select) so the panel stays tidy.
+    '.insp .gbtn{width:132px;max-width:60%;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:' + TXT + ';font-size:var(--fs-base);font-weight:600;padding:5px 8px;border-radius:6px;background:' + PANEL_BG2 + ';border:1px solid ' + BORDER + '}',
+    '.insp .gbtn:hover{border-color:' + TEAL + ';color:' + TEAL_HI + '}',
     '.insp-actions{display:flex;gap:6px;padding:7px 11px;border-top:1px solid ' + BORDER + '}',
     '.insp-multi{margin:2px 0 9px;padding:7px 10px;border-radius:8px;background:' + TEAL + '1f;border:1px solid ' + TEAL + '3d;color:' + TEAL_HI + ';font-size:var(--fs-small);font-weight:600}',
     // Edit/Generate-with-AI card: flat (no gradient), light chrome, and a roomy box
@@ -425,6 +446,11 @@
     '.hint{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:2147483647;background:' + TEAL + ';color:' + ON_ACCENT + ';font-weight:600;font-size:var(--fs-base);padding:6px 14px;border-radius:999px;box-shadow:0 4px 16px rgba(0,0,0,.4);pointer-events:none;display:flex;align-items:center;gap:7px}',
     '.hint.err{background:#e5484d;color:#fff;box-shadow:0 6px 20px rgba(229,72,77,.45)}',
     '.hint.err::before{content:"\\26A0";font-size:calc(var(--fs-base) + 1px)}',
+    // Full-screen debug view exit bar (bottom-center, above the debug chart).
+    '.dbgbar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:7px 8px 7px 14px;background:' + PANEL_GLASS + ';' + GLASS_FX + ';border:1px solid ' + BORDER + ';border-radius:11px;box-shadow:0 8px 30px rgba(0,0,0,.5);pointer-events:auto}',
+    '.dbgbar-t{font-size:var(--fs-base);font-weight:600;color:' + TXT + '}',
+    '.dbgbar-x{font-size:var(--fs-base);font-weight:700;color:' + ON_ACCENT + ';background:' + TEAL + ';border-radius:7px;padding:6px 12px}',
+    '.dbgbar-x:hover{background:' + TEAL_HI + '}',
     '.legend{position:fixed;left:12px;bottom:14px;z-index:2147483646;width:220px;padding:12px;background:' + PANEL_GLASS + ';' + GLASS_FX + ';border:1px solid ' + BORDER + ';border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);pointer-events:auto;color:' + TXT + ';font-size:var(--fs-base)}',
     '.legend h5{margin:0 0 8px;font-size:var(--fs-base);color:' + TEAL + '}',
     '.legend div{color:' + TXT_DIM + ';margin:3px 0}',
@@ -798,6 +824,7 @@
   }
 
   function reposition() {
+    if (state.debugView) return; // overlays are hidden while the debug view is full-screen
     // hover (Select only, no active selection drag)
     if (state.tool === 'select' && state.hoverEl && state.hoverEl !== state.selected && !state.move && !state.resizing) {
       place(elHover, state.hoverEl);
@@ -1144,6 +1171,289 @@
   }
   function cssName(jsProp) { return jsProp.replace(/[A-Z]/g, function (m) { return '-' + m.toLowerCase(); }); }
 
+  // ---- chart type conversion -----------------------------------------------
+  // The Type dropdown lists every visual type and lets the user switch between
+  // them with a *smart* conversion: the current spec's encoding is normalized
+  // into abstract roles (categories / measures / series / …) and re-emitted in
+  // the target type's own channel names, so shape-compatible charts convert
+  // (bar↔pie↔funnel↔treemap↔waterfall, chart→kpi/table, …) instead of breaking.
+  // Targets whose required roles can't be satisfied are greyed out with a reason.
+  // The helpers are pure (no DOM / no mutation) so they're unit-testable.
+
+  // BaseSpec-level props safe to carry across a type change (structural /
+  // encoding props are always rebuilt from the normalized shape).
+  var CONVERT_CARRY = ['data', 'transform', 'theme', 'palette', 'title', 'description', 'legend', 'tooltip', 'animation', 'padding', 'background', 'sketch', 'dimensions', 'params', 'highlight', 'filter'];
+
+  function cloneVal(v) { try { return JSON.parse(JSON.stringify(v)); } catch (e) { return v; } }
+  function asField(v) {
+    if (v == null) return null;
+    if (typeof v === 'string') return { field: v };
+    if (typeof v === 'object' && v.field) return { field: v.field, type: v.type, aggregate: v.aggregate, title: v.title };
+    return null;
+  }
+  function isMeasureField(f) { return !!(f && (f.type === 'quantitative' || f.aggregate)); }
+  function isTemporalField(f) { return !!(f && f.type === 'temporal'); }
+
+  // Normalize any chart spec into abstract roles used for convertibility + remap.
+  function shapeOf(spec) {
+    var t = spec && spec.type;
+    var enc = (spec && spec.encoding) || {};
+    var dims = [], measures = [], roles = {};
+    function dim(f) { if (f) dims.push(f); }
+    function meas(f) { if (f) measures.push(f); }
+    var x = asField(enc.x), y = asField(enc.y), color = asField(enc.color), series = asField(enc.series),
+      theta = asField(enc.theta), value = asField(enc.value), stage = asField(enc.stage),
+      source = asField(enc.source), target = asField(enc.target), key = asField(enc.key),
+      size = asField(enc.size), category = asField(enc.category), group = asField(enc.group),
+      date = asField(enc.date);
+    switch (t) {
+      case 'bar': case 'line': case 'area': case 'box':
+        dim(x); meas(y);
+        if (series) { roles.series = series; dim(series); }
+        if (isTemporalField(x)) roles.date = x;
+        break;
+      case 'scatter':
+        if (isMeasureField(x)) meas(x); else dim(x);
+        meas(y); if (size) meas(size);
+        if (isTemporalField(x)) roles.date = x;
+        break;
+      case 'histogram':
+        meas(x || y);
+        break;
+      case 'combo':
+        dim(x); if (isTemporalField(x)) roles.date = x;
+        var layers = spec.layers || [];
+        for (var li = 0; li < layers.length; li++) { var ly = asField(layers[li] && layers[li].encoding && layers[li].encoding.y); if (ly) meas(ly); }
+        break;
+      case 'pie':
+        dim(color); meas(theta);
+        break;
+      case 'heatmap':
+        dim(x); dim(y); meas(color);
+        break;
+      case 'funnel': case 'waterfall':
+        dim(stage || x); meas(value || y);
+        break;
+      case 'treemap':
+        dim(category || color); meas(value || theta);
+        if (group) { roles.group = group; dim(group); }
+        break;
+      case 'slope':
+        dim(x); meas(y); if (series) { roles.series = series; dim(series); }
+        break;
+      case 'dumbbell':
+        dim(category || x); meas(value || y);
+        if (group) { roles.group = group; dim(group); }
+        break;
+      case 'sankey':
+        if (source) { roles.source = source; dim(source); }
+        if (target) { roles.target = target; dim(target); }
+        meas(value);
+        break;
+      case 'choropleth':
+        if (key) { roles.geoKey = key; dim(key); }
+        meas(color);
+        roles.hasGeo = !!spec.geo;
+        break;
+      case 'calendarHeatmap':
+        if (date) { roles.date = date; dim(date); }
+        meas(color || value);
+        break;
+      case 'kpi': case 'gauge': case 'bullet':
+        meas(asField(spec.value) || value || y);
+        break;
+      case 'table':
+        var cols = spec.columns || [];
+        for (var ci = 0; ci < cols.length; ci++) { var cf = asField(cols[ci]); if (!cf) continue; if (isMeasureField(cf)) meas(cf); else dim(cf); }
+        break;
+      case 'matrix':
+        var rws = spec.rows || [];
+        for (var ri = 0; ri < rws.length; ri++) dim(asField(rws[ri]));
+        var vals = spec.values || [];
+        for (var vi = 0; vi < vals.length; vi++) { var vv = vals[vi]; if (vv && vv.field) meas({ field: vv.field, aggregate: vv.op }); }
+        break;
+      default:
+        dim(x); meas(y || value || theta);
+    }
+    dims = dims.filter(Boolean); measures = measures.filter(Boolean);
+    return {
+      type: t, dims: dims, measures: measures, roles: roles,
+      dimCount: dims.length, measCount: measures.length,
+      series: roles.series || null, group: roles.group || null,
+      source: roles.source || null, target: roles.target || null,
+      geoKey: roles.geoKey || null, date: roles.date || null, hasGeo: !!roles.hasGeo
+    };
+  }
+
+  // Can `shape` become `target`? → { ok:true } or { ok:false, reason:'…' }.
+  function canConvert(shape, target) {
+    if (!shape || !target) return { ok: false, reason: '' };
+    if (target === shape.type) return { ok: true };
+    var d = shape.dimCount, m = shape.measCount;
+    function need(cond, reason) { return cond ? { ok: true } : { ok: false, reason: reason }; }
+    switch (target) {
+      case 'bar': case 'line': case 'area': case 'box':
+        return need(d >= 1 && m >= 1, 'needs a category and a value');
+      case 'scatter':
+        return need(m >= 1 && (d + m) >= 2, 'needs two numeric fields');
+      case 'histogram':
+        return need(m >= 1, 'needs a numeric field');
+      case 'combo':
+        return need(d >= 1 && m >= 1, 'needs a category and a value');
+      case 'pie': case 'funnel': case 'waterfall': case 'treemap':
+        return need(d >= 1 && m >= 1, 'needs a category and a value');
+      case 'heatmap':
+        return need(d >= 2 && m >= 1, 'needs two categories and a value');
+      case 'slope':
+        return need(m >= 1 && (!!shape.series || d >= 2), 'needs a series (or two categories)');
+      case 'dumbbell':
+        return need(m >= 1 && (!!shape.group || d >= 2), 'needs a group (or two categories)');
+      case 'sankey':
+        return need(m >= 1 && ((!!shape.source && !!shape.target) || d >= 2), 'needs source & target');
+      case 'choropleth':
+        return need(!!shape.hasGeo, 'needs map geometry');
+      case 'calendarHeatmap':
+        return need(m >= 1 && !!shape.date, 'needs a date field');
+      case 'kpi': case 'gauge': case 'bullet':
+        return need(m >= 1, 'needs a numeric value');
+      case 'table':
+        return need((d + m) >= 1, 'needs at least one field');
+      case 'matrix':
+        return need(d >= 1 && m >= 1, 'needs a category and a value');
+    }
+    return { ok: true };
+  }
+
+  // Pick a sensible full-scale for a gauge from the data when available (gauge
+  // requires `max`); fall back to 100.
+  function gaugeMax(spec, field) {
+    var data = spec && spec.data;
+    if (Array.isArray(data) && field) {
+      var mx = null;
+      for (var i = 0; i < data.length; i++) { var v = +(data[i] && data[i][field]); if (!isNaN(v)) mx = (mx == null ? v : Math.max(mx, v)); }
+      if (mx != null && mx > 0) { var mag = Math.pow(10, Math.floor(Math.log(mx) / Math.LN10)); return Math.ceil((mx * 1.1) / mag) * mag; }
+    }
+    return 100;
+  }
+
+  // Produce a NEW spec of `target` type, remapping the source's roles into the
+  // target's channel names. Pure (no mutation) so it's unit-testable.
+  function convertSpec(spec, target) {
+    var shape = shapeOf(spec);
+    var out = {};
+    for (var i = 0; i < CONVERT_CARRY.length; i++) { var k = CONVERT_CARRY[i]; if (spec[k] !== undefined) out[k] = cloneVal(spec[k]); }
+    out.type = target;
+    var dim0 = shape.dims[0], dim1 = shape.dims[1], meas0 = shape.measures[0], meas1 = shape.measures[1];
+    var cat = dim0 ? dim0.field : (meas0 ? meas0.field : 'category');
+    var cat2 = dim1 ? dim1.field : null;
+    var measure = meas0 ? meas0.field : (dim0 ? dim0.field : 'value');
+    var measure2 = meas1 ? meas1.field : null;
+    var agg = (meas0 && meas0.aggregate) || 'sum';
+    function F(field) { return { field: field }; }
+    switch (target) {
+      case 'bar': case 'line': case 'area': case 'box':
+        out.encoding = { x: F(cat), y: F(measure) };
+        if (shape.series) out.encoding.series = F(shape.series.field);
+        break;
+      case 'scatter':
+        out.encoding = { x: F(measure2 || cat), y: F(measure) };
+        break;
+      case 'histogram':
+        out.encoding = { x: F(measure) };
+        break;
+      case 'combo':
+        out.encoding = { x: F(cat) };
+        out.layers = [{ mark: 'bar', encoding: { y: F(measure) } }];
+        if (measure2) out.layers.push({ mark: 'line', encoding: { y: F(measure2) }, axis: 'right' });
+        break;
+      case 'pie':
+        out.encoding = { theta: F(measure), color: F(cat) };
+        break;
+      case 'funnel': case 'waterfall':
+        out.encoding = { stage: F(cat), value: F(measure) };
+        break;
+      case 'treemap':
+        out.encoding = { category: F(cat), value: F(measure) };
+        if (shape.group) out.encoding.group = F(shape.group.field); else if (cat2) out.encoding.group = F(cat2);
+        break;
+      case 'heatmap':
+        out.encoding = { x: F(cat), y: F(cat2 || cat), color: F(measure) };
+        break;
+      case 'slope':
+        out.encoding = { x: F(cat), y: F(measure), series: F((shape.series && shape.series.field) || cat2 || cat) };
+        break;
+      case 'dumbbell':
+        out.encoding = { category: F(cat), value: F(measure), group: F((shape.group && shape.group.field) || cat2 || cat) };
+        break;
+      case 'sankey':
+        out.encoding = { source: F((shape.source && shape.source.field) || cat), target: F((shape.target && shape.target.field) || cat2 || cat), value: F(measure) };
+        break;
+      case 'choropleth':
+        out.encoding = { key: F((shape.geoKey && shape.geoKey.field) || cat), color: F(measure) };
+        if (spec.geo) out.geo = cloneVal(spec.geo);
+        if (spec.featureId) out.featureId = spec.featureId;
+        if (spec.projection) out.projection = spec.projection;
+        break;
+      case 'calendarHeatmap':
+        out.encoding = { date: F((shape.date && shape.date.field) || cat), color: F(measure) };
+        break;
+      case 'kpi':
+        out.value = { field: measure, aggregate: agg };
+        if (meas0 && meas0.title) out.label = meas0.title;
+        break;
+      case 'gauge':
+        out.value = { field: measure, aggregate: agg };
+        out.max = gaugeMax(spec, measure);
+        break;
+      case 'bullet':
+        out.value = { field: measure, aggregate: agg };
+        break;
+      case 'table':
+        var tcols = shape.dims.concat(shape.measures).map(function (f) { var c = { field: f.field }; if (f.title) c.title = f.title; return c; });
+        if (tcols.length) out.columns = tcols;
+        break;
+      case 'matrix':
+        out.rows = [cat];
+        out.values = [{ field: measure, op: agg }];
+        if (cat2) out.columns = [cat2];
+        break;
+    }
+    return out;
+  }
+
+  // Type row: <select> with per-family <optgroup>s; non-convertible targets are
+  // disabled (greyed) with the reason appended. Choosing an enabled type applies
+  // convertSpec through the recorded `apply()` (unlike debug, a type change is a
+  // real, undoable edit that belongs in the change-set).
+  function chartTypeRow(spec, apply) {
+    var shape = shapeOf(spec);
+    var sel = h('select');
+    for (var gi = 0; gi < TYPE_GROUPS.length; gi++) {
+      var og = h('optgroup'); og.setAttribute('label', TYPE_GROUPS[gi][0]);
+      var list = TYPE_GROUPS[gi][1];
+      for (var ti = 0; ti < list.length; ti++) {
+        var ty = list[ti], res = canConvert(shape, ty), label = typeLabel(ty);
+        if (!res.ok && res.reason) label += ' · ' + res.reason;
+        var op = h('option', { value: ty, text: label });
+        if (!res.ok) op.setAttribute('disabled', 'disabled');
+        if (ty === spec.type) op.setAttribute('selected', 'selected');
+        og.appendChild(op);
+      }
+      sel.appendChild(og);
+    }
+    sel.onchange = function () {
+      var v = sel.value;
+      if (v === spec.type) return;
+      if (!canConvert(shape, v).ok) { sel.value = spec.type; return; }
+      apply(function (s) {
+        var conv = convertSpec(s, v), kk;
+        for (kk in s) { if (Object.prototype.hasOwnProperty.call(s, kk)) delete s[kk]; }
+        for (kk in conv) { if (Object.prototype.hasOwnProperty.call(conv, kk)) s[kk] = conv[kk]; }
+      });
+    };
+    return h('div', { class: 'row' }, [h('label', { text: 'Type' }), sel]);
+  }
+
   // ---- Graphein spec editor (inspector section) ----------------------------
   function chartGroup(chart) {
     var g = h('div', { class: 'grp' }, [h('h5', { text: 'Chart spec' })]);
@@ -1161,7 +1471,7 @@
         reapply: function () { if (afterAttr != null) chart.setAttribute('data-graphein-spec', afterAttr); }
       });
     }
-    g.appendChild(gsel('Type', CHART_TYPES, spec.type, function (v) { apply(function (s) { s.type = v; }); }));
+    g.appendChild(chartTypeRow(spec, apply));
     var titleVal = (spec.title && typeof spec.title === 'object') ? (spec.title.text || '') : (spec.title || '');
     var ti = h('input', { type: 'text', value: titleVal });
     ti.oninput = function () { apply(function (s) { if (s.title && typeof s.title === 'object') s.title.text = ti.value; else s.title = ti.value; }); };
@@ -1171,6 +1481,10 @@
     g.appendChild(gsel('Sort', ['none', 'ascending', 'descending'], spec.sort || 'none', function (v) { apply(function (s) { s.sort = v; }); }));
     var curFmt = (spec.encoding && spec.encoding.y && spec.encoding.y.format) || '';
     g.appendChild(gselPairs('Value fmt', FORMATS, curFmt, function (v) { apply(function (s) { s.encoding = s.encoding || {}; s.encoding.y = s.encoding.y || {}; if (v) s.encoding.y.format = v; else delete s.encoding.y.format; }); }));
+    // Transient full-screen Graphein debug inspection (never recorded / sent to chat).
+    var dbgBtn = h('button', { class: 'gbtn', text: 'Open debug view' });
+    dbgBtn.onclick = function (e) { e.stopPropagation(); enterDebugView(chart); };
+    g.appendChild(h('div', { class: 'row' }, [h('label', { text: 'Debug' }), dbgBtn]));
     return g;
   }
   function gsel(label, opts, cur, on) {
@@ -1953,6 +2267,89 @@
     bump();
   }
 
+  // ---- debug view (transient full-screen Graphein inspection) --------------
+  // Graphein 0.17+ replaces a chart with a multi-panel diagnostic when
+  // `debug:true` is set on its spec. We flip that flag on the selected chart
+  // WITHOUT recording it (so it never enters the change-set / "Send to chat"),
+  // blow the chart up to fill the viewport so every panel is readable, and
+  // revert cleanly on Esc / close / when design mode is disabled.
+  function inDebug(node) { var dv = state.debugView; if (!dv) return false; var t = dv.target || dv.el; return !!(t && (node === t || (t.contains && t.contains(node)))); }
+  function hideChromeForDebug() {
+    if (!root) return;
+    state.hoverEl = null;
+    [elHover, elLabel, elSel, elSels, elBadges, elHandles, elMorph, elToolbar, elInspector, elChanges].forEach(function (n) { if (n) n.style.display = 'none'; });
+    if (elLegend) elLegend.style.display = 'none';
+    clearGuides();
+  }
+  function showDebugBar() {
+    if (!root) return;
+    if (state.debugBar) { state.debugBar.style.display = 'flex'; return; }
+    var bar = h('div', { class: 'dbgbar' });
+    bar.appendChild(h('span', { class: 'dbgbar-t', text: 'Debug view' }));
+    var x = h('button', { class: 'dbgbar-x', text: 'Exit (Esc)' });
+    x.onclick = function (e) { e.stopPropagation(); e.preventDefault(); exitDebugView(); };
+    bar.appendChild(x);
+    root.appendChild(bar);
+    state.debugBar = bar;
+  }
+  function hideDebugBar() { if (state.debugBar) { try { state.debugBar.remove(); } catch (e) {} state.debugBar = null; } }
+
+  // Ancestor properties that establish a containing block for position:fixed
+  // (so the fullscreen chart would be trapped inside them) — cleared while in
+  // debug and restored on exit. will-change → 'auto', everything else → 'none'.
+  var DEBUG_NEUTRALIZE = { transform: 'none', perspective: 'none', filter: 'none', 'backdrop-filter': 'none', '-webkit-backdrop-filter': 'none', 'will-change': 'auto', contain: 'none' };
+  var DEBUG_FS = { position: 'fixed', left: '0', top: '0', right: '0', bottom: '0', width: '100vw', height: '100vh', 'max-width': 'none', 'max-height': 'none', 'min-width': '0', 'min-height': '0', margin: '0', padding: '0', 'box-sizing': 'border-box', 'z-index': '2147483630', background: PANEL_BG, overflow: 'auto', 'border-radius': '0', transform: 'none', perspective: 'none', filter: 'none', 'backdrop-filter': 'none', '-webkit-backdrop-filter': 'none', 'will-change': 'auto', contain: 'none' };
+  function enterDebugView(chart) {
+    if (!chart || state.debugView) return;
+    var spec = readSpec(chart);
+    if (!spec) return;
+    if (state.editingText) commitText();
+    if (state.selected) deselect();
+    // Graphein sizes the chart from resolveSize(container), where container is the
+    // PARENT of the element carrying data-graphein-spec (surface.root). So we blow up
+    // that parent — not the root itself — otherwise the diagnostic overlay stays
+    // pinned to the chart's original size and only the top-left corner fills.
+    var target = (chart.parentElement && chart.parentElement.nodeType === 1) ? chart.parentElement : chart;
+    var dv = { el: chart, target: target, prevSpecAttr: chart.getAttribute('data-graphein-spec'), prevTargetStyle: target.getAttribute('style'), neutralized: [] };
+    // Clear containing-block props on the target's ancestors so its position:fixed is
+    // viewport-relative (a transformed/filtered/contained ancestor would trap it).
+    var n = target.parentElement, guard = 0, p;
+    while (n && n.nodeType === 1 && guard < 300) {
+      var cs = null; try { cs = getComputedStyle(n); } catch (e) {}
+      if (cs && ((cs.transform && cs.transform !== 'none') || (cs.perspective && cs.perspective !== 'none') || (cs.filter && cs.filter !== 'none') || (cs.backdropFilter && cs.backdropFilter !== 'none') || (cs.willChange && cs.willChange.indexOf('transform') >= 0) || (cs.contain && /paint|layout|strict|content/.test(cs.contain)))) {
+        dv.neutralized.push({ el: n, style: n.getAttribute('style') });
+        for (p in DEBUG_NEUTRALIZE) { try { n.style.setProperty(p, DEBUG_NEUTRALIZE[p], 'important'); } catch (e) {} }
+      }
+      n = n.parentElement; guard++;
+    }
+    for (p in DEBUG_FS) { try { target.style.setProperty(p, DEBUG_FS[p], 'important'); } catch (e) {} }
+    // Flip debug on WITHOUT recording; drop any authored width/height so the view
+    // fills the now-fullscreen container rather than the chart's fixed dimensions.
+    var dbgSpec = cloneVal(spec); dbgSpec.debug = true;
+    if (dbgSpec.dimensions && typeof dbgSpec.dimensions === 'object') { try { delete dbgSpec.dimensions.width; delete dbgSpec.dimensions.height; } catch (e) {} }
+    writeSpec(chart, dbgSpec);
+    state.debugView = dv;
+    hideChromeForDebug();
+    showDebugBar();
+  }
+  function exitDebugView() {
+    var dv = state.debugView;
+    if (!dv) return;
+    state.debugView = null;
+    // Revert the spec (drops debug + restores authored dimensions) → the chart re-renders.
+    try { if (dv.prevSpecAttr != null) dv.el.setAttribute('data-graphein-spec', dv.prevSpecAttr); else dv.el.removeAttribute('data-graphein-spec'); } catch (e) {}
+    // Restore the fullscreen target's inline style, then any neutralized ancestors.
+    try { if (dv.prevTargetStyle != null) dv.target.setAttribute('style', dv.prevTargetStyle); else dv.target.removeAttribute('style'); } catch (e) {}
+    for (var i = 0; i < dv.neutralized.length; i++) { var it = dv.neutralized[i]; try { if (it.style != null) it.el.setAttribute('style', it.style); else it.el.removeAttribute('style'); } catch (e) {} }
+    hideDebugBar();
+    if (root && state.enabled) {
+      if (elToolbar) elToolbar.style.display = 'flex';
+      if (elLegend) elLegend.style.display = '';
+      renderBar();
+      if (dv.el && dv.el.isConnected) select(dv.el);
+    }
+  }
+
   function buildChangeSet() {
     var items = [];
     for (var i = 0; i < state.changes.length; i++) {
@@ -2007,6 +2404,7 @@
 
   // ---- global handlers -----------------------------------------------------
   function onPointerMove(e) {
+    if (state.debugView) { state.hoverEl = null; return; }
     if (state.move || state.resizing || state.editingText) return;
     if (state.tool === 'insert') { showInsertLine(e.clientX, e.clientY); return; }
     if (state.tool !== 'select') return;
@@ -2017,6 +2415,7 @@
   }
 
   function onPointerDown(e) {
+    if (state.debugView) return; // clicks pass through to the full-screen debug panels
     if (isOurs(e.target)) return; // our UI (toolbar/inspector/handles/pins/draw) handles itself
     if (state.tool === 'draw') return; // draw is handled by elDraw's own pointerdown
 
@@ -2046,6 +2445,7 @@
   }
 
   function onDblClick(e) {
+    if (state.debugView) return;
     if (state.tool !== 'select' || isOurs(e.target)) return;
     var el = document.elementFromPoint(e.clientX, e.clientY);
     if (el && !isOurs(el) && !chartRoot(el) && el.children.length === 0) { e.preventDefault(); e.stopPropagation(); select(el); startText(el); }
@@ -2053,11 +2453,13 @@
 
   function blockMouse(e) {
     if (isOurs(e.target)) return;
+    if (state.debugView) { if (inDebug(e.target)) return; e.preventDefault(); e.stopPropagation(); return; }
     if (state.editingText) { var t = e.target; if (t && (t === state.editingText.el || (state.editingText.el.contains && state.editingText.el.contains(t)))) return; }
     e.preventDefault(); e.stopPropagation();
   }
 
   function onKey(e) {
+    if (state.debugView) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); exitDebugView(); } return; }
     if (state.editingText) { if (e.key === 'Escape') { e.preventDefault(); commitText(); } return; }
     // Don't hijack keys while typing in one of our own inputs (inspector fields,
     // comment note, chart title) — let them behave natively (incl. Ctrl+Z).
@@ -2164,6 +2566,7 @@
   function disable() {
     if (!state.enabled) return;
     state.enabled = false;
+    exitDebugView(); // revert any transient debug view (restores the chart, no record)
     if (state.editingText) commitText();
     if (state.panelDragUp) { try { state.panelDragUp(); } catch (e) {} state.panelDragUp = null; }
     if (state.resizing) { window.removeEventListener('pointermove', onResizeMove, true); window.removeEventListener('pointerup', onResizeUp, true); state.resizing = null; }
@@ -2510,6 +2913,15 @@
           localSetTheme(theme);
         }
       } catch (e) {}
+    },
+    // Pure chart-type conversion helpers (no DOM / no mutation), exposed for unit tests.
+    __convert: { chartTypes: CHART_TYPES, groups: TYPE_GROUPS, shapeOf: shapeOf, canConvert: canConvert, convertSpec: convertSpec },
+    // Transient debug-view controls (non-recorded), exposed for unit tests.
+    __debug: {
+      enter: function (el) { try { enterDebugView(el); } catch (e) {} },
+      exit: function () { try { exitDebugView(); } catch (e) {} },
+      active: function () { return !!state.debugView; },
+      changeCount: function () { return state.changes.length; }
     }
   };
 

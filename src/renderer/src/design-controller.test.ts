@@ -60,7 +60,7 @@ describe('design controller — theme + AI restyle', () => {
 
   it('adopts a host-pushed Fabricator theme accent + UI scale', () => {
     const d = install()
-    expect(d.__v).toBe(4)
+    expect(d.__v).toBe(5)
     d.enable('direct')
     d.setTheme({ accent: '#4f46e5', panel: '#ffffff', txt: '#111111', scale: 1.5 })
     const css = styleText()

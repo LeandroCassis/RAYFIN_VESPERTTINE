@@ -148,7 +148,10 @@ A spec is a plain JSON object — no functions, no colors, no sizes:
 - **Validate → repair → render.** `validateSpec(spec)` → `{ valid, errors, warnings }`
   catches field-name typos and bad shapes; `repairSpec(spec)` auto-fixes many of
   them (returns the patched spec). Both are re-exported from the barrel. See
-  **Self-check** below and the **headless-preview** skill.
+  **Self-check** below and the **headless-preview** skill. When a spec still
+  renders wrong, set `debug: true` on it to swap the chart for a diagnostic view
+  (live preview + resolved spec + data sample + validation + render report);
+  clear the flag to render normally.
 - **Don't author `theme`.** `ChartCard` injects the app's CSS-token theme (brand
   color + dark mode) automatically. Recolor via `src/global.css` tokens, never
   per-spec hex.
