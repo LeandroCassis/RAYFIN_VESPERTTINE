@@ -9557,20 +9557,185 @@ code {
 .model-badge-dot--danger {
   color: var(--danger);
 }
-
-.model-canvas {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 18px;
+.model-legend-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 2px;
+  background: var(--border);
+}
+.model-legend-crow {
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 1;
 }
 
-.model-grid {
+/* ── Model toolbar (search / focus / collapse / zoom / fit / reset) ───────── */
+.model-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.model-toolbar-spacer {
+  flex: 1;
+}
+
+.model-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 1 240px;
+  min-width: 160px;
+  max-width: 300px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg);
+}
+.model-search:focus-within {
+  border-color: var(--accent);
+}
+.model-search-ico {
+  flex: none;
+  font-size: 13px;
+  color: var(--text-faint);
+}
+.model-search-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 12px;
+  outline: none;
+}
+.model-search-clear {
+  flex: none;
+  display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-faint);
+  font-size: 12px;
+  cursor: pointer;
+}
+.model-search-clear:hover {
+  color: var(--text);
+}
+
+.model-focus-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 10px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  border-radius: 999px;
+  cursor: pointer;
+}
+.model-focus-chip:hover {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.model-focus-chip-x {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.model-tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 9px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.model-tool-btn:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+.model-zoom {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.model-zoom-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: pointer;
+}
+.model-zoom-btn:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+.model-zoom-label {
+  min-width: 46px;
+  height: 26px;
+  border: 0;
+  border-left: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.model-zoom-label:hover {
+  color: var(--text);
+  background: var(--bg-elev-2);
+}
+
+/* ── Model diagram viewport (pan/zoom surface) ───────────────────────────── */
+.model-viewport {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
-  gap: 26px 30px;
-  align-items: start;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  background-color: var(--bg);
+  background-image: radial-gradient(
+    circle at 1px 1px,
+    color-mix(in srgb, var(--text-faint) 30%, transparent) 1px,
+    transparent 0
+  );
+  background-size: 22px 22px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.model-viewport[data-panning='true'] {
+  cursor: grabbing;
+}
+
+.model-canvas-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}
+/* Only promote to a GPU layer while actively panning: leaving will-change on
+   permanently rasterizes the layer and blurs card text at rest. */
+.model-viewport[data-panning='true'] .model-canvas-inner {
+  will-change: transform;
 }
 
 .model-edges {
@@ -9584,129 +9749,203 @@ code {
 
 .model-edge {
   fill: none;
-  stroke-width: 1.6;
-}
-.model-edge--rel {
-  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke: color-mix(in srgb, var(--text-dim) 50%, transparent);
+  stroke-dasharray: 4 4;
+  transition:
+    stroke 0.14s ease,
+    stroke-width 0.14s ease;
 }
 .model-edge--fk {
-  stroke: color-mix(in srgb, var(--text-dim) 70%, transparent);
-  stroke-dasharray: 4 4;
+  stroke: color-mix(in srgb, var(--text-dim) 38%, transparent);
+  stroke-dasharray: 3 5;
 }
-.model-arrow-head {
-  fill: var(--text-dim);
+.model-edge-cap {
+  stroke: none;
+  fill: color-mix(in srgb, var(--text-dim) 62%, transparent);
+  transition: fill 0.14s ease;
+}
+.model-edge-cap--fk {
+  fill: color-mix(in srgb, var(--text-dim) 48%, transparent);
+}
+.model-edge-g--dim {
+  opacity: 0.1;
+}
+.model-edge-g--hot .model-edge {
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.model-edge-g--hot .model-edge-cap {
+  fill: var(--accent);
 }
 
 .model-card {
-  position: relative;
+  position: absolute;
   z-index: 1;
   display: flex;
   flex-direction: column;
   background: var(--bg-elev);
   border: 1px solid var(--border);
-  border-top: 2px solid var(--border);
-  border-radius: var(--radius);
+  border-radius: 12px;
   overflow: hidden;
+  cursor: grab;
   transition:
-    border-color 0.12s ease,
-    opacity 0.12s ease;
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    opacity 0.14s ease;
 }
-.model-card--ok {
-  border-top-color: var(--ok);
+.model-card button {
+  cursor: pointer;
 }
-.model-card--warn {
-  border-top-color: var(--pending);
-}
-.model-card--danger {
-  border-top-color: var(--danger);
-}
+/* Uniform accent header (Supabase-inspired); access tone is shown by the small
+   header indicator dot + the top legend, keeping every card visually consistent. */
 .model-card--dim {
-  opacity: 0.4;
+  opacity: 0.3;
+}
+.model-card--active {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+    var(--shadow-md);
+}
+.model-card--dragging {
+  cursor: grabbing;
+  z-index: 5;
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  box-shadow: var(--shadow-lg);
+}
+
+.model-card-access {
+  justify-self: end;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--on-accent) 50%, transparent);
+  box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--on-accent) 22%, transparent);
+}
+.model-card-access--ok {
+  background: var(--ok);
+}
+.model-card-access--warn {
+  background: var(--pending);
+}
+.model-card-access--danger {
+  background: var(--danger);
 }
 
 .model-card-head {
-  display: flex;
+  display: grid;
+  grid-template-columns: 18px 1fr 10px;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
-  padding: 9px 11px;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-elev-2);
+  padding: 7px 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.model-card-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--on-accent);
+  opacity: 0.72;
+  font-size: 13px;
+  cursor: pointer;
+}
+.model-card-collapse:hover {
+  opacity: 1;
 }
 
 .model-card-name {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 650;
-  color: var(--text);
+  min-width: 0;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--on-accent);
   background: transparent;
   border: 0;
   padding: 0;
   cursor: pointer;
-  min-width: 0;
-}
-.model-card-name:hover {
-  color: var(--accent);
-}
-.model-card-alias {
-  font-size: 10.5px;
-  font-weight: 500;
-  color: var(--text-dim);
-}
-
-.model-badge {
-  flex: none;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.model-badge--ok {
-  color: var(--ok);
-  background: color-mix(in srgb, var(--ok) 14%, transparent);
-  border-color: color-mix(in srgb, var(--ok) 36%, transparent);
-}
-.model-badge--warn {
-  color: var(--pending);
-  background: color-mix(in srgb, var(--pending) 14%, transparent);
-  border-color: color-mix(in srgb, var(--pending) 36%, transparent);
-}
-.model-badge--danger {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
-  border-color: color-mix(in srgb, var(--danger) 36%, transparent);
+.model-card-name:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .model-fields {
   list-style: none;
   margin: 0;
-  padding: 4px 0;
+  padding: 5px 0;
   display: flex;
   flex-direction: column;
 }
 
 .model-field {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 11px;
+  gap: 9px;
+  padding: 3px 12px;
+  min-height: 24px;
   font-size: 12px;
+}
+.model-field--link {
+  cursor: pointer;
+}
+.model-field--link:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
 }
 .model-field--empty {
   color: var(--text-faint);
   font-style: italic;
 }
 
-.model-field-name {
+.model-field-gutter {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 7px;
+  flex: none;
+}
+.model-field-icon {
+  width: 13px;
+  display: inline-flex;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.model-field-icon--pk {
+  color: var(--pending);
+}
+.model-field-icon--fk {
+  color: var(--accent);
+}
+.model-field-req {
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: var(--text-dim);
+}
+.model-field-req--opt {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--text-faint);
+}
+.model-field-req--uniq {
+  background: var(--accent-2);
+  box-shadow: none;
+}
+
+.model-field-name {
   min-width: 0;
   font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
   color: var(--text);
@@ -9714,71 +9953,74 @@ code {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.model-field-key {
-  color: var(--pending);
-  font-size: 11px;
-}
-.model-field-opt {
-  color: var(--text-faint);
-}
-
-.model-field-meta {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-}
-
-.model-mark {
-  font-size: 9.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-dim);
-}
-
-.model-fk {
-  font-size: 10.5px;
+.model-field--link .model-field-name {
   color: var(--accent);
-  background: transparent;
-  border: 0;
-  padding: 0;
-  cursor: pointer;
+}
+.model-field-type {
+  justify-self: end;
+  flex: none;
+  font-size: 11px;
+  color: var(--text-faint);
   white-space: nowrap;
   font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
 }
-.model-fk:hover {
-  text-decoration: underline;
+
+.model-card-summary {
+  text-align: left;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.model-card-summary:hover {
+  color: var(--text);
 }
 
-.model-chip {
-  font-size: 10px;
+.model-card-perms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 6px 11px 8px;
+  border-top: 1px solid var(--border-soft);
+}
+.model-perm {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 9.5px;
   font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 5px;
-  background: var(--bg-elev-3);
   color: var(--text-dim);
-  white-space: nowrap;
+  background: var(--bg-elev-3);
+  border-radius: 5px;
 }
-.model-chip--id {
-  color: var(--pending);
+.model-perm--scoped {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 12%, transparent);
 }
-.model-chip--rel {
-  color: var(--accent);
+.model-perm--none {
+  color: var(--text-faint);
+  font-style: italic;
+  background: transparent;
 }
-.model-chip--num {
-  color: var(--accent-2);
+.model-perm-actions {
+  color: var(--text-faint);
+  font-weight: 500;
 }
-.model-chip--bool {
-  color: #c8a6f0;
+.model-perm--scoped .model-perm-actions {
+  color: color-mix(in srgb, var(--ok) 80%, var(--text-dim));
 }
-.model-chip--enum {
-  color: #c8a6f0;
+.model-perm-policy {
+  color: var(--ok);
 }
 
 .model-card-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 5px;
   margin-top: auto;
   padding: 8px 10px;
   border-top: 1px solid var(--border-soft);
