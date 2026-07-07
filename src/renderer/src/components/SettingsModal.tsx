@@ -54,6 +54,7 @@ export default function SettingsModal({
   const { status: updateStatus, info: updateInfo, checkNow } = useUpdates()
   const [checkedUpdates, setCheckedUpdates] = useState(false)
   const [showExperiments, setShowExperiments] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
   const titleId = useId()
   // Compatibility rendering is applied at startup, so any change only takes effect
@@ -97,6 +98,20 @@ export default function SettingsModal({
   async function changeRoot(): Promise<void> {
     const next = await window.api.projects.pickWorkspaceRoot()
     setWorkspaceRoot(next.workspaceRoot)
+  }
+
+  // Build and reveal a shareable diagnostics bundle. Best-effort: the backend
+  // reveals the logs folder on success, and a failure must never throw.
+  async function exportDiagnostics(): Promise<void> {
+    if (exporting) return
+    setExporting(true)
+    try {
+      await window.api.diagnostics.export()
+    } catch {
+      /* diagnostics export is best-effort */
+    } finally {
+      setExporting(false)
+    }
   }
 
   const updateBusy =
@@ -219,14 +234,32 @@ export default function SettingsModal({
 
             <div className="field">
               <span className="field-label">Diagnostics</span>
+              <ToggleRow
+                label="Full diagnostics"
+                hint="Also capture prompts, responses, and tool output for each chat turn. Off by default — only lightweight metadata (timing, tools used, errors) is recorded. Turn on to include more detail in a bug report."
+                checked={Boolean(settings.fullDiagnostics)}
+                onChange={(v) => onChange({ fullDiagnostics: v })}
+              />
               <div className="settings-row">
-                <span className="field-hint">Logs are saved on this device.</span>
-                <button
-                  className="btn btn--sm btn--ghost"
-                  onClick={() => void window.api.openLogs()}
-                >
-                  Open logs folder
-                </button>
+                <span className="field-hint">
+                  Diagnostics for your chat sessions are saved on this device. Export them to
+                  attach to a bug report.
+                </span>
+                <span className="diagnostics-actions">
+                  <button
+                    className="btn btn--sm btn--ghost"
+                    disabled={exporting}
+                    onClick={() => void exportDiagnostics()}
+                  >
+                    {exporting ? 'Exporting…' : 'Export diagnostics'}
+                  </button>
+                  <button
+                    className="btn btn--sm btn--ghost"
+                    onClick={() => void window.api.openLogs()}
+                  >
+                    Open logs folder
+                  </button>
+                </span>
               </div>
             </div>
 

@@ -27,6 +27,7 @@ use uuid::Uuid;
 
 use crate::commands::screenshot;
 use crate::services::copilot::PlanModeHandler;
+use crate::services::diagnostics;
 use crate::services::emit::emit_chat_event;
 use crate::services::history;
 use crate::services::store;
@@ -85,6 +86,14 @@ fn tool_title(tool_name: &str, args: Option<&Value>) -> String {
   truncate(collapsed.trim(), 200)
 }
 
+/// One tool invocation observed during a turn, accumulated for diagnostics.
+struct ToolCallAcc {
+  id: String,
+  name: String,
+  ok: Option<bool>,
+  output: Option<String>,
+}
+
 /// Per-attempt accumulator for a single turn.
 struct TurnCtx {
   files_modified: Vec<String>,
@@ -101,10 +110,21 @@ struct TurnCtx {
   /// message mid-turn we insert a blank line, so consecutive messages don't run
   /// together (e.g. "…the implementation.Now let me…").
   cur_msg: Option<String>,
+  /// When true, capture content (assistant text + tool output) for full
+  /// diagnostics. Off by default — only cheap metadata is accumulated.
+  capture_full: bool,
+  /// Tool calls seen this turn (name + success), for diagnostics.
+  tool_calls: Vec<ToolCallAcc>,
+  /// Reconstructed assistant response text (full-diagnostics mode only).
+  response: Option<String>,
+  /// Count of dropped events reported by the subscription (stream lag).
+  lagged_events: u64,
+  /// True if the event stream closed before a terminal state.
+  stream_closed: bool,
 }
 
 impl TurnCtx {
-  fn new() -> Self {
+  fn new(capture_full: bool) -> Self {
     TurnCtx {
       files_modified: vec![],
       ran_deploy: false,
@@ -113,6 +133,45 @@ impl TurnCtx {
       errored: None,
       streamed: HashMap::new(),
       cur_msg: None,
+      capture_full,
+      tool_calls: vec![],
+      response: None,
+      lagged_events: 0,
+      stream_closed: false,
+    }
+  }
+
+  /// Record the start of a tool call (metadata always; cheap).
+  fn tool_start(&mut self, id: &str, name: &str) {
+    self.tool_calls.push(ToolCallAcc {
+      id: id.to_string(),
+      name: name.to_string(),
+      ok: None,
+      output: None,
+    });
+  }
+
+  /// Record a tool call's outcome; capture its output only in full mode.
+  fn tool_end(&mut self, id: &str, ok: bool, output: Option<&str>) {
+    let full = self.capture_full;
+    if let Some(tc) = self.tool_calls.iter_mut().rev().find(|t| t.id == id) {
+      tc.ok = Some(ok);
+      if full {
+        tc.output = output.map(|s| s.to_string());
+      }
+    }
+  }
+
+  /// Append assistant text to the reconstructed response, full mode only, with a
+  /// soft cap so a very long turn can't grow the buffer without bound.
+  fn push_response(&mut self, text: &str) {
+    if !self.capture_full || text.is_empty() {
+      return;
+    }
+    const CAP: usize = 200_000;
+    let buf = self.response.get_or_insert_with(String::new);
+    if buf.len() < CAP {
+      buf.push_str(text);
     }
   }
 }
@@ -154,6 +213,7 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
       ensure_separator(&id, sink, ctx);
       *ctx.streamed.entry(id).or_insert(0) += text.chars().count();
       sink(ChatEvent::Delta { text: text.to_string() });
+      ctx.push_response(text);
     }
     "assistant.message" => {
       let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
@@ -163,6 +223,7 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
       if total > have {
         ensure_separator(&id, sink, ctx);
         let rest: String = content.chars().skip(have).collect();
+        ctx.push_response(&rest);
         sink(ChatEvent::Delta { text: rest });
         ctx.streamed.insert(id, total);
       }
@@ -181,6 +242,7 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
         .and_then(|v| v.as_str())
         .map(|s| s.to_string())
         .unwrap_or_else(|| Uuid::new_v4().to_string());
+      ctx.tool_start(&id, &tool_name);
       sink(ChatEvent::ToolStart {
         tool: ChatToolCall {
           id,
@@ -201,6 +263,7 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
         .and_then(|v| v.as_str())
         .or_else(|| data.get("error").and_then(|e| e.get("message")).and_then(|v| v.as_str()))
         .map(|c| truncate(c, MAX_TOOL_OUTPUT));
+      ctx.tool_end(&id, success, output.as_deref());
       sink(ChatEvent::ToolEnd {
         id,
         state: if success { ChatToolState::Success } else { ChatToolState::Error },
@@ -268,6 +331,66 @@ fn resolve_context(project_id: &str) -> Option<ProjectContext> {
   Some(ProjectContext { cwd: project.path, session_id })
 }
 
+/// Build and persist a diagnostics record for one completed turn. Best-effort;
+/// [`diagnostics::record_turn`] swallows all I/O failures so this can never break
+/// a chat. Content fields (`prompt`/`response`/tool output) are included only
+/// when `full` is set (the opt-in Settings → Diagnostics toggle).
+#[allow(clippy::too_many_arguments)]
+fn record_turn_diagnostics(
+  app_version: &str,
+  session_id: &str,
+  project_id: &str,
+  turn_id: &str,
+  model: &Option<String>,
+  mode: &Option<String>,
+  effort: &Option<String>,
+  prompt: &str,
+  attachments: usize,
+  full: bool,
+  duration_ms: u64,
+  attempts: u32,
+  outcome: &str,
+  error: Option<String>,
+  ctx: &TurnCtx,
+) {
+  let rec = diagnostics::TurnDiagnostics {
+    time: chrono::Utc::now().to_rfc3339(),
+    app_version: app_version.to_string(),
+    os: std::env::consts::OS.to_string(),
+    project_id: project_id.to_string(),
+    turn_id: turn_id.to_string(),
+    session_id: session_id.to_string(),
+    model: model.clone(),
+    mode: mode.clone(),
+    effort: effort.clone(),
+    duration_ms,
+    attempts,
+    attachments,
+    files_modified: ctx.files_modified.len(),
+    ran_deploy: ctx.ran_deploy,
+    outcome: outcome.to_string(),
+    error: error.map(|e| diagnostics::clip(&e)),
+    lagged_events: ctx.lagged_events,
+    stream_closed: ctx.stream_closed,
+    tools: ctx
+      .tool_calls
+      .iter()
+      .map(|t| diagnostics::ToolDiag {
+        name: t.name.clone(),
+        ok: t.ok.unwrap_or(false),
+        output: t.output.clone(),
+      })
+      .collect(),
+    prompt: if full { Some(diagnostics::clip(prompt)) } else { None },
+    response: if full {
+      ctx.response.as_deref().map(diagnostics::clip)
+    } else {
+      None
+    },
+  };
+  diagnostics::record_turn(&rec);
+}
+
 #[tauri::command]
 pub async fn chat_send(
   app: AppHandle,
@@ -333,6 +456,13 @@ pub(crate) async fn run_turn(
     });
   };
 
+  // Diagnostics context, captured once per turn (cheap): a monotonic start for
+  // duration, whether the user opted into full (content) capture, and the app
+  // version for the record. Read here so a session-open failure is also recorded.
+  let started = std::time::Instant::now();
+  let full = diagnostics::full_enabled();
+  let app_version = app.package_info().version.to_string();
+
   // Surface plan-approval prompts (`exit_plan_mode`) to this turn's UI. The handler
   // is installed on every chat turn (cheap, harmless when not in Plan mode) because
   // the SDK session is cached/reused and may switch to Plan on a later turn.
@@ -363,6 +493,24 @@ pub(crate) async fn run_turn(
       emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: e.clone() });
       screenshot::cleanup(&attachments);
       state.end_chat(&project_id);
+      let empty = TurnCtx::new(full);
+      record_turn_diagnostics(
+        &app_version,
+        &ctx_info.session_id,
+        &project_id,
+        &turn_id,
+        &project.model,
+        &mode,
+        &project.effort,
+        &text,
+        attachments.len(),
+        full,
+        started.elapsed().as_millis() as u64,
+        0,
+        "error",
+        Some(e.clone()),
+        &empty,
+      );
       return Ok(ChatTurnResult { ok: false, error: Some(e), files_modified: vec![], ran_deploy: false });
     }
   };
@@ -394,7 +542,7 @@ pub(crate) async fn run_turn(
     Closed,
   }
 
-  let mut ctx = TurnCtx::new();
+  let mut ctx = TurnCtx::new(full);
   let mut cancelled = false;
   let mut timed_out = false;
   let mut send_error: Option<String> = None;
@@ -402,7 +550,7 @@ pub(crate) async fn run_turn(
 
   loop {
     if attempt > 1 {
-      ctx = TurnCtx::new();
+      ctx = TurnCtx::new(full);
       cancelled = false;
       timed_out = false;
     }
@@ -441,6 +589,7 @@ pub(crate) async fn run_turn(
             }
             Err(err) => match err.kind() {
               RecvErrorKind::Lagged(l) => {
+                ctx.lagged_events += l.skipped();
                 log::warn!("chat event stream lagged, skipped {} events", l.skipped());
               }
               RecvErrorKind::Closed => return DrainEnd::Closed,
@@ -457,7 +606,8 @@ pub(crate) async fn run_turn(
 
     match tokio::time::timeout(Duration::from_millis(TURN_TIMEOUT_MS), drain).await {
       Ok(DrainEnd::Cancelled) => cancelled = true,
-      Ok(DrainEnd::Finished) | Ok(DrainEnd::Closed) => {}
+      Ok(DrainEnd::Finished) => {}
+      Ok(DrainEnd::Closed) => ctx.stream_closed = true,
       Err(_) => {
         let _ = session.abort().await;
         timed_out = true;
@@ -490,6 +640,39 @@ pub(crate) async fn run_turn(
   // (covers Stop / timeout while an approval card is open).
   state.plan.clear_route(&session_key);
   state.plan.reject_pending(&session_key);
+
+  // Record one lightweight diagnostics line for this turn (off the streaming hot
+  // path, best-effort). `outcome` mirrors the branches below.
+  let outcome = if send_error.is_some() {
+    "send_error"
+  } else if cancelled {
+    "cancelled"
+  } else if timed_out {
+    "timed_out"
+  } else if ctx.errored.is_some() {
+    "error"
+  } else if ctx.saw_result {
+    "ok"
+  } else {
+    "incomplete"
+  };
+  record_turn_diagnostics(
+    &app_version,
+    &ctx_info.session_id,
+    &project_id,
+    &turn_id,
+    &project.model,
+    &mode,
+    &project.effort,
+    &text,
+    attachments.len(),
+    full,
+    started.elapsed().as_millis() as u64,
+    attempt,
+    outcome,
+    send_error.clone().or_else(|| ctx.errored.clone()),
+    &ctx,
+  );
 
   if let Some(e) = send_error {
     emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: e.clone() });
@@ -689,7 +872,7 @@ mod tests {
 
   #[test]
   fn delta_then_file_info_collects_files_and_flags() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     let events = collect(
       &[
         ("assistant.message_delta", json!({"messageId":"m1","deltaContent":"Hello"})),
@@ -713,7 +896,7 @@ mod tests {
 
   #[test]
   fn session_idle_marks_result_and_stops() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     let flow = map_event("session.idle", &json!({}), &mut |_e: ChatEvent| {}, &mut ctx);
     assert!(matches!(flow, Flow::Stop));
     assert!(ctx.saw_result);
@@ -721,7 +904,7 @@ mod tests {
 
   #[test]
   fn session_error_emits_error_and_stops() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     let mut events = vec![];
     let flow = {
       let mut sink = |e: ChatEvent| events.push(e);
@@ -738,7 +921,7 @@ mod tests {
 
   #[test]
   fn assistant_message_only_emits_untyped_remainder() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     // 5 chars already streamed as a delta; the full message adds " world".
     let events = collect(
       &[
@@ -756,7 +939,7 @@ mod tests {
 
   #[test]
   fn new_message_inserts_blank_line_separator() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     // Two distinct assistant messages in one turn must read as separate
     // paragraphs, not concatenated ("First thought.Second thought.").
     let events = collect(
@@ -778,7 +961,7 @@ mod tests {
 
   #[test]
   fn same_message_deltas_are_not_separated() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     // Multiple deltas for the same messageId stream as one continuous paragraph.
     let events = collect(
       &[
@@ -799,7 +982,7 @@ mod tests {
 
   #[test]
   fn tool_start_detects_deploy_and_titles() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     let events = collect(
       &[(
         "tool.execution_start",
@@ -822,7 +1005,7 @@ mod tests {
 
   #[test]
   fn tool_complete_maps_success_and_output() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     let events = collect(
       &[(
         "tool.execution_complete",
@@ -842,7 +1025,7 @@ mod tests {
 
   #[test]
   fn tool_complete_maps_failure_to_error_message() {
-    let mut ctx = TurnCtx::new();
+    let mut ctx = TurnCtx::new(false);
     let events = collect(
       &[(
         "tool.execution_complete",

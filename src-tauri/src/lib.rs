@@ -115,6 +115,10 @@ pub fn run() {
       // is never mistaken for a hang.
       services::watchdog::start(app.handle().clone());
 
+      // Trim old chat-session diagnostics so the logs directory stays bounded.
+      // Runs once at startup so per-turn capture adds no pruning I/O.
+      services::diagnostics::prune();
+
       Ok(())
     })
     .invoke_handler(tauri::generate_handler![
@@ -125,6 +129,8 @@ pub fn run() {
       commands::misc::open_logs,
       commands::misc::open_in_editor,
       commands::misc::relaunch,
+      // diagnostics
+      commands::diagnostics::diagnostics_export,
       // updates
       commands::updates::update_check,
       commands::updates::update_download,

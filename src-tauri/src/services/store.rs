@@ -38,6 +38,7 @@ fn default_settings() -> AppSettings {
       compatibility_rendering: Some(false),
       chat_mode_selector: Some(false),
     }),
+    full_diagnostics: Some(false),
   }
 }
 
@@ -121,6 +122,7 @@ pub fn set_settings(
   theme: Option<String>,
   ui_scale: Option<f64>,
   experiments: Option<ExperimentFlags>,
+  full_diagnostics: Option<bool>,
 ) -> AppSettings {
   with_cache(|c| {
     if let Some(t) = theme {
@@ -128,6 +130,9 @@ pub fn set_settings(
     }
     if let Some(s) = ui_scale {
       c.settings.ui_scale = Some(s.clamp(0.8, 2.0));
+    }
+    if let Some(v) = full_diagnostics {
+      c.settings.full_diagnostics = Some(v);
     }
     if let Some(patch) = experiments {
       let current = c.settings.experiments.get_or_insert(ExperimentFlags {

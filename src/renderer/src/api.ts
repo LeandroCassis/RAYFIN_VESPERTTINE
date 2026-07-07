@@ -53,6 +53,9 @@ export const api: RayfinStudioApi = {
   getVersions: () => invoke('get_versions'),
   openExternal: (url: string) => invoke('open_external', { url }),
   openLogs: () => invoke('open_logs'),
+  diagnostics: {
+    export: () => invoke('diagnostics_export')
+  },
   openInEditor: (id: string) => invoke('open_in_editor', { id }),
   relaunch: () => invoke('relaunch'),
 

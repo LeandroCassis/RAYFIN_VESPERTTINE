@@ -450,6 +450,11 @@ pub struct AppSettings {
   pub ui_scale: Option<f64>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub experiments: Option<ExperimentFlags>,
+  /// Capture full chat diagnostics (prompt/response text + tool I/O) for bug
+  /// reports. Off by default — only lightweight metadata is captured. Opt-in via
+  /// Settings → Diagnostics.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub full_diagnostics: Option<bool>,
 }
 
 fn default_theme() -> String {

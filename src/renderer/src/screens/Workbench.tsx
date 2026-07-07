@@ -37,6 +37,7 @@ import RayfinVersionControl from '../components/RayfinVersionControl'
 import AdvisorView, { categoryMeta } from '../components/AdvisorView'
 import ModelView from '../components/ModelView'
 import { useToast } from '../toast'
+import { reportIssue as runReportIssue } from './reportIssue'
 import { InfoIcon, GearIcon, SignOutIcon, CompareIcon } from '../components/icons'
 import { FabricatorMark } from '../components/FabricatorMark'
 
@@ -688,26 +689,17 @@ export default function Workbench({
   }
 
   // Open a prefilled GitHub issue (app + system info) in the browser so bug
-  // reports arrive with the version/environment details already filled in.
-  function reportIssue(): void {
-    const repo = 'https://github.com/spatney/rayfin-fabricator'
-    const body = [
-      '### What happened?',
-      '',
-      '',
-      '### Steps to reproduce',
-      '',
-      '1. ',
-      '',
-      '### Environment',
-      `- App: Fabricator ${versions?.app ?? 'unknown'}`,
-      `- Tauri: ${versions?.tauri ?? 'unknown'}`,
-      `- WebView2: ${versions?.webview2 ?? 'unknown'}`,
-      `- Copilot CLI: ${versions?.copilot ?? 'unknown'}`,
-      `- User agent: ${navigator.userAgent}`
-    ].join('\n')
-    const url = `${repo}/issues/new?labels=bug&title=${encodeURIComponent('[Bug] ')}&body=${encodeURIComponent(body)}`
-    void window.api.openExternal(url)
+  // reports arrive with the version/environment details already filled in. A
+  // diagnostics bundle is exported first (best-effort) and referenced in the
+  // body; export failures never block the report. See ./reportIssue.
+  async function reportIssue(): Promise<void> {
+    const bundlePath = await runReportIssue(window.api, versions)
+    if (bundlePath) {
+      toast.info(
+        'A diagnostics file was saved and the logs folder opened — attach it to your bug report.',
+        { title: 'Diagnostics exported' }
+      )
+    }
   }
 
   return (
@@ -1075,7 +1067,7 @@ export default function Workbench({
         <span className="statusbar-sep">·</span>
         <button
           className="statusbar-report"
-          onClick={reportIssue}
+          onClick={() => void reportIssue()}
           title="Report an issue on GitHub — opens a prefilled bug report with app & system info"
         >
           <InfoIcon />

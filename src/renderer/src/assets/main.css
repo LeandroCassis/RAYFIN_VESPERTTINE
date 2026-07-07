@@ -6517,6 +6517,12 @@ code {
   align-items: center;
   gap: 10px;
 }
+.diagnostics-actions {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 8px;
+  flex: none;
+}
 .settings-path {
   flex: 1;
   min-width: 0;

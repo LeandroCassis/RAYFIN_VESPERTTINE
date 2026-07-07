@@ -477,6 +477,12 @@ export interface AppSettings {
   uiScale?: number
   /** Experimental, opt-in features (off by default). */
   experiments?: ExperimentFlags
+  /**
+   * Capture full chat diagnostics (prompt/response text + tool I/O) for bug
+   * reports. Off by default — only lightweight metadata is captured. Opt-in via
+   * Settings → Diagnostics.
+   */
+  fullDiagnostics?: boolean
 }
 
 /** Opt-in experimental feature flags (Settings → Experiments). */
@@ -1236,6 +1242,18 @@ export interface RayfinStudioApi {
   openExternal: (url: string) => Promise<void>
   /** Open the logs folder (userData/logs) in the OS file manager; returns its path. */
   openLogs: () => Promise<string>
+  /**
+   * Chat-session diagnostics captured for bug reports (metadata by default; full
+   * capture is opt-in via {@link AppSettings.fullDiagnostics}).
+   */
+  diagnostics: {
+    /**
+     * Build a single consolidated diagnostics file (environment + recent
+     * chat-turn diagnostics + crash/hang log tail), reveal it in the OS file
+     * manager, and return its path so it can be attached to a bug report.
+     */
+    export: () => Promise<string>
+  }
   /**
    * Open the project folder in VS Code (`code <dir>`). When VS Code's CLI isn't
    * found, the project folder is revealed in the OS file manager instead and
