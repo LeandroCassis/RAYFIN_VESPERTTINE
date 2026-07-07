@@ -21,7 +21,8 @@ import {
   deriveRelationEdges,
   type AnchorFn,
   type DerivedEdges,
-  type EdgeRender
+  type EdgeRender,
+  type RectLike
 } from '../model/relationships'
 import { Codicon } from './icons'
 
@@ -364,7 +365,18 @@ export default function ModelView({
       return el.offsetTop + row.offsetTop + row.offsetHeight / 2
     }
 
-    setEdges(computeEdgeGeometry(derived, rectOf, anchorY))
+    // Every rendered card is an obstacle other edges must route around.
+    const obstacles: RectLike[] = []
+    cardRefs.current.forEach((el) => {
+      obstacles.push({
+        left: el.offsetLeft,
+        top: el.offsetTop,
+        width: el.offsetWidth,
+        height: el.offsetHeight
+      })
+    })
+
+    setEdges(computeEdgeGeometry(derived, rectOf, anchorY, { obstacles }))
 
     let maxRight = 0
     let maxBottom = 0

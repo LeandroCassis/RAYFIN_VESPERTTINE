@@ -4,8 +4,10 @@ import {
   computeEdgeGeometry,
   deriveRelationEdges,
   type AnchorFn,
+  type Pt,
   type RectLike
 } from './relationships'
+import { segmentHitsRect } from './router'
 
 const rel = (
   from: string,
@@ -14,6 +16,27 @@ const rel = (
   via: string,
   explicit = false
 ): ModelRelation => ({ from, to, kind, via, explicit })
+
+/**
+ * Extract the on-path corner points from an SVG smooth-step `d` string: the
+ * `M`/`L` targets and each `Q` curve's end point (its final x y pair). Enough to
+ * verify an edge's straight runs, ignoring the tiny rounded-corner arcs.
+ */
+function pathPoints(d: string): Pt[] {
+  const tokens = d.split(/\s+/)
+  const pts: Pt[] = []
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]
+    if (t === 'M' || t === 'L') {
+      pts.push({ x: Number(tokens[i + 1]), y: Number(tokens[i + 2]) })
+      i += 2
+    } else if (t === 'Q') {
+      pts.push({ x: Number(tokens[i + 3]), y: Number(tokens[i + 4]) })
+      i += 4
+    }
+  }
+  return pts
+}
 
 /**
  * The `DealTag` ↔ `Tag` schema that motivated this module: `parseSchema` reports
@@ -177,7 +200,7 @@ describe('computeEdgeGeometry', () => {
       if (entity !== 'Message') return null
       return via === 'sender_id' ? 40 : 110
     }
-    const rendered = computeEdgeGeometry(derived, rectOf, anchorY, 26)
+    const rendered = computeEdgeGeometry(derived, rectOf, anchorY, { laneGap: 26 })
     expect(rendered).toHaveLength(2)
     // Their vertical channels must be pushed apart so the lines never overlap.
     expect(Math.abs(rendered[0].mx - rendered[1].mx)).toBeGreaterThanOrEqual(25)
@@ -191,6 +214,43 @@ describe('computeEdgeGeometry', () => {
       name === 'Tag' ? null : rectOf(name)
     )
     expect(rendered).toHaveLength(0)
+  })
+
+  it('routes around a card that sits on the straight channel', () => {
+    const derived = deriveRelationEdges(dealTagRelations)
+    // DealTag (left) ── Tag (right); a Blocker card straddles the mid channel.
+    const local: Record<string, RectLike> = {
+      DealTag: { left: 0, top: 0, width: 240, height: 200 },
+      Tag: { left: 600, top: 0, width: 240, height: 200 }
+    }
+    const blocker: RectLike = { left: 360, top: 40, width: 120, height: 120 }
+    const rectOfLocal = (name: string): RectLike | null => local[name] ?? null
+    const obstacles = [local.DealTag, local.Tag, blocker]
+
+    const [clear] = computeEdgeGeometry(derived, rectOfLocal, undefined)
+    const [avoided] = computeEdgeGeometry(derived, rectOfLocal, undefined, { obstacles })
+
+    // With no obstacle awareness the line cut straight through the blocker;
+    // supplying the cards forces a different, detoured path.
+    expect(avoided.d).not.toBe(clear.d)
+    // Endpoints (connector dots) are unchanged — only the routing between moved.
+    expect(avoided.caps).toEqual(clear.caps)
+    // No axis-aligned run of the routed path crosses the raw blocker interior.
+    const pts = pathPoints(avoided.d)
+    for (let i = 1; i < pts.length; i++) {
+      const seg = [pts[i - 1], pts[i]] as const
+      const axisAligned = seg[0].x === seg[1].x || seg[0].y === seg[1].y
+      if (axisAligned) expect(segmentHitsRect(seg[0], seg[1], blocker)).toBe(false)
+    }
+  })
+
+  it('leaves a clear edge byte-identical when obstacles are supplied', () => {
+    const derived = deriveRelationEdges(dealTagRelations)
+    // DealTag and Tag are the only cards, so nothing blocks the channel.
+    const obstacles = [rects.DealTag, rects.Tag]
+    const [plain] = computeEdgeGeometry(derived, rectOf)
+    const [withObstacles] = computeEdgeGeometry(derived, rectOf, undefined, { obstacles })
+    expect(withObstacles.d).toBe(plain.d)
   })
 
   it('draws a self-relation as a dashed loop with two caps', () => {

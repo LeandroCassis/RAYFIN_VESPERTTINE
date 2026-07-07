@@ -18,6 +18,7 @@
  * (and snapshot-tested) without a DOM.
  */
 import type { ModelRelation } from './parseSchema'
+import { inflateRect, routeOrthogonal, segmentHitsRect } from './router'
 
 export type EndMarker = 'many' | 'one' | 'none'
 
@@ -274,6 +275,9 @@ export interface EdgeRender {
 
 const LANE_GAP = 26
 
+/** Default gap kept between a routed edge and any card it bends around. */
+const EDGE_CLEARANCE = 14
+
 /**
  * Resolves the absolute vertical centre of the field row an edge should attach
  * to (the `via` field, else the entity's primary-key row). Returns `null` when
@@ -281,6 +285,33 @@ const LANE_GAP = 26
  * the card centre.
  */
 export type AnchorFn = (entity: string, via?: string) => number | null
+
+/** Tunables for {@link computeEdgeGeometry}. */
+export interface EdgeGeomOptions {
+  /** Horizontal separation between genuinely-parallel edges (same pair). */
+  laneGap?: number
+  /**
+   * Every rendered card rect. When a straight edge would cut through one of
+   * these (other than its own two endpoints) it is re-routed around it. Omit to
+   * disable obstacle avoidance (the plain smooth-step behaviour).
+   */
+  obstacles?: RectLike[]
+  /** Gap kept between a re-routed edge and the cards it avoids. */
+  clearance?: number
+}
+
+const sameRect = (a: RectLike, b: RectLike): boolean =>
+  a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height
+
+/** True when any segment of `pts` cuts through the interior of any obstacle. */
+function pathHitsAny(pts: Pt[], obstacles: RectLike[]): boolean {
+  for (let i = 1; i < pts.length; i++) {
+    for (const r of obstacles) {
+      if (segmentHitsRect(pts[i - 1], pts[i], r)) return true
+    }
+  }
+  return false
+}
 
 /**
  * Compute SVG geometry for every relationship given the measured card rects.
@@ -292,6 +323,12 @@ export type AnchorFn = (entity: string, via?: string) => number | null
  * the line meets the border. Genuinely-parallel edges (several links between the
  * same pair) shift their vertical channel apart so they never overlap.
  *
+ * When `opts.obstacles` is supplied and the plain smooth-step channel would cut
+ * through another card, the edge is re-routed around it via {@link routeOrthogonal}
+ * (an obstacle-avoiding orthogonal router). Edges whose channel is already clear
+ * keep the exact smooth-step geometry, so behaviour only changes where a line
+ * previously ran through a box.
+ *
  * Pure given `rectOf` + `anchorY`, so the geometry can be asserted in tests with
  * synthetic rects — the closest we can get to "looking at" the graph headless.
  */
@@ -299,8 +336,11 @@ export function computeEdgeGeometry(
   derived: DerivedEdges,
   rectOf: (name: string) => RectLike | null,
   anchorY?: AnchorFn,
-  laneGap: number = LANE_GAP
+  opts: EdgeGeomOptions = {}
 ): EdgeRender[] {
+  const laneGap = opts.laneGap ?? LANE_GAP
+  const clearance = opts.clearance ?? EDGE_CLEARANCE
+  const allObstacles = opts.obstacles ?? []
   const out: EdgeRender[] = []
 
   const clampY = (r: RectLike, y: number): number =>
@@ -347,7 +387,28 @@ export function computeEdgeGeometry(
     if (laneOff !== 0) {
       for (let i = 2; i < pts.length - 2; i++) pts[i] = { x: pts[i].x + laneOff, y: pts[i].y }
     }
-    const d = stepPath(pts, CORNER)
+
+    // If the plain smooth-step channel would cut through another card, re-route
+    // around it. A single lane per pair is routable; genuinely-parallel edges
+    // keep their offset channels (they run between the same two cards, so an
+    // obstacle between them is not the case we're fixing).
+    let routed = pts
+    if (allObstacles.length && lanes === 1) {
+      const others = allObstacles
+        .filter((o) => !sameRect(o, ra) && !sameRect(o, rb))
+        .map((o) => inflateRect(o, clearance))
+      if (others.length && pathHitsAny(pts, others)) {
+        const around = routeOrthogonal({
+          source: pts[1],
+          target: pts[pts.length - 2],
+          sourceDir: aSide,
+          targetDir: bSide,
+          obstacles: others
+        })
+        if (around && around.length >= 2) routed = [source, ...around, target]
+      }
+    }
+    const d = stepPath(routed, CORNER)
 
     out.push({
       id: e.id,
@@ -358,7 +419,7 @@ export function computeEdgeGeometry(
       from: e.a,
       to: e.b,
       self: false,
-      mx: pts[2] ? pts[2].x : (source.x + target.x) / 2,
+      mx: routed[2] ? routed[2].x : (source.x + target.x) / 2,
       my: (source.y + target.y) / 2
     })
   }
