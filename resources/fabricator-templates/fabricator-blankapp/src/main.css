@@ -38,9 +38,8 @@
   --hero-hint: rgba(12, 74, 76, 0.72);
   --hero-hint-bg: rgba(12, 74, 76, 0.05);
   --hero-hint-border: rgba(12, 74, 76, 0.14);
+  --hero-nudge: rgba(12, 74, 76, 0.6);
   --hero-dot: rgba(12, 90, 92, 0.11);
-  --hero-signout: rgba(10, 60, 62, 0.5);
-  --hero-signout-hover: #0c4a4d;
   --wm-glow: rgba(20, 170, 168, 0.28);
   --hero-bg: radial-gradient(700px 400px at 50% 4%, rgba(255, 214, 120, 0.4), transparent 62%),
     radial-gradient(150% 120% at 50% 0%, #ffffff 0%, #e6f7f5 46%, #c6ecea 100%);
@@ -51,6 +50,10 @@
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  /* Decorative landing screen — nothing here is meant to be text-selected, so
+     suppress the stray highlight you get when dragging over the bulb/labels. */
+  user-select: none;
+  -webkit-user-select: none;
   padding: 24px;
   color: var(--hero-fg);
   background: var(--hero-bg);
@@ -66,9 +69,8 @@
   --hero-hint: rgba(255, 255, 255, 0.78);
   --hero-hint-bg: rgba(255, 255, 255, 0.07);
   --hero-hint-border: rgba(255, 255, 255, 0.14);
+  --hero-nudge: rgba(234, 255, 254, 0.7);
   --hero-dot: rgba(255, 255, 255, 0.09);
-  --hero-signout: rgba(255, 255, 255, 0.6);
-  --hero-signout-hover: #ffffff;
   --wm-glow: rgba(150, 245, 245, 0.5);
   --hero-bg: radial-gradient(760px 460px at 50% 40%, rgba(70, 212, 205, 0.16), transparent 60%),
     radial-gradient(150% 120% at 50% 0%, #16585b 0%, #0c3538 48%, #061e20 100%);
@@ -145,23 +147,6 @@
   border-radius: 1px;
   opacity: 0.85;
   animation: rayfin-blink 1.15s step-end infinite;
-}
-
-.rayfin-signout {
-  position: absolute;
-  top: 18px;
-  right: 22px;
-  z-index: 2;
-  border: 0;
-  background: transparent;
-  color: var(--hero-signout);
-  font-size: 12px;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-.rayfin-signout:hover {
-  color: var(--hero-signout-hover);
 }
 
 /* ── Light-bulb pull toggle ─────────────────────────────────────────────── */
@@ -268,6 +253,69 @@
   fill: rgba(255, 255, 255, 0.62);
 }
 
+/* ── "pull me" nudge ────────────────────────────────────────────────────────
+   A quiet, hand-drawn hint pointing at the pull-chain. It fades out for good
+   once the chain has been tugged (HomePage adds .rayfin-nudge--gone). */
+.rayfin-nudge {
+  position: absolute;
+  top: 108px;
+  left: 50%;
+  width: 168px;
+  height: 74px;
+  z-index: 2;
+  color: var(--hero-nudge);
+  pointer-events: none;
+  transition:
+    opacity 0.55s ease,
+    transform 0.55s ease;
+  animation: rayfin-nudge-in 0.7s ease 0.95s backwards;
+}
+
+.rayfin-nudge-arrow {
+  position: absolute;
+  left: 0;
+  top: 2px;
+  width: 72px;
+  height: 60px;
+  overflow: visible;
+}
+
+.rayfin-nudge-stroke {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
+}
+
+.rayfin-nudge-label {
+  position: absolute;
+  left: 61px;
+  top: 3px;
+  font-family: 'Caveat', 'Segoe Print', cursive;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transform: rotate(-7deg);
+  transform-origin: left center;
+}
+
+.rayfin-nudge--gone {
+  opacity: 0;
+  transform: translateY(-5px) scale(0.97);
+  animation: none;
+}
+
+@keyframes rayfin-nudge-in {
+  from {
+    opacity: 0;
+    transform: translateY(7px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes rayfin-rise {
   from {
     opacity: 0;
@@ -302,7 +350,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .rayfin-hero-inner,
-  .lightpull {
+  .lightpull,
+  .rayfin-nudge {
     animation: none;
   }
   .rayfin-hint::after {

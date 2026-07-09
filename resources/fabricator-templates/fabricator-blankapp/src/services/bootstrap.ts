@@ -9,7 +9,8 @@ import { initRayfinClient } from './rayfinClient';
  * Fabricator apps always run against a deployed Rayfin backend, so this always
  * returns {@link RayfinAuthService}. It requires the VITE_RAYFIN_API_URL,
  * VITE_RAYFIN_PUBLISHABLE_KEY, and VITE_FABRIC_* env vars, which `rayfin env`
- * injects at build time from the active deployment.
+ * injects at build time from the active deployment. `npm run preview` supplies
+ * placeholder values via `.env.preview` so the UI renders without a deploy.
  */
 export function bootstrapAuth(): IAuthService {
   const apiUrl = import.meta.env.VITE_RAYFIN_API_URL;

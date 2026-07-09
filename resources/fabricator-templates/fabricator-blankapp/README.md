@@ -1,14 +1,15 @@
 # Blank App
 
-A bare-bones, Fabric-authenticated React + Vite app tuned for the **Fabricator**
-deploy-to-test workflow — sign-in, routing, and a placeholder "Hello, World" home
-page, with **[Graphein](https://github.com/spatney/graphein) wired in for
-data-viz** so you can start building charts right away.
+A bare-bones React + Vite starter for the **Fabricator** deploy-to-test
+workflow — a no-auth "Hello, World" home page you can preview locally, with
+**[Graphein](https://github.com/spatney/graphein) wired in for data-viz** so you
+can start building charts right away. Fabric authentication scaffolding is
+included (but not wired in) for when you need sign-in.
 
-> This is a Fabricator template: there is **no local backend, dev server, or
-> test harness**. You build your app and deploy it to a Fabric test workspace —
-> the Fabricator agent does this for you and validates the running app in its
-> built-in browser.
+> This is a Fabricator template: you build your app and deploy it to a Fabric
+> test workspace — the Fabricator agent does this for you and validates the
+> running app in its built-in browser. For a quick look without deploying, run
+> `npm run preview` to serve the home page locally (no backend, no sign-in).
 
 ## Getting started
 
@@ -58,17 +59,17 @@ spec model, the chart-type catalog, and authoring guidance.
 │   └── data/
 │       └── schema.ts       # Empty data schema — add entities here if you need storage
 ├── src/
-│   ├── main.tsx            # Entry point + Rayfin client bootstrap
-│   ├── App.tsx             # Routes and auth gate
+│   ├── main.tsx            # Entry point (renders App; wire AuthProvider here for auth)
+│   ├── App.tsx             # Routes (no auth gate; add one to require sign-in)
 │   ├── main.css            # Tailwind theme
 │   ├── components/
-│   │   ├── AuthPage.tsx    # Sign-in UI
+│   │   ├── AuthPage.tsx    # Sign-in UI (unused until auth is wired in)
 │   │   ├── Chart.tsx       # Declarative <Chart spec={…} /> — Graphein React binding
 │   │   └── useChart.ts     # Headless Graphein binding hook (render/update/destroy)
 │   ├── hooks/
 │   │   └── AuthContext.tsx # React context wrapping the auth helpers
 │   ├── pages/
-│   │   └── HomePage.tsx    # Post-auth landing page ("Hello, World")
+│   │   └── HomePage.tsx    # "Hello, World" landing page
 │   └── services/
 │       ├── IAuthService.ts        # Auth service contract + AuthUser type
 │       ├── RayfinAuthService.ts   # Fabric brokered auth
@@ -77,10 +78,14 @@ spec model, the chart-type catalog, and authoring guidance.
 └── package.json
 ```
 
+Authentication ships wired **off** so the app previews with no backend. To turn
+it on, see `.agents/skills/authentication/SKILL.md`.
+
 ## Scripts
 
 | Command | Description |
 |---------|-------------|
+| `npm run preview` | Preview the home page locally — no backend, no deploy |
 | `npm run build` | Production build |
 | `npm run build:fabric` | Build for Fabric deployment (entrypoint for `rayfin up`) |
 | `npm run lint` | Lint with ESLint |
