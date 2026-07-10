@@ -35,7 +35,7 @@ import WorkspaceStatus from '../components/WorkspaceStatus'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
 import AdvisorView, { categoryMeta } from '../components/AdvisorView'
-import ModelView from '../components/ModelView'
+import ModelTab from '../components/ModelTab'
 import { useToast } from '../toast'
 import { reportIssue as runReportIssue } from './reportIssue'
 import { InfoIcon, GearIcon, SignOutIcon, CompareIcon } from '../components/icons'
@@ -890,7 +890,7 @@ export default function Workbench({
                   />
                 </Suspense>
               ) : viewMode === 'model' ? (
-                <ModelView
+                <ModelTab
                   project={active}
                   refreshKey={gitRefresh}
                   onOpenFile={openFileInCode}

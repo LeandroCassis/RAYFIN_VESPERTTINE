@@ -635,6 +635,19 @@ pub async fn fabric_delete_apps(project_id: String) -> FabricDeleteResult {
   }
 }
 
+/// Read a semantic model's schema (tables/columns/measures/relationships) for
+/// the Model tab's diagram. Delegates to [`crate::services::semantic_model`],
+/// which queries the model live via DAX `INFO.VIEW.*` through the Power BI
+/// `executeQueries` endpoint (reusing the silent Rayfin-CLI token). Never
+/// throws — returns an `ok:false` result (with `needsLogin`) the UI can render.
+#[tauri::command]
+pub async fn fabric_semantic_model_schema(
+  workspace_id: String,
+  item_id: String,
+) -> crate::services::semantic_model::SemanticSchemaResult {
+  crate::services::semantic_model::schema_semantic_model(&workspace_id, &item_id).await
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;

@@ -158,6 +158,7 @@ pub fn run() {
       commands::fabric::fabric_capacities,
       commands::fabric::fabric_create_workspace,
       commands::fabric::fabric_delete_apps,
+      commands::fabric::fabric_semantic_model_schema,
       // projects
       commands::projects::projects_state,
       commands::projects::projects_templates,

@@ -34,6 +34,12 @@ interface Props {
   onOpenFile: (path: string) => void
   /** Hand a prompt to the Build chat (stage stages it in the composer). */
   onSendToChat: (display: string, prompt: string, stage?: boolean) => void
+  /**
+   * Pre-parsed data model supplied by the Model-tab wrapper so the model isn't
+   * parsed twice (the wrapper already parses it to decide which view to show).
+   * When omitted, the component parses the project itself.
+   */
+  providedModel?: DataModel | null
 }
 
 /** Short label + chip class for a field's semantic type. */
@@ -122,7 +128,8 @@ export default function ModelView({
   project,
   refreshKey,
   onOpenFile,
-  onSendToChat
+  onSendToChat,
+  providedModel
 }: Props): JSX.Element {
   const [model, setModel] = useState<DataModel | null>(null)
   const [loading, setLoading] = useState(true)
@@ -160,8 +167,14 @@ export default function ModelView({
   /** Pending fit-to-view request, consumed after the next measure. */
   const fitReq = useRef<ReadonlySet<string> | 'all' | null>(null)
 
-  // (Re)parse the data model whenever the project or its files change.
+  // (Re)parse the data model whenever the project or its files change — unless
+  // the parent supplied a pre-parsed model, in which case use it directly.
   useEffect(() => {
+    if (providedModel !== undefined) {
+      setModel(providedModel)
+      setLoading(false)
+      return
+    }
     let alive = true
     setLoading(true)
     parseProjectDataModel(project.id)
@@ -180,7 +193,7 @@ export default function ModelView({
     return () => {
       alive = false
     }
-  }, [project.id, refreshKey])
+  }, [project.id, refreshKey, providedModel])
 
   const entityNames = useMemo(() => new Set(model?.entities.map((e) => e.name) ?? []), [model])
 

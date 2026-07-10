@@ -515,9 +515,162 @@ async function runSearch(token, req) {
   return { ok: true, matched: models.length > 0, query, filter: filt, models, otherMatches: others, notes }
 }
 
+// ── Semantic-model schema (design-time model diagram) ──────────────────────--
+// The model diagram is sourced from the model's *definition* — tables, columns,
+// measures WITH their DAX, and relationships — returned by the Fabric
+// item-definition API in TMSL (the `model.bim` JSON). We deliberately do NOT use
+// the Power BI `executeQueries` INFO.VIEW.* path: that endpoint masks measure DAX
+// (INFO.VIEW.MEASURES() returns Expression = null) and blocks INFO.MEASURES()
+// outright, so TMSL is the only authoritative source for expressions. The call is
+// authorized with the Azure CLI **Fabric** token (like the catalog search);
+// getDefinition needs read-write on the model, which an app author has.
+
+// A TMSL string property is either a single string or an array of lines (a
+// multi-line DAX expression or description). Fold it to one string; '' → null.
+function tmslText(v) {
+  if (v === undefined || v === null) return null
+  const s = Array.isArray(v) ? v.join('\n') : String(v)
+  return s === '' ? null : s
+}
+const tmslBool = (v) => v === true
+
+// Fold a parsed `model.bim` `model` node into the flat friendly schema the Rust
+// layer + renderer consume. Pure — exercised by `--selftest` without any network.
+function normalizeTmsl(model) {
+  const tables = Array.isArray(model && model.tables) ? model.tables : []
+  const outTables = []
+  const outColumns = []
+  const outMeasures = []
+  for (const t of tables) {
+    if (!t || !t.name) continue
+    outTables.push({
+      name: t.name,
+      description: tmslText(t.description),
+      isHidden: tmslBool(t.isHidden),
+      storageMode: null,
+    })
+    for (const c of t.columns || []) {
+      if (!c || !c.name) continue
+      // Skip the auto-generated RowNumber system columns — pure diagram noise.
+      if (String(c.type || '').toLowerCase() === 'rownumber') continue
+      outColumns.push({
+        table: t.name,
+        name: c.name,
+        dataType: c.dataType ?? null,
+        isHidden: tmslBool(c.isHidden),
+        isKey: tmslBool(c.isKey),
+        dataCategory: c.dataCategory ?? null,
+        formatString: c.formatString ?? null,
+        displayFolder: c.displayFolder ?? null,
+        // Present for calculated columns.
+        expression: tmslText(c.expression),
+      })
+    }
+    for (const m of t.measures || []) {
+      if (!m || !m.name) continue
+      outMeasures.push({
+        table: t.name,
+        name: m.name,
+        expression: tmslText(m.expression),
+        dataType: m.dataType ?? null,
+        formatString: m.formatString ?? null,
+        displayFolder: m.displayFolder ?? null,
+        description: tmslText(m.description),
+        isHidden: tmslBool(m.isHidden),
+      })
+    }
+  }
+  const outRels = []
+  for (const r of (model && model.relationships) || []) {
+    if (!r || !r.fromTable || !r.toTable) continue
+    outRels.push({
+      name: r.name ?? null,
+      fromTable: r.fromTable,
+      fromColumn: r.fromColumn ?? null,
+      toTable: r.toTable,
+      toColumn: r.toColumn ?? null,
+      // TMSL omits the defaults of a strong relationship: many(from) → one(to),
+      // single-direction cross-filter, active. Read explicit overrides if set.
+      fromCardinality: r.fromCardinality ?? 'many',
+      toCardinality: r.toCardinality ?? 'one',
+      isActive: r.isActive !== false,
+      crossFilter: r.crossFilteringBehavior ?? 'oneDirection',
+    })
+  }
+  return { tables: outTables, columns: outColumns, measures: outMeasures, relationships: outRels }
+}
+
+// The Fabric API root (`.../v1`), overridable for non-prod via RAYFIN_FABRIC_API_URL.
+function fabricApiBase() {
+  return (process.env.RAYFIN_FABRIC_API_URL || 'https://api.fabric.microsoft.com/v1').trim().replace(/\/$/, '')
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
+// Best-effort human-readable message from a Fabric error body.
+function fabricError(status, body) {
+  const e = body && (body.error || body)
+  const msg = e && (e.message || e.code)
+  return msg ? String(msg) : `Fabric getDefinition failed (HTTP ${status}).`
+}
+
+// POST `getDefinition?format=TMSL`, follow the long-running-operation poll, and
+// return the parsed `model.bim` `model` node. A 401 means the `az` token was
+// rejected → NeedsAz; a 403 means the caller lacks write access to the model.
+async function fetchModelBim(token, wsId, dsId) {
+  const headers = { Authorization: 'Bearer ' + token }
+  const url = `${fabricApiBase()}/workspaces/${wsId}/semanticModels/${dsId}/getDefinition?format=TMSL`
+  let r = await fetch(url, { method: 'POST', headers })
+  if (r.status === 202) {
+    const loc = r.headers.get('location')
+    if (!loc) throw new Error('getDefinition was accepted but returned no polling URL.')
+    const deadline = Date.now() + 100000
+    for (;;) {
+      if (Date.now() > deadline) throw new Error('Timed out reading the semantic model definition.')
+      await sleep(1500)
+      const pr = await fetch(loc, { headers })
+      if (pr.status === 401) throw new NeedsAz('Azure CLI token was rejected (401).')
+      if (pr.status !== 200) continue
+      let st = {}
+      try { st = await pr.json() } catch { st = {} }
+      const state = String(st.status || '').toLowerCase()
+      if (state === 'succeeded') { r = await fetch(loc.replace(/\/$/, '') + '/result', { headers }); break }
+      if (state === 'failed') throw new Error(fabricError(pr.status, st))
+    }
+  }
+  if (r.status === 401) throw new NeedsAz('Azure CLI token was rejected (401).')
+  if (r.status === 403) throw new Error('You need edit (write) access to this semantic model to read its definition.')
+  if (r.status !== 200) {
+    let body = null
+    try { body = await r.json() } catch { /* non-JSON error body */ }
+    throw new Error(fabricError(r.status, body))
+  }
+  const body = await r.json()
+  const parts = (body.definition && body.definition.parts) || []
+  const part =
+    parts.find((p) => /(^|\/)model\.bim$/i.test(p.path || '')) ||
+    parts.find((p) => /\.bim$/i.test(p.path || ''))
+  if (!part || !part.payload) throw new Error('The model definition did not include a model.bim payload.')
+  const parsed = JSON.parse(Buffer.from(part.payload, 'base64').toString('utf8'))
+  return parsed.model || parsed
+}
+
+async function runSchema(_token, req) {
+  const wsId = String(req.workspaceId || req.workspace || '').trim() || null
+  const dsId = String(req.itemId || req.datasetId || req.target || '').trim()
+  if (!dsId) return { ok: false, error: 'A semantic model itemId (dataset id) is required.' }
+  if (!wsId) return { ok: false, error: 'A workspaceId is required to read the model definition.' }
+  // getDefinition is authorized with the Azure CLI Fabric token (see the schema-
+  // section note above) — like catalog search, not the Rayfin MSAL token.
+  const token = await azToken(FABRIC_RESOURCE)
+  const model = await fetchModelBim(token, wsId, dsId)
+  const schema = normalizeTmsl(model)
+  return { ok: true, matched: schema.tables.length > 0, workspaceId: wsId, itemId: dsId, ...schema, notes: [] }
+}
+
 // ── Entry ─────────────────────────────────────────────────────────────────--
-// Pure-function self-test for parseTarget — no auth/network. Run with
-// `node semantic_model_helper.mjs --selftest`. Exits non-zero on first failure.
+// Pure-function self-test for parseTarget + schema normalization — no
+// auth/network. Run with `node semantic_model_helper.mjs --selftest`. Exits
+// non-zero on first failure.
 function selftest() {
   const cases = [
     ['https://msit.powerbi.com/groups/ea3779f7-4d16-4fbc-87ba-f501e2a6fdee/modeling/92a63060-dcef-4d6b-ac2f-cdd1bae79b43/modelView?experience=power-bi&subfolderId=228083',
@@ -537,8 +690,48 @@ function selftest() {
       if (got[k] !== want[k]) { failed++; process.stderr.write(`FAIL ${k}: want ${want[k]} got ${got[k]}\n  ${input}\n`) }
     }
   }
-  if (failed) { process.stderr.write(`${failed} parseTarget assertion(s) failed\n`); process.exit(1) }
-  process.stderr.write('parseTarget selftest ok\n')
+
+  // TMSL normalization (pure) — guards the `model.bim` → friendly-schema mapping:
+  // string|array expressions, RowNumber system-column skipping, and the implicit
+  // relationship defaults (many→one, single cross-filter, active).
+  const s = normalizeTmsl({
+    tables: [
+      {
+        name: 'Sales',
+        isHidden: false,
+        columns: [
+          { name: 'RowNumber-abc', type: 'rowNumber', dataType: 'int64' },
+          { name: 'Amount', dataType: 'decimal', isKey: false },
+          { name: 'Margin', dataType: 'double', expression: ['VAR x = 1', 'RETURN x'] },
+        ],
+        measures: [{ name: 'Total', expression: 'SUM ( Sales[Amount] )', formatString: '#,0' }],
+      },
+      { name: 'Date', isHidden: true, columns: [{ name: 'DateKey', dataType: 'int64', isKey: true }] },
+    ],
+    relationships: [
+      { name: 'Sales_Date', fromTable: 'Sales', fromColumn: 'DateKey', toTable: 'Date', toColumn: 'DateKey' },
+      {
+        name: 'inactive',
+        fromTable: 'Sales', fromColumn: 'X', toTable: 'Date', toColumn: 'Y',
+        isActive: false, crossFilteringBehavior: 'bothDirections',
+      },
+    ],
+  })
+  const assert = (cond, msg) => { if (!cond) { failed++; process.stderr.write(`FAIL schema ${msg}\n`) } }
+  assert(s.tables.length === 2 && s.tables[0].name === 'Sales' && s.tables[1].isHidden === true, 'tables')
+  // RowNumber column skipped → Sales keeps Amount + Margin, Date keeps DateKey.
+  assert(s.columns.length === 3 && !s.columns.some((c) => /rowNumber/i.test(c.name)), 'rowNumber skipped')
+  assert(s.columns.find((c) => c.name === 'Margin')?.expression === 'VAR x = 1\nRETURN x', 'calc column expr')
+  assert(s.measures.length === 1 && s.measures[0].expression === 'SUM ( Sales[Amount] )', 'measure expr')
+  assert(
+    s.relationships[0].fromCardinality === 'many' && s.relationships[0].toCardinality === 'one' &&
+      s.relationships[0].crossFilter === 'oneDirection' && s.relationships[0].isActive === true,
+    'relationship defaults',
+  )
+  assert(s.relationships[1].isActive === false && s.relationships[1].crossFilter === 'bothDirections', 'relationship overrides')
+
+  if (failed) { process.stderr.write(`${failed} selftest assertion(s) failed\n`); process.exit(1) }
+  process.stderr.write('semantic-model selftest ok\n')
   process.exit(0)
 }
 
@@ -548,7 +741,10 @@ async function main() {
   if (!authPath || !reqJson) throw new Error('usage: <authModulePath> <requestJson>')
   const req = JSON.parse(reqJson)
   const token = await makeTokens(authPath)
-  const result = req.mode === 'search' ? await runSearch(token, req) : await runLocate(token, req)
+  const result =
+    req.mode === 'search' ? await runSearch(token, req)
+    : req.mode === 'schema' ? await runSchema(token, req)
+    : await runLocate(token, req)
   process.stdout.write(JSON.stringify(result))
 }
 

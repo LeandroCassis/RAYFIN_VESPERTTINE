@@ -10388,6 +10388,576 @@ code {
   padding: 2px 0;
 }
 
+/* ── Semantic model view (live Fabric / Power BI model) ───────────────────── */
+/* Scoped `.semantic-*` classes so they never collide with the data-model
+   `.model-*` rules; the generic canvas/toolbar/edge chrome is deliberately
+   reused (see .model-viewport, .model-toolbar, .model-edge). */
+
+/* Model tab shell: a small view switch above whichever diagram is active. */
+.model-tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.model-tab-switch {
+  flex: none;
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-elev);
+}
+.model-tab-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.semantic-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Empty / loading / sign-in / error states (mirror .model-empty). */
+.semantic-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 40px;
+  text-align: center;
+  color: var(--text-dim);
+}
+.semantic-empty-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+.semantic-empty-sub {
+  max-width: 440px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.semantic-model-picker {
+  display: flex;
+  gap: 4px;
+}
+
+/* Table card. */
+.semantic-card {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: grab;
+  transition:
+    border-color 0.14s ease,
+    box-shadow 0.14s ease,
+    opacity 0.14s ease;
+}
+.semantic-card button {
+  cursor: pointer;
+}
+.semantic-card--dim {
+  opacity: 0.3;
+}
+.semantic-card--active {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 34%, transparent),
+    var(--shadow-md);
+}
+.semantic-card--dragging {
+  cursor: grabbing;
+  z-index: 5;
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  box-shadow: var(--shadow-lg);
+}
+.semantic-card--hidden {
+  opacity: 0.72;
+}
+
+.semantic-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.semantic-card-ico {
+  flex: none;
+  font-size: 13px;
+  opacity: 0.9;
+}
+.semantic-card-name {
+  min-width: 0;
+  flex: 1;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.semantic-card-badge {
+  flex: none;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--on-accent) 22%, transparent);
+  color: var(--on-accent);
+}
+.semantic-card-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--on-accent);
+  opacity: 0.72;
+  font-size: 13px;
+  cursor: pointer;
+}
+.semantic-card-collapse:hover {
+  opacity: 1;
+}
+.semantic-card-focus {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--on-accent);
+  opacity: 0.72;
+  font-size: 13px;
+  cursor: pointer;
+}
+.semantic-card-focus:hover {
+  opacity: 1;
+  background: color-mix(in srgb, var(--on-accent) 18%, transparent);
+}
+.semantic-card-summary {
+  text-align: left;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.semantic-card-summary:hover {
+  color: var(--text);
+}
+
+.semantic-fields {
+  list-style: none;
+  margin: 0;
+  padding: 5px 0;
+  display: flex;
+  flex-direction: column;
+}
+.semantic-field {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 9px;
+  padding: 3px 12px;
+  min-height: 24px;
+  font-size: 12px;
+}
+.semantic-field--hidden {
+  opacity: 0.55;
+}
+.semantic-field--empty {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.semantic-field-gutter {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+}
+.semantic-field-ico {
+  width: 13px;
+  display: inline-flex;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+.semantic-field-ico--pk {
+  color: var(--accent);
+}
+.semantic-field-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: 'Cascadia Code', 'Consolas', ui-monospace, monospace;
+}
+
+/* Column data-type chips. */
+.semantic-chip {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-variant: tabular-nums;
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+  color: var(--text-dim);
+}
+.semantic-chip--num {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: color-mix(in srgb, var(--accent) 78%, var(--text));
+}
+.semantic-chip--text {
+  background: color-mix(in srgb, #6b8afd 16%, transparent);
+  color: color-mix(in srgb, #6b8afd 82%, var(--text));
+}
+.semantic-chip--date {
+  background: color-mix(in srgb, #c084fc 16%, transparent);
+  color: color-mix(in srgb, #c084fc 82%, var(--text));
+}
+.semantic-chip--bool {
+  background: color-mix(in srgb, #f59e0b 16%, transparent);
+  color: color-mix(in srgb, #f59e0b 82%, var(--text));
+}
+.semantic-chip--blob {
+  background: color-mix(in srgb, var(--text-faint) 18%, transparent);
+  color: var(--text-dim);
+}
+.semantic-chip--unknown {
+  background: color-mix(in srgb, var(--text-dim) 12%, transparent);
+  color: var(--text-faint);
+}
+
+/* Measures section on a table card. */
+.semantic-measures {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  padding: 4px 0 6px;
+}
+.semantic-measures-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 12px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+.semantic-measures-count {
+  font-variant: tabular-nums;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+}
+.semantic-measure {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 3px 12px;
+  min-height: 24px;
+  font-size: 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.semantic-measure:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+.semantic-measure-fx {
+  flex: none;
+  font-style: italic;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--accent);
+}
+.semantic-measure-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.semantic-measure-more {
+  align-self: flex-start;
+  margin: 3px 12px 1px;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.semantic-measure-more:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* Card footer: storage mode + description. */
+.semantic-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: auto;
+  padding: 6px 11px 8px;
+  border-top: 1px solid var(--border-soft);
+  min-width: 0;
+}
+.semantic-foot-mode {
+  flex: none;
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border-radius: 5px;
+  color: var(--text-dim);
+  background: var(--bg-elev-3);
+}
+.semantic-foot-desc {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Relationship edges: active = solid, inactive = dashed (Power BI convention).
+   Overrides the dashed-by-default .model-edge base, scoped to the semantic view. */
+.semantic-view .model-edge {
+  stroke-dasharray: none;
+  stroke: color-mix(in srgb, var(--text-dim) 85%, transparent);
+}
+.semantic-view .model-edge--fk {
+  stroke-dasharray: 5 4;
+  stroke: color-mix(in srgb, var(--text-dim) 62%, transparent);
+}
+.semantic-edge-arrow {
+  fill: color-mix(in srgb, var(--text-dim) 92%, transparent);
+}
+.semantic-crow {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-dim) 92%, transparent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.semantic-one {
+  stroke: color-mix(in srgb, var(--text-dim) 92%, transparent);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+.model-edge-g--hot .semantic-edge-arrow {
+  fill: var(--accent);
+}
+.model-edge-g--hot .semantic-crow,
+.model-edge-g--hot .semantic-one {
+  stroke: var(--accent);
+}
+
+/* Cardinality legend marks in the header. */
+.semantic-legend-mark {
+  fill: none;
+  stroke: color-mix(in srgb, var(--text-dim) 80%, transparent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.semantic-legend-dash {
+  display: inline-block;
+  width: 16px;
+  border-top: 2px dashed color-mix(in srgb, var(--text-dim) 55%, transparent);
+}
+
+/* Measure DAX dialog (centered modal). */
+.semantic-popover-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--bg) 45%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.semantic-popover {
+  position: relative;
+  z-index: 61;
+  width: 460px;
+  max-width: 100%;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-elev-2);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+}
+.semantic-popover-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 10px;
+}
+.semantic-popover-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.semantic-popover-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.semantic-popover-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.semantic-popover-close:hover {
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+  color: var(--text);
+}
+.semantic-popover-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 12px 2px;
+}
+.semantic-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--text-dim) 14%, transparent);
+  color: var(--text-dim);
+}
+.semantic-meta-key {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+.semantic-meta-chip code {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-variant: tabular-nums;
+  color: var(--text);
+}
+.semantic-popover-caption {
+  padding: 10px 12px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-faint);
+}
+.semantic-popover-desc {
+  margin: 0;
+  padding: 0 12px;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+.semantic-popover-dax {
+  margin: 0;
+  padding: 2px 12px 6px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+.semantic-popover-dax .dax-fn {
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  font-weight: 600;
+}
+.semantic-popover-dax .dax-table {
+  color: color-mix(in srgb, #c084fc 82%, var(--text));
+}
+.semantic-popover-dax .dax-col {
+  color: color-mix(in srgb, #6b8afd 82%, var(--text));
+}
+.semantic-popover-dax .dax-str {
+  color: color-mix(in srgb, #ce9178 82%, var(--text));
+}
+.semantic-popover-dax .dax-num {
+  color: color-mix(in srgb, #d19a66 82%, var(--text));
+}
+.semantic-popover-dax .dax-kw {
+  color: color-mix(in srgb, #c586c0 82%, var(--text));
+  font-weight: 600;
+}
+.semantic-popover-dax .dax-comment {
+  color: var(--text-faint);
+  font-style: italic;
+}
+.semantic-popover-dax .dax-op,
+.semantic-popover-dax .dax-paren {
+  color: var(--text-dim);
+}
+.semantic-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 6px 10px;
+  border-top: 1px solid var(--border);
+}
+
 /* ── Toasts (transient notifications) ─────────────────────────────────────── */
 .toast-host {
   position: fixed;

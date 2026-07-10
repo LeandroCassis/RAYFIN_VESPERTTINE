@@ -214,6 +214,80 @@ export interface FabricDeleteResult {
   error?: string
 }
 
+/** One table in a semantic model's schema (a node in the Model-tab diagram). */
+export interface SemanticTable {
+  name?: string
+  description?: string
+  isHidden: boolean
+  storageMode?: string
+}
+
+/** One column on a semantic-model table; `expression` is set only for a calculated column. */
+export interface SemanticColumn {
+  table?: string
+  name?: string
+  dataType?: string
+  isHidden: boolean
+  isKey: boolean
+  dataCategory?: string
+  formatString?: string
+  displayFolder?: string
+  expression?: string
+}
+
+/** One measure on a semantic-model table (its DAX `expression` is shown on click). */
+export interface SemanticMeasure {
+  table?: string
+  name?: string
+  expression?: string
+  dataType?: string
+  formatString?: string
+  displayFolder?: string
+  description?: string
+  isHidden: boolean
+}
+
+/** One relationship (an edge) with cardinality, cross-filter direction and active state. */
+export interface SemanticRelationship {
+  name?: string
+  fromTable?: string
+  fromColumn?: string
+  /** 'One' | 'Many' (as reported by INFO.VIEW.RELATIONSHIPS). */
+  fromCardinality?: string
+  toTable?: string
+  toColumn?: string
+  toCardinality?: string
+  isActive: boolean
+  /** 'OneDirection' | 'BothDirections' | 'Automatic'. */
+  crossFilter?: string
+}
+
+/**
+ * Outcome of reading a semantic model's schema for the Model-tab diagram (never
+ * throws across IPC). The schema is queried live from Fabric with the Azure CLI
+ * Power BI token (like `@microsoft/fabric-app-data-cli`), so `needsAz` drives an
+ * `az login` CTA, `needsLogin` a Fabric sign-in, and `error` covers the "not
+ * deployed / no access" cases.
+ */
+export interface SemanticSchemaResult {
+  ok: boolean
+  /** True when at least one table came back. */
+  matched: boolean
+  /** True when the failure was a missing/expired Fabric session. */
+  needsLogin?: boolean
+  /** True when the failure was a missing/signed-out Azure CLI. */
+  needsAz?: boolean
+  error?: string
+  workspaceId?: string
+  itemId?: string
+  tables: SemanticTable[]
+  columns: SemanticColumn[]
+  measures: SemanticMeasure[]
+  relationships: SemanticRelationship[]
+  /** Non-fatal notes (e.g. a sub-query that failed while tables succeeded). */
+  notes: string[]
+}
+
 /* ------------------------------------------------------------------ *
  * Long-running / streaming processes (logins, installs, deploys)
  * ------------------------------------------------------------------ */
@@ -1323,6 +1397,13 @@ export interface RayfinStudioApi {
      * is cleaned up too. Never throws — reports per-deployment failures.
      */
     deleteApps: (projectId: string) => Promise<FabricDeleteResult>
+    /**
+     * Read a semantic model's schema (tables/columns/measures/relationships) for
+     * the Model tab's diagram. Queried live from Fabric via DAX `INFO.VIEW.*`
+     * using the Azure CLI Power BI token; never throws — reports
+     * `needsAz`/`needsLogin`/`error` for the UI to render.
+     */
+    semanticModelSchema: (workspaceId: string, itemId: string) => Promise<SemanticSchemaResult>
   }
 
   projects: {

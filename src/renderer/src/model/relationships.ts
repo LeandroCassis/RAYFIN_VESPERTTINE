@@ -271,6 +271,44 @@ export interface EdgeRender {
   /** Label anchor (unused by the renderer today; kept for tests / future use). */
   mx: number
   my: number
+  /**
+   * Local tangent angle (radians) of the routed path at its arc-length midpoint,
+   * pointing in the direction of travel (from → to). Lets a cross-filter arrow
+   * sit ON the elbow and align with it, instead of floating at the straight-line
+   * midpoint with an endpoint-to-endpoint angle.
+   */
+  midAngle: number
+}
+
+/**
+ * Arc-length midpoint of a polyline plus the local tangent angle there, in the
+ * direction of travel (`points[0]` → last). Used to anchor a cross-filter arrow
+ * ON the routed elbow rather than at the straight-line midpoint (which floats
+ * off orthogonal / re-routed paths).
+ */
+function polyMid(points: Pt[]): { x: number; y: number; angle: number } {
+  if (points.length === 0) return { x: 0, y: 0, angle: 0 }
+  if (points.length === 1) return { x: points[0].x, y: points[0].y, angle: 0 }
+  let total = 0
+  for (let i = 1; i < points.length; i++) {
+    total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y)
+  }
+  const half = total / 2
+  let acc = 0
+  for (let i = 1; i < points.length; i++) {
+    const a = points[i - 1]
+    const b = points[i]
+    const seg = Math.hypot(b.x - a.x, b.y - a.y)
+    if (seg === 0) continue
+    if (acc + seg >= half) {
+      const t = (half - acc) / seg
+      return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t, angle: Math.atan2(b.y - a.y, b.x - a.x) }
+    }
+    acc += seg
+  }
+  const last = points[points.length - 1]
+  const prev = points[points.length - 2]
+  return { x: last.x, y: last.y, angle: Math.atan2(last.y - prev.y, last.x - prev.x) }
 }
 
 const LANE_GAP = 26
@@ -410,6 +448,7 @@ export function computeEdgeGeometry(
     }
     const d = stepPath(routed, CORNER)
 
+    const m = polyMid(routed)
     out.push({
       id: e.id,
       d,
@@ -419,8 +458,9 @@ export function computeEdgeGeometry(
       from: e.a,
       to: e.b,
       self: false,
-      mx: routed[2] ? routed[2].x : (source.x + target.x) / 2,
-      my: (source.y + target.y) / 2
+      mx: m.x,
+      my: m.y,
+      midAngle: m.angle
     })
   }
 
@@ -443,6 +483,7 @@ export function computeEdgeGeometry(
       { x: rightX + gap, y: yb },
       { x: rightX, y: yb }
     ]
+    const selfMid = polyMid(pts)
     out.push({
       id: `${s.id}@self`,
       d: stepPath(pts, CORNER),
@@ -455,8 +496,9 @@ export function computeEdgeGeometry(
       from: s.entity,
       to: s.entity,
       self: true,
-      mx: rightX + gap,
-      my: cy
+      mx: selfMid.x,
+      my: selfMid.y,
+      midAngle: selfMid.angle
     })
   }
 
