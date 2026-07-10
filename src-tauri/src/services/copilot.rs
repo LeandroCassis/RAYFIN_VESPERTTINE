@@ -36,6 +36,11 @@ use crate::types::ChatEvent;
 /// Application name reported to the CLI as User-Agent context.
 const CLIENT_NAME: &str = "rayfin-fabricator";
 
+/// The SDK's "auto" router pseudo-model id. Selecting Auto (no explicit project
+/// model) resolves to this when we must issue an explicit `set_model` — e.g. to
+/// switch a resumed session, which otherwise keeps its last concrete model.
+const AUTO_MODEL_ID: &str = "auto";
+
 /// A live session plus the model/effort currently applied to it, so a turn only
 /// issues a `set_model` RPC when the user actually changed them.
 struct Entry {
@@ -80,6 +85,40 @@ fn concrete_model(model: &Option<String>) -> Option<String> {
     .map(str::to_string)
 }
 
+/// The model id to hand `set_model` for a live session: the concrete model, or
+/// the SDK's `"auto"` router when the project has no explicit model. Switching a
+/// resumed session back to Auto requires this explicit `set_model("auto")` — the
+/// session keeps its last concrete model otherwise.
+fn set_model_target(model: &Option<String>) -> String {
+  concrete_model(model).unwrap_or_else(|| AUTO_MODEL_ID.to_string())
+}
+
+/// Whether a cached session can be reused as-is, or needs `set_model` re-applied.
+#[derive(Debug, PartialEq, Eq)]
+enum Sync {
+  Reuse,
+  Apply,
+}
+
+/// Decide how to reconcile a cached session against the model/effort a turn wants.
+/// Any change — crucially including switching *to* Auto — needs [`Sync::Apply`],
+/// because a live/resumed session keeps its last concrete model until `set_model`
+/// says otherwise (see [`apply_options`]).
+fn session_sync(
+  cur_model: &Option<String>,
+  cur_effort: &Option<String>,
+  want_model: &Option<String>,
+  want_effort: &Option<String>,
+) -> Sync {
+  if concrete_model(cur_model) == concrete_model(want_model)
+    && norm_effort(cur_effort) == norm_effort(want_effort)
+  {
+    Sync::Reuse
+  } else {
+    Sync::Apply
+  }
+}
+
 /// Normalize the effort string: treat empty as unset.
 fn norm_effort(effort: &Option<String>) -> Option<String> {
   effort
@@ -89,22 +128,20 @@ fn norm_effort(effort: &Option<String>) -> Option<String> {
     .map(str::to_string)
 }
 
-/// Apply model/effort to a live session via `set_model`. No-op when the model is
-/// `auto`/unset (there is no model id to switch to; effort then rides on the
-/// value supplied at session open).
+/// Apply model/effort to a live session via `set_model`. Always switches — to the
+/// concrete model, or back to the `"auto"` router — so returning to Auto after
+/// using a named model actually takes effect (a live/resumed session keeps its
+/// last model otherwise). The reasoning effort rides along on the switch.
 async fn apply_options(
   session: &Session,
   model: &Option<String>,
   effort: &Option<String>,
 ) -> Result<(), SdkError> {
-  if let Some(m) = concrete_model(model) {
-    let mut opts = SetModelOptions::default();
-    if let Some(e) = norm_effort(effort) {
-      opts = opts.with_reasoning_effort(e);
-    }
-    session.set_model(&m, Some(opts)).await?;
+  let mut opts = SetModelOptions::default();
+  if let Some(e) = norm_effort(effort) {
+    opts = opts.with_reasoning_effort(e);
   }
-  Ok(())
+  session.set_model(&set_model_target(model), Some(opts)).await
 }
 
 /// Bridges the SDK's `exit_plan_mode` callback to the renderer. When the agent
@@ -196,8 +233,12 @@ async fn open_session(
     }
     cfg.reasoning_effort = eff;
     let session = client.resume_session(cfg).await?;
-    // Resume can't carry a model in its config; switch after attaching.
-    apply_options(&session, &model, effort).await?;
+    // Resume can't carry a model in its config; reconcile after attaching. A
+    // failure here is non-fatal — the session keeps its persisted model rather
+    // than breaking the turn.
+    if let Err(e) = apply_options(&session, &model, effort).await {
+      log::warn!("failed to reconcile model on resumed Copilot session: {e}");
+    }
     Ok(session)
   } else {
     let mut cfg = SessionConfig::default()
@@ -312,8 +353,6 @@ impl CopilotManager {
     tools: Vec<Tool>,
   ) -> Result<Arc<Session>, String> {
     let key = cache_key(project_id);
-    let want_model = concrete_model(&model);
-    let want_effort = norm_effort(&effort);
 
     let mut sessions = self.sessions.lock().await;
 
@@ -324,16 +363,13 @@ impl CopilotManager {
       Reopen,
     }
     let action = match sessions.get(&key) {
-      Some(e) if e.cwd == cwd => {
-        if concrete_model(&e.model) == want_model && norm_effort(&e.effort) == want_effort {
-          Action::Reuse(e.session.clone())
-        } else if want_model.is_some() {
-          Action::ApplyThenReuse(e.session.clone())
-        } else {
-          // auto model + changed effort: reopen so the new effort takes hold.
-          Action::Reopen
-        }
-      }
+      Some(e) if e.cwd == cwd => match session_sync(&e.model, &e.effort, &model, &effort) {
+        // Model and/or effort changed — apply on the live session. `set_model`
+        // now switches back to the "auto" router too, so returning to Auto takes
+        // effect (previously it reopened → resumed → kept the old model).
+        Sync::Apply => Action::ApplyThenReuse(e.session.clone()),
+        Sync::Reuse => Action::Reuse(e.session.clone()),
+      },
       _ => Action::Reopen,
     };
 
@@ -464,7 +500,12 @@ fn parse_cli_version(raw: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-  use super::parse_cli_version;
+  use super::{parse_cli_version, session_sync, set_model_target, Sync};
+
+  /// Shorthand for an `Option<String>` from a string literal.
+  fn m(v: &str) -> Option<String> {
+    Some(v.to_string())
+  }
 
   #[test]
   fn parses_prerelease_and_strips_trailing_period() {
@@ -480,5 +521,41 @@ mod tests {
   #[test]
   fn returns_none_when_absent() {
     assert_eq!(parse_cli_version("no version here"), None);
+  }
+
+  #[test]
+  fn set_model_target_falls_back_to_auto() {
+    // No explicit model (or the pseudo "auto"/blank) → the SDK's "auto" router.
+    assert_eq!(set_model_target(&None), "auto");
+    assert_eq!(set_model_target(&m("")), "auto");
+    assert_eq!(set_model_target(&m("   ")), "auto");
+    assert_eq!(set_model_target(&m("auto")), "auto");
+    // A concrete model passes through verbatim.
+    assert_eq!(set_model_target(&m("gpt-5.4-mini")), "gpt-5.4-mini");
+  }
+
+  #[test]
+  fn switching_to_auto_from_a_named_model_re_applies() {
+    // The bug: a session on a concrete model, switched back to Auto, must
+    // re-apply (set_model "auto") — not silently reuse the old model.
+    assert_eq!(session_sync(&m("gpt-5.4-mini"), &None, &None, &None), Sync::Apply);
+    assert_eq!(session_sync(&m("gpt-5.4-mini"), &None, &m("auto"), &None), Sync::Apply);
+  }
+
+  #[test]
+  fn unchanged_model_and_effort_reuses() {
+    assert_eq!(session_sync(&None, &None, &None, &None), Sync::Reuse);
+    assert_eq!(session_sync(&m("x"), &m("high"), &m("x"), &m("high")), Sync::Reuse);
+    // None and "auto" (and blank) are equivalent, so auto→auto reuses.
+    assert_eq!(session_sync(&None, &None, &m("auto"), &None), Sync::Reuse);
+    assert_eq!(session_sync(&m("auto"), &None, &None, &None), Sync::Reuse);
+  }
+
+  #[test]
+  fn model_or_effort_change_applies() {
+    assert_eq!(session_sync(&m("a"), &None, &m("b"), &None), Sync::Apply);
+    assert_eq!(session_sync(&None, &m("low"), &None, &m("high")), Sync::Apply);
+    // Auto → a concrete model also needs applying.
+    assert_eq!(session_sync(&None, &None, &m("gpt"), &None), Sync::Apply);
   }
 }
