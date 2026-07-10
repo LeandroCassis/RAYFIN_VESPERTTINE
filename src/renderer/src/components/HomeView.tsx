@@ -158,7 +158,19 @@ export default function HomeView({
         <section className="home-recents">
           <div className="home-section-title">Recent projects</div>
           {projects.length === 0 ? (
-            <div className="home-empty">No projects yet. Create one to get started.</div>
+            <div className="home-empty">
+              <div className="home-empty-mark" aria-hidden="true">
+                <FabricatorMark />
+              </div>
+              <p className="home-empty-title">No projects yet</p>
+              <p className="home-empty-sub">
+                Describe an app in plain language and Fabricator builds it — code, data, and a
+                live deploy.
+              </p>
+              <button className="btn btn--primary btn--sm" onClick={onNewProject}>
+                New project
+              </button>
+            </div>
           ) : (
             <div className="home-project-list">
               {projects.map((p) => (
@@ -169,6 +181,13 @@ export default function HomeView({
                   }`}
                   onClick={() => {
                     if (renamingId !== p.id) onSelect(p)
+                  }}
+                  onKeyDown={(e) => {
+                    if (renamingId === p.id) return
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      onSelect(p)
+                    }
                   }}
                   role="button"
                   tabIndex={0}

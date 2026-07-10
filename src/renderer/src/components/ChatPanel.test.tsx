@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
+import type { ChatEventEnvelope } from '@shared/ipc'
 import { makeProject } from '../../test/harness'
-import ChatPanel from './ChatPanel'
+import ChatPanel, { type UIChatMessage } from './ChatPanel'
 
 /**
  * Guards issue #9: a typed-but-unsent prompt must survive ChatPanel unmounting.
@@ -345,5 +346,99 @@ describe('ChatPanel submit-pause while deploying', () => {
     // Without the block, a deploy doesn't stop the user from queuing a turn.
     expect(onTurnStart).toHaveBeenCalledTimes(1)
     expect(sendMock()).toHaveBeenCalled()
+  })
+})
+
+/**
+ * Perf guard (P1): streamed `delta` events must be coalesced. The SDK emits one
+ * IPC event per token; applying each individually re-parsed the growing markdown
+ * bubble ~60×/s. ChatPanel now buffers deltas and flushes on a fixed time budget,
+ * so many deltas within one interval collapse into a single `onChange`. Structural
+ * events still drain the buffer immediately (covered by other suites).
+ */
+describe('ChatPanel streamed delta coalescing (P1)', () => {
+  /** A live assistant turn (`turnId` set, pending) plus its user prompt. */
+  const seed = (): UIChatMessage[] => [
+    { id: 'u1', role: 'user', text: 'hi', tools: [], pending: false },
+    {
+      id: 'a1',
+      role: 'assistant',
+      text: '',
+      tools: [],
+      segments: [],
+      pending: true,
+      turnId: 't1',
+      startedAt: Date.now()
+    }
+  ]
+
+  function StreamHarness({
+    track
+  }: {
+    track: (updater: (prev: UIChatMessage[]) => UIChatMessage[]) => void
+  }): JSX.Element {
+    const project = useMemo(() => makeProject('p1'), [])
+    const [messages, setMessages] = useState<UIChatMessage[]>(seed)
+    return (
+      <ChatPanel
+        project={project}
+        messages={messages}
+        onChange={(updater) => {
+          track(updater)
+          setMessages((prev) => updater(prev))
+        }}
+        draft=""
+        onDraftChange={() => {}}
+      />
+    )
+  }
+
+  it('buffers many deltas into a single flush, then renders the joined text', async () => {
+    vi.useFakeTimers()
+    try {
+      // Capture the live chat-event subscriber so the test can emit like the native side.
+      let handler: ((env: ChatEventEnvelope) => void) | null = null
+      ;(
+        window as unknown as {
+          api: { onChatEvent: (cb: (env: ChatEventEnvelope) => void) => () => void }
+        }
+      ).api.onChatEvent = (cb) => {
+        handler = cb
+        return () => {
+          handler = null
+        }
+      }
+      const emit = (text: string): void =>
+        handler?.({ projectId: 'p1', turnId: 't1', event: { type: 'delta', text } })
+
+      const track = vi.fn()
+      await act(async () => {
+        render(<StreamHarness track={track} />)
+      })
+
+      // Ignore any mount-time onChange; only count flushes caused by the deltas below.
+      track.mockClear()
+
+      // Emit four tokens without advancing the clock. They must be buffered, not
+      // applied one-by-one — so no flush has run and nothing is rendered yet.
+      await act(async () => {
+        emit('Hello')
+        emit(', ')
+        emit('brave ')
+        emit('world')
+      })
+      expect(track).toHaveBeenCalledTimes(0)
+      expect(screen.queryByText(/Hello, brave world/)).toBeNull()
+
+      // Cross the flush interval: the whole buffer lands in exactly one update.
+      await act(async () => {
+        vi.advanceTimersByTime(200)
+      })
+      expect(track).toHaveBeenCalledTimes(1)
+      expect(screen.getByText(/Hello, brave world/)).not.toBeNull()
+    } finally {
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
   })
 })

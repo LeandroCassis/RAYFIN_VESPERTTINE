@@ -38,7 +38,12 @@ export default class ErrorBoundary extends Component<Props, State> {
           Fabricator hit an unexpected error. Reloading usually fixes it; your projects and
           chat history are saved.
         </p>
-        <pre className="crash-detail">{error.message}</pre>
+        {error.message && (
+          <details className="crash-details">
+            <summary className="crash-details-summary">Technical details</summary>
+            <pre className="crash-detail">{error.message}</pre>
+          </details>
+        )}
         <div className="crash-actions">
           <button className="btn btn--primary" onClick={() => window.location.reload()}>
             Reload

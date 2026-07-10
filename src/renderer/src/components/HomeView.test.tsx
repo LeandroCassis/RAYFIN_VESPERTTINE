@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import HomeView from './HomeView'
+import { makeProject } from '../../test/harness'
 
 /**
  * Guards the "Open existing…" dropdown added for Clone-from-GitHub: the button
@@ -66,5 +67,26 @@ describe('HomeView "Open existing…" menu', () => {
 
     expect(props.onCloneFromGitHub).toHaveBeenCalledTimes(1)
     expect(props.onOpenExisting).not.toHaveBeenCalled()
+  })
+})
+
+describe('HomeView project rows (keyboard activation)', () => {
+  it('opens a project on Enter and Space, and ignores other keys', () => {
+    const props = baseProps()
+    props.projects = [makeProject('p1', { name: 'Sales' })]
+    render(<HomeView {...props} />)
+
+    const row = screen.getByText('Sales').closest('.project-item') as HTMLElement
+    expect(row).not.toBeNull()
+
+    fireEvent.keyDown(row, { key: 'Enter' })
+    expect(props.onSelect).toHaveBeenCalledTimes(1)
+
+    fireEvent.keyDown(row, { key: ' ' })
+    expect(props.onSelect).toHaveBeenCalledTimes(2)
+
+    // A non-activating key must not open the project.
+    fireEvent.keyDown(row, { key: 'a' })
+    expect(props.onSelect).toHaveBeenCalledTimes(2)
   })
 })

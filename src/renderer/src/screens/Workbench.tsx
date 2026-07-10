@@ -208,6 +208,10 @@ export default function Workbench({
   /** Latest chats snapshot, for reading inside async callbacks / save timers. */
   const chatsRef = useRef(chats)
   chatsRef.current = chats
+  /** Last transcript reference persisted per project. The debounce below compares
+   *  against this so it only rewrites the (up to 1000-message) file of a project
+   *  whose messages actually changed — not every hydrated project on each edit. */
+  const savedChatsRef = useRef<Record<string, UIChatMessage[]>>({})
   /** Latest active project id, for guarding async (per-project) responses. */
   const activeIdRef = useRef<string | null>(null)
   activeIdRef.current = projects?.activeProjectId ?? null
@@ -455,7 +459,14 @@ export default function Workbench({
     if (hydratedRef.current.has(id)) return
     hydratedRef.current.add(id)
     void window.api.chat.history(id).then((stored) => {
-      setChats((all) => (all[id] !== undefined ? all : { ...all, [id]: stored.map(toUi) }))
+      setChats((all) => {
+        if (all[id] !== undefined) return all
+        const hydrated = stored.map(toUi)
+        // Seed the saved snapshot so a hydrated-but-untouched transcript isn't
+        // immediately written straight back to disk by the debounce below.
+        savedChatsRef.current[id] = hydrated
+        return { ...all, [id]: hydrated }
+      })
     })
   }, [active?.id])
 
@@ -614,11 +625,15 @@ export default function Workbench({
   }, [active?.name])
 
   // Debounce-persist chat transcripts whenever they change (after streaming settles).
+  // Only projects whose message array changed reference (i.e. actually mutated) are
+  // written — untouched hydrated projects keep the same reference and are skipped.
   useEffect(() => {
     const t = setTimeout(() => {
       for (const projectId of hydratedRef.current) {
         const msgs = chatsRef.current[projectId]
         if (!msgs) continue
+        if (savedChatsRef.current[projectId] === msgs) continue
+        savedChatsRef.current[projectId] = msgs
         void window.api.chat.saveHistory(projectId, toStored(msgs))
       }
     }, 600)

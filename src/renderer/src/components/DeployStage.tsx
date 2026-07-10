@@ -243,8 +243,11 @@ export default function DeployStage({ log, name }: { log: string[]; name?: strin
   const elapsedLabel = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`
 
   const lastLine = useMemo(() => {
-    for (let i = log.length - 1; i >= 0; i--) {
-      const t = log[i].trim()
+    // Scan the joined log by line, not by entry: a coalesced proc:log event can
+    // carry several lines, so the last *entry* may be a multi-line block.
+    const lines = log.join('').split('\n')
+    for (let i = lines.length - 1; i >= 0; i--) {
+      const t = lines[i].trim()
       if (t) return t
     }
     return ''

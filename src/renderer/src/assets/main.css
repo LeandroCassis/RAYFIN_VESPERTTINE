@@ -954,6 +954,86 @@ code {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Collapsed-by-default disclosure so the raw error message doesn't dominate the
+   crash screen; users can expand it when reporting an issue. */
+.crash-details {
+  max-width: 560px;
+  margin-top: 4px;
+}
+
+.crash-details-summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  opacity: 0.65;
+  user-select: none;
+}
+
+.crash-details-summary:hover {
+  opacity: 1;
+}
+
+/* Loading skeleton — softly pulsing placeholder bars (see Skeleton.tsx). */
+.skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+}
+
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.skeleton-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+  flex: none;
+}
+
+.skeleton-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.skeleton-bar {
+  height: 9px;
+  border-radius: 5px;
+  background: var(--border);
+}
+
+.skeleton-bar--sm {
+  height: 7px;
+  opacity: 0.65;
+}
+
+.skeleton-pulse {
+  animation: skeleton-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-pulse {
+    animation: none;
+  }
+}
 .crash-actions {
   display: flex;
   gap: 10px;
@@ -992,6 +1072,11 @@ code {
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* Tactile press feedback for the shared button system (flat — just a nudge). */
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .btn--sm {
@@ -1034,8 +1119,11 @@ code {
 
 .btn--primary:hover:not(:disabled) {
   border-color: transparent;
-  background: var(--accent);
-  filter: brightness(1.08);
+  background: color-mix(in srgb, var(--accent) 90%, #fff);
+}
+
+.btn--primary:active:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 84%, #000);
 }
 
 .btn--ghost {
@@ -1051,8 +1139,11 @@ code {
 
 .btn--danger:hover:not(:disabled) {
   border-color: transparent;
-  background: var(--danger);
-  filter: brightness(1.06);
+  background: color-mix(in srgb, var(--danger) 92%, #fff);
+}
+
+.btn--danger:active:not(:disabled) {
+  background: color-mix(in srgb, var(--danger) 86%, #000);
 }
 
 .btn--link {
@@ -6785,10 +6876,42 @@ code {
   color: var(--text-dim);
   font-size: 13px;
   line-height: 1.5;
-  padding: 20px;
+  padding: 28px 20px;
   border: 1px dashed var(--border);
   border-radius: 10px;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.home-empty-mark {
+  width: 40px;
+  height: 40px;
+  opacity: 0.9;
+  margin-bottom: 2px;
+}
+
+.home-empty-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+.home-empty-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.home-empty-sub {
+  margin: 0;
+  max-width: 320px;
+}
+
+.home-empty .btn {
+  margin-top: 6px;
 }
 
 .home-project-list {
@@ -7404,9 +7527,8 @@ code {
   font-weight: 600;
 }
 .seg--toolbar .seg-btn--primary:hover:not(:disabled) {
-  background: var(--accent);
+  background: color-mix(in srgb, var(--accent) 90%, #fff);
   color: var(--on-accent);
-  filter: brightness(1.08);
 }
 /* Square icon-only segment. */
 .seg--toolbar .seg-btn--icon {

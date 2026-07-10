@@ -219,10 +219,22 @@ impl SemanticSchemaResult {
 }
 
 /// Write the embedded helper to the app data dir and return its path.
+///
+/// The helper source is a compile-time constant, so we only need to materialize
+/// it once per process: the first call writes it (refreshing any stale copy left
+/// by a previous app version) and caches the path; later calls skip the write
+/// entirely. This removes a redundant file write from every semantic-model lookup.
 fn write_helper() -> std::io::Result<PathBuf> {
+  static HELPER_PATH: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+  if let Some(path) = HELPER_PATH.get() {
+    return Ok(path.clone());
+  }
   let dir = paths::ensure_data_dir()?;
   let path = dir.join("semantic-model.mjs");
   std::fs::write(&path, HELPER_SOURCE)?;
+  // Cache for the rest of the session (a concurrent first-call race just writes
+  // the identical bytes twice — harmless — before one writer wins the set).
+  let _ = HELPER_PATH.set(path.clone());
   Ok(path)
 }
 

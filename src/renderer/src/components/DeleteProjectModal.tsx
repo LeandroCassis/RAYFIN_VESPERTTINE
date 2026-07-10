@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, useState } from 'react'
 import { useSuppressPreview } from '../overlay'
+import { useModalFocus } from '../modalFocus'
 import { FabricIcon } from './icons'
 import type { DeleteProgressEvent, ProjectsState, StudioProject } from '@shared/ipc'
 
@@ -98,6 +99,7 @@ function localStepHint(
 export default function DeleteProjectModal({ project, onRemoved, onClose }: Props): JSX.Element {
   useSuppressPreview()
   const titleId = useId()
+  const dialogRef = useModalFocus<HTMLDivElement>()
   const hasDeploy = Boolean(project.lastDeploy?.url)
   const [alsoDeleteFabric, setAlsoDeleteFabric] = useState(hasDeploy)
   const [phase, setPhase] = useState<'confirm' | 'running' | 'error' | 'done'>('confirm')
@@ -261,6 +263,7 @@ export default function DeleteProjectModal({ project, onRemoved, onClose }: Prop
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">

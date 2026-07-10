@@ -383,6 +383,14 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
                         setSelected(r.nameWithOwner)
                         setManual('')
                       }}
+                      onKeyDown={(e) => {
+                        if (cloning) return
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          setSelected(r.nameWithOwner)
+                          setManual('')
+                        }
+                      }}
                     >
                       <div className="project-item-mark" aria-hidden="true">
                         {r.name.trim()[0]?.toUpperCase() ?? '?'}

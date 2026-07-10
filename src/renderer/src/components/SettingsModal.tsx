@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import type { AppSettings, AppVersions, ThemePreference } from '@shared/ipc'
 import { applyTheme, applyUiScale, UI_SCALES } from '../theme'
 import { useSuppressPreview } from '../overlay'
+import { useModalFocus } from '../modalFocus'
 import { useUpdates } from '../update'
 import ConfirmModal from './ConfirmModal'
 
@@ -57,6 +58,7 @@ export default function SettingsModal({
   const [exporting, setExporting] = useState(false)
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
   const titleId = useId()
+  const dialogRef = useModalFocus<HTMLDivElement>()
   // Compatibility rendering is applied at startup, so any change only takes effect
   // after a relaunch. Toggling it opens a mandatory restart prompt; `restartPrompt`
   // holds the value to revert to if the user declines, keeping the setting from
@@ -137,6 +139,7 @@ export default function SettingsModal({
           role="dialog"
           aria-modal="true"
           aria-labelledby={titleId}
+          ref={dialogRef}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="modal-header">

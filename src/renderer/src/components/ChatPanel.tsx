@@ -1682,17 +1682,29 @@ export default function ChatPanel({
   // Coalesce high-frequency streamed `delta` events. The SDK emits one IPC event
   // per token; applying each individually re-rendered the active turn and re-parsed
   // its markdown thousands of times per reply — the dominant cause of the
-  // VM/Parallels "hang". We buffer delta text per turn and flush at most once per
-  // animation frame, while structural events (tool/result/plan/error) apply
-  // immediately after draining any buffered text so chronological order is kept.
+  // VM/Parallels "hang". We buffer delta text per turn and flush on a fixed time
+  // budget (~FLUSH_INTERVAL_MS), not once per animation frame: re-parsing the whole
+  // growing markdown bubble is the streaming hot path, so flushing ~11×/s instead of
+  // ~60×/s cuts that work several-fold with no visible difference. Structural events
+  // (tool/result/plan/error) still apply immediately after draining any buffered text
+  // so chronological order is kept, and the last chunk always lands (turn-end is a
+  // structural event, and any trailing deltas flush on the pending timer).
   const deltaBufRef = useRef<Map<string, string>>(new Map())
-  const flushRafRef = useRef<number | null>(null)
+  const flushTimerRef = useRef<number | null>(null)
+  const lastFlushRef = useRef<number>(0)
 
   useEffect(() => {
+    // Streamed deltas flush at most once per this interval (ms). Structural events
+    // bypass it via an immediate drain, so this only throttles plain text growth.
+    const FLUSH_INTERVAL_MS = 90
     const buf = deltaBufRef.current
 
     const flush = (): void => {
-      flushRafRef.current = null
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
+      }
+      lastFlushRef.current = performance.now()
       if (buf.size === 0) return
       const pending = new Map(buf)
       buf.clear()
@@ -1706,9 +1718,9 @@ export default function ChatPanel({
     }
 
     const scheduleFlush = (): void => {
-      if (flushRafRef.current === null) {
-        flushRafRef.current = requestAnimationFrame(flush)
-      }
+      if (flushTimerRef.current !== null) return
+      const wait = Math.max(0, FLUSH_INTERVAL_MS - (performance.now() - lastFlushRef.current))
+      flushTimerRef.current = window.setTimeout(flush, wait)
     }
 
     const off = window.api.onChatEvent((envelope) => {
@@ -1730,9 +1742,9 @@ export default function ChatPanel({
 
     return () => {
       off()
-      if (flushRafRef.current !== null) {
-        cancelAnimationFrame(flushRafRef.current)
-        flushRafRef.current = null
+      if (flushTimerRef.current !== null) {
+        clearTimeout(flushTimerRef.current)
+        flushTimerRef.current = null
       }
       buf.clear()
     }
@@ -2308,9 +2320,13 @@ export default function ChatPanel({
                   className="chat-suggestion"
                   onClick={() => applySuggestion(s.text)}
                 >
-                  <span className="chat-suggestion-icon">{s.icon}</span>
+                  <span className="chat-suggestion-icon" aria-hidden="true">
+                    {s.icon}
+                  </span>
                   <span className="chat-suggestion-text">{s.text}</span>
-                  <span className="chat-suggestion-arrow">→</span>
+                  <span className="chat-suggestion-arrow" aria-hidden="true">
+                    →
+                  </span>
                 </button>
               ))}
             </div>

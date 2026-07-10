@@ -4,6 +4,7 @@ import Editor from '@monaco-editor/react'
 // same as the Code tab / SkillPreviewModal. Without this the editor hangs on the CDN.
 import '../monaco'
 import { useSuppressPreview } from '../overlay'
+import { useModalFocus } from '../modalFocus'
 import type { CustomSkillActionResult, CustomSkillPreview } from '@shared/ipc'
 
 /** The library skill being edited, or absent when creating a new one. */
@@ -80,6 +81,7 @@ export default function CustomSkillModal({
   useSuppressPreview()
   const theme = useEditorTheme()
   const titleId = useId()
+  const dialogRef = useModalFocus<HTMLDivElement>()
 
   const [tab, setTab] = useState<Tab>('author')
   const [title, setTitle] = useState(editing?.title ?? '')
@@ -200,6 +202,7 @@ export default function CustomSkillModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
+        ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="modal-header">

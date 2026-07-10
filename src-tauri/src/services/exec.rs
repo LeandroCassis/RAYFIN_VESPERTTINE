@@ -22,7 +22,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::{Mutex, Notify};
 
 /// Which output stream a chunk came from.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Stream {
   Stdout,
   Stderr,
