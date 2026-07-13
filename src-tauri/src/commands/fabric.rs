@@ -14,7 +14,7 @@
 //! Rust is neither practical nor safe. All orchestration around it is Rust.
 
 use std::cmp::Ordering;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -315,22 +315,32 @@ fn failure_error(res: &exec::RunResult, out: &str) -> (bool, String) {
   (needs_login, err)
 }
 
+/// Resolve the active project's local CLI auth module, restoring dependencies
+/// first when a clone or manually opened project has no node_modules yet.
+async fn project_auth_module(project_dir: Option<&Path>) -> Result<PathBuf, String> {
+  if let Some(dir) = project_dir {
+    exec::ensure_project_dependencies(dir, None)
+      .await
+      .map_err(|error| format!("Could not install this project's dependencies: {error}"))?;
+  }
+  exec::project_rayfin_auth_module(project_dir).ok_or_else(|| {
+    "Could not locate the Rayfin CLI. Open a Rayfin project to reach Fabric.".to_string()
+  })
+}
+
 /// List the signed-in user's Fabric workspaces, each annotated with its
 /// capacity SKU and whether that capacity is eligible to host a Rayfin app.
 #[tauri::command]
 pub async fn fabric_workspaces() -> FabricWorkspacesResult {
   let project_dir = store::active_project().map(|p| PathBuf::from(p.path));
-  let auth_path = match exec::project_rayfin_auth_module(project_dir.as_deref()) {
-    Some(p) => p,
-    None => {
+  let auth_path = match project_auth_module(project_dir.as_deref()).await {
+    Ok(p) => p,
+    Err(error) => {
       return FabricWorkspacesResult {
         ok: false,
         workspaces: None,
         needs_login: None,
-        error: Some(
-          "Could not locate the Rayfin CLI. Open a project and install its dependencies to list Fabric workspaces."
-            .to_string(),
-        ),
+        error: Some(error),
       }
     }
   };
@@ -405,17 +415,14 @@ pub async fn fabric_workspaces() -> FabricWorkspacesResult {
 #[tauri::command]
 pub async fn fabric_capacities() -> FabricCapacitiesResult {
   let project_dir = store::active_project().map(|p| PathBuf::from(p.path));
-  let auth_path = match exec::project_rayfin_auth_module(project_dir.as_deref()) {
-    Some(p) => p,
-    None => {
+  let auth_path = match project_auth_module(project_dir.as_deref()).await {
+    Ok(p) => p,
+    Err(error) => {
       return FabricCapacitiesResult {
         ok: false,
         capacities: None,
         needs_login: None,
-        error: Some(
-          "Could not locate the Rayfin CLI. Open a project and install its dependencies to list Fabric capacities."
-            .to_string(),
-        ),
+        error: Some(error),
       }
     }
   };
@@ -466,17 +473,14 @@ pub async fn fabric_capacities() -> FabricCapacitiesResult {
 #[tauri::command]
 pub async fn fabric_create_workspace(name: String, capacity_id: String) -> FabricCreateWorkspaceResult {
   let project_dir = store::active_project().map(|p| PathBuf::from(p.path));
-  let auth_path = match exec::project_rayfin_auth_module(project_dir.as_deref()) {
-    Some(p) => p,
-    None => {
+  let auth_path = match project_auth_module(project_dir.as_deref()).await {
+    Ok(p) => p,
+    Err(error) => {
       return FabricCreateWorkspaceResult {
         ok: false,
         workspace_id: None,
         needs_login: None,
-        error: Some(
-          "Could not locate the Rayfin CLI. Open a project and install its dependencies to reach Fabric."
-            .to_string(),
-        ),
+        error: Some(error),
       }
     }
   };
@@ -563,18 +567,15 @@ pub async fn fabric_delete_apps(project_id: String) -> FabricDeleteResult {
   }
 
   let project_dir = store::find_project(&project_id).map(|p| PathBuf::from(p.path));
-  let auth_path = match exec::project_rayfin_auth_module(project_dir.as_deref()) {
-    Some(p) => p,
-    None => {
+  let auth_path = match project_auth_module(project_dir.as_deref()).await {
+    Ok(p) => p,
+    Err(error) => {
       return FabricDeleteResult {
         ok: false,
         deleted: 0,
         failures: vec![],
         needs_login: None,
-        error: Some(
-          "Could not locate the Rayfin CLI. Install the project's dependencies to reach Fabric."
-            .to_string(),
-        ),
+        error: Some(error),
       }
     }
   };

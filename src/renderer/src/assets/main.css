@@ -256,6 +256,72 @@ code {
   display: none;
 }
 
+/* Dependency preparation is a full project gate, so it must not share preview
+   overlay selectors (the native preview is separately suppressed by its component). */
+.project-dependency-guard {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.project-dependency-guard--hidden {
+  display: none;
+}
+
+.project-dependency-guard-card {
+  width: min(100%, 440px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elev);
+  text-align: center;
+}
+
+.project-dependency-guard-card--error {
+  align-items: flex-start;
+  text-align: left;
+}
+
+.project-dependency-guard-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: ws-spin 0.7s linear infinite;
+}
+
+.project-dependency-guard-title {
+  margin: 0;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.project-dependency-guard-copy,
+.project-dependency-guard-error {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.project-dependency-guard-error {
+  color: var(--danger);
+}
+
+.project-dependency-guard-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .panes {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -108,6 +108,7 @@ export const api: RayfinStudioApi = {
     setWorkspaceRoot: (path: string) => invoke('projects_set_workspace_root', { path }),
     create: (input: CreateProjectInput) => invoke('projects_create', { input }),
     open: (path: string) => invoke('projects_open', { path }),
+    ensureDependencies: (id: string) => invoke('projects_prepare_dependencies', { id }),
     setActive: (id: string | null) => invoke('projects_set_active', { id }),
     rename: (id: string, name: string) => invoke('projects_rename', { id, name }),
     setWorkspace: (id: string, workspace?: string, workspaceName?: string) =>

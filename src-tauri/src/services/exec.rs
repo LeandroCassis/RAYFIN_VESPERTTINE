@@ -11,6 +11,7 @@
 //! bundled binary (see [`crate::services::copilot`]); only `login` and the
 //! version probe still spawn it, by absolute path via [`run_program`].
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -20,6 +21,12 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use tokio::io::AsyncReadExt;
 use tokio::sync::{Mutex, Notify};
+
+/// Serialize recovery installs per project. Fabric can request workspaces and
+/// capacities close together; running two `npm install`s in one project would
+/// corrupt its lockfile, while separate projects can prepare independently.
+static PROJECT_DEPENDENCY_INSTALL_LOCKS: Lazy<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> =
+  Lazy::new(|| Mutex::new(HashMap::new()));
 
 /// Which output stream a chunk came from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -235,6 +242,108 @@ pub fn global_rayfin_auth_module() -> Option<PathBuf> {
   candidates.into_iter().find(|p| p.exists())
 }
 
+fn local_rayfin_cli_dir(project_dir: &Path) -> PathBuf {
+  project_dir
+    .join("node_modules")
+    .join("@microsoft")
+    .join("rayfin-cli")
+}
+
+fn local_rayfin_auth_module(project_dir: &Path) -> PathBuf {
+  local_rayfin_cli_dir(project_dir)
+    .join("dist")
+    .join("auth")
+    .join("index.js")
+}
+
+/// True when the project has the local CLI pieces Fabricator needs for both
+/// `rayfin` commands and silent Fabric authentication.
+pub fn project_rayfin_cli_installed(project_dir: &Path) -> bool {
+  let cli_dir = local_rayfin_cli_dir(project_dir);
+  local_rayfin_auth_module(project_dir).is_file()
+    && ["main.js", "main"]
+      .iter()
+      .any(|entry| cli_dir.join("scripts").join(entry).is_file())
+}
+
+/// Install a Rayfin project's dependencies when its local CLI is absent.
+///
+/// A cloned project normally has no `node_modules`; relying on a global CLI in
+/// that case hides the problem until another local package is needed. This makes
+/// the project's pinned CLI the source of truth and is a no-op once it is ready.
+pub async fn ensure_project_dependencies(project_dir: &Path, on_data: Option<OnData>) -> Result<(), String> {
+  if project_rayfin_cli_installed(project_dir) {
+    return Ok(());
+  }
+
+  let install_lock = {
+    let mut locks = PROJECT_DEPENDENCY_INSTALL_LOCKS.lock().await;
+    locks
+      .entry(project_dir.to_path_buf())
+      .or_insert_with(|| Arc::new(Mutex::new(())))
+      .clone()
+  };
+  let _install_guard = install_lock.lock().await;
+  // Another request may have completed the install while this one waited.
+  if project_rayfin_cli_installed(project_dir) {
+    return Ok(());
+  }
+
+  if !project_dir.join("package.json").is_file() {
+    return Err("This Rayfin project has no package.json, so its dependencies cannot be installed.".to_string());
+  }
+
+  if let Some(on) = &on_data {
+    on(Stream::System, "Project dependencies are missing; running npm install...\n");
+  }
+  let result = run(
+    "npm",
+    &["install"],
+    RunOptions {
+      cwd: Some(project_dir.to_path_buf()),
+      on_data,
+      timeout_ms: Some(600_000),
+      ..Default::default()
+    },
+  )
+  .await;
+
+  if result.not_found {
+    return Err("npm was not found on PATH. Install Node.js (which includes npm), then retry.".to_string());
+  }
+  if !result.ok {
+    let code = result
+      .exit_code
+      .map(|code| code.to_string())
+      .unwrap_or_else(|| "unknown".to_string());
+    let detail = if result.stderr.trim().is_empty() {
+      result.stdout.trim()
+    } else {
+      result.stderr.trim()
+    };
+    let tail = detail
+      .lines()
+      .rev()
+      .find(|line| !line.trim().is_empty())
+      .map(str::trim)
+      .unwrap_or_default();
+    let tail: String = tail.chars().take(300).collect();
+    let suffix = if tail.is_empty() {
+      String::new()
+    } else {
+      format!(": {tail}")
+    };
+    return Err(format!("npm install failed (exit code {code}){suffix}"));
+  }
+  if !project_rayfin_cli_installed(project_dir) {
+    return Err(
+      "npm install completed, but @microsoft/rayfin-cli is still missing. Check this project's package.json."
+        .to_string(),
+    );
+  }
+  Ok(())
+}
+
 /// Resolve the Fabric auth entry module (`dist/auth/index.js`), preferring a
 /// project's *locally-installed* `@microsoft/rayfin-cli` so Fabric auth no longer
 /// requires a global CLI. Falls back to [`global_rayfin_auth_module`] when the
@@ -243,14 +352,8 @@ pub fn global_rayfin_auth_module() -> Option<PathBuf> {
 /// project-local module reads the same signed-in session.
 pub fn project_rayfin_auth_module(project_dir: Option<&Path>) -> Option<PathBuf> {
   if let Some(dir) = project_dir {
-    let local = dir
-      .join("node_modules")
-      .join("@microsoft")
-      .join("rayfin-cli")
-      .join("dist")
-      .join("auth")
-      .join("index.js");
-    if local.exists() {
+    let local = local_rayfin_auth_module(dir);
+    if local.is_file() {
       return Some(local);
     }
   }
@@ -261,11 +364,7 @@ pub fn project_rayfin_auth_module(project_dir: Option<&Path>) -> Option<PathBuf>
 /// CLI (the `npx rayfin` equivalent, honoring the project-pinned version).
 /// Falls back to the global `rayfin` shim, then to `npx`.
 pub fn project_rayfin(project_dir: &Path) -> (PathBuf, Vec<PathBuf>) {
-  let local = project_dir
-    .join("node_modules")
-    .join("@microsoft")
-    .join("rayfin-cli")
-    .join("scripts");
+  let local = local_rayfin_cli_dir(project_dir).join("scripts");
   for entry in ["main.js", "main"] {
     let script = local.join(entry);
     if script.exists() {
@@ -497,5 +596,29 @@ mod tests {
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&empty);
+  }
+
+  #[test]
+  fn project_rayfin_cli_requires_a_complete_local_install() {
+    let dir = std::env::temp_dir().join(format!("rayfin-cli-ready-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("package.json"), r#"{"name":"example"}"#).unwrap();
+
+    // A fresh clone has neither node_modules nor the local CLI.
+    assert!(!project_rayfin_cli_installed(&dir));
+
+    let cli = local_rayfin_cli_dir(&dir);
+    let auth = cli.join("dist").join("auth").join("index.js");
+    std::fs::create_dir_all(auth.parent().unwrap()).unwrap();
+    std::fs::write(&auth, "// auth").unwrap();
+    // The auth entry alone is not enough: deploys also need the CLI command.
+    assert!(!project_rayfin_cli_installed(&dir));
+
+    let command = cli.join("scripts").join("main.js");
+    std::fs::create_dir_all(command.parent().unwrap()).unwrap();
+    std::fs::write(&command, "// cli").unwrap();
+    assert!(project_rayfin_cli_installed(&dir));
+
+    let _ = std::fs::remove_dir_all(&dir);
   }
 }

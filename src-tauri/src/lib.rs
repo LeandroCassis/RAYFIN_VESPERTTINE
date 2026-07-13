@@ -170,6 +170,7 @@ pub fn run() {
       commands::projects::projects_set_workspace_root,
       commands::projects::projects_create,
       commands::projects::projects_open,
+      commands::projects::projects_prepare_dependencies,
       commands::projects::projects_set_active,
       commands::projects::projects_rename,
       commands::projects::projects_set_workspace,

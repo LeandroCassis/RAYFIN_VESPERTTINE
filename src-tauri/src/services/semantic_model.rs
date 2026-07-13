@@ -245,9 +245,13 @@ fn write_helper() -> std::io::Result<PathBuf> {
 /// so an `Err` here means the child died before writing anything.
 async fn invoke_helper(request: &serde_json::Value) -> Result<String, String> {
   let project_dir = store::active_project().map(|p| PathBuf::from(p.path));
+  if let Some(dir) = project_dir.as_deref() {
+    exec::ensure_project_dependencies(dir, None)
+      .await
+      .map_err(|error| format!("Could not install this project's dependencies: {error}"))?;
+  }
   let auth_path = exec::project_rayfin_auth_module(project_dir.as_deref()).ok_or_else(|| {
-    "Could not locate the Rayfin CLI. Open a project and install its dependencies to reach Fabric."
-      .to_string()
+    "Could not locate the Rayfin CLI. Open a Rayfin project to reach Fabric.".to_string()
   })?;
   let script_path =
     write_helper().map_err(|err| format!("Could not prepare the semantic-model helper: {err}"))?;

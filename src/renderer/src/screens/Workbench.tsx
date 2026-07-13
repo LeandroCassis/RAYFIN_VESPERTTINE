@@ -33,6 +33,7 @@ import ChatPanel, { type UIChatMessage, type OutboundPrompt } from '../component
 import PreviewPane, { type DeployUiState, type PendingShot } from '../components/PreviewPane'
 import DeploymentsControl from '../components/DeploymentsControl'
 import GitControl from '../components/GitControl'
+import ProjectDependencyGuard from '../components/ProjectDependencyGuard'
 import WorkspaceStatus from '../components/WorkspaceStatus'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
@@ -67,7 +68,19 @@ function toUi(m: ChatMessage): UIChatMessage {
  *  keeps the marker until it's resumed (which removes the message). */
 function toStored(messages: UIChatMessage[]): ChatMessage[] {
   return messages.map(
-    ({ id, role, text, tools, segments, error, attachments, attachmentThumbs, pending, interrupted, elapsedMs }) => {
+    ({
+      id,
+      role,
+      text,
+      tools,
+      segments,
+      error,
+      attachments,
+      attachmentThumbs,
+      pending,
+      interrupted,
+      elapsedMs
+    }) => {
       const cutOff = (role === 'assistant' && pending) || interrupted
       return {
         id,
@@ -75,7 +88,9 @@ function toStored(messages: UIChatMessage[]): ChatMessage[] {
         text,
         // A turn cut off mid-command leaves a tool 'running'; settle it so the
         // reloaded transcript shows a finished (errored) tile, not a spinner.
-        tools: cutOff ? tools.map((t) => (t.state === 'running' ? { ...t, state: 'error' } : t)) : tools,
+        tools: cutOff
+          ? tools.map((t) => (t.state === 'running' ? { ...t, state: 'error' } : t))
+          : tools,
         segments,
         error,
         attachments,
@@ -141,13 +156,11 @@ export default function Workbench({
   /** Active project's local Rayfin (CLI + SDK) version + upgrade availability. */
   const [rayfinVer, setRayfinVer] = useState<RayfinVersionInfo | null>(null)
   /** A prompt queued for the chat composer (e.g. the Rayfin upgrade hand-off). */
-  const [chatOutbound, setChatOutbound] = useState<
-    (OutboundPrompt & { projectId: string }) | null
-  >(null)
+  const [chatOutbound, setChatOutbound] = useState<(OutboundPrompt & { projectId: string }) | null>(
+    null
+  )
   /** Project content view: the build loop (chat + preview) or the code browser. */
-  const [viewMode, setViewMode] = useState<
-    'build' | 'code' | 'model' | 'advisor'
-  >('build')
+  const [viewMode, setViewMode] = useState<'build' | 'code' | 'model' | 'advisor'>('build')
   /** A pending request to open a specific file in the Code tab (Model → file). */
   const [codeOpen, setCodeOpen] = useState<{ path: string; nonce: number } | null>(null)
   /** Build-view focus: expand a single pane to fill the area (null = split). */
@@ -336,7 +349,9 @@ export default function Workbench({
         // failures wherever they are. Success needs no toast — it's already
         // reflected in the preview pane and deploy status.
         if (!result.ok) {
-          toast.error(result.error ?? 'The deployment did not complete.', { title: 'Deploy failed' })
+          toast.error(result.error ?? 'The deployment did not complete.', {
+            title: 'Deploy failed'
+          })
         }
         await refreshProjects()
         // A completed deploy proves Fabric sign-in (and may have signed the user
@@ -583,22 +598,19 @@ export default function Workbench({
 
   // Hand a Model-tab prompt to the Build chat. `stage` drops the text in the
   // composer (for open-ended asks) instead of sending it immediately.
-  const sendModelToChat = useCallback(
-    (display: string, prompt: string, stage = false): void => {
-      const id = activeIdRef.current
-      if (!id) return
-      setViewMode('build')
-      setFocusPane(null)
-      setChatOutbound({
-        id: `model-${Date.now()}`,
-        projectId: id,
-        display,
-        prompt,
-        stage
-      })
-    },
-    []
-  )
+  const sendModelToChat = useCallback((display: string, prompt: string, stage = false): void => {
+    const id = activeIdRef.current
+    if (!id) return
+    setViewMode('build')
+    setFocusPane(null)
+    setChatOutbound({
+      id: `model-${Date.now()}`,
+      projectId: id,
+      display,
+      prompt,
+      stage
+    })
+  }, [])
   useEffect(() => {
     const id = projects?.activeProjectId
     if (!id) {
@@ -846,259 +858,255 @@ export default function Workbench({
           onContinueWithoutDeploy={() => setCreateMode(null)}
         />
       ) : (
-      <div className="workbench">
-        <main className="content">
-          {notice && <div className="alert alert--error content-alert">{notice}</div>}
-          {active ? (
-            <div className={`project-pane${showHome ? ' project-pane--hidden' : ''}`}>
-              <div className="project-header">
-                <div className="project-id">
-                  <button
-                    className="switch-projects-btn"
-                    onClick={goHome}
-                    title="Switch projects — open a recent project or create a new one (keeps this project running)"
-                  >
-                    <CompareIcon />
-                    Switch projects
-                  </button>
-                  <div className="project-id-text">
-                    <h1 className="project-title">{active.name}</h1>
-                    <span className="project-subpath">{active.path}</span>
+        <div className="workbench">
+          <main className="content">
+            {notice && <div className="alert alert--error content-alert">{notice}</div>}
+            {active ? (
+              <ProjectDependencyGuard project={active} onSwitchProjects={goHome} hidden={showHome}>
+                <div className={`project-pane${showHome ? ' project-pane--hidden' : ''}`}>
+                  <div className="project-header">
+                    <div className="project-id">
+                      <button
+                        className="switch-projects-btn"
+                        onClick={goHome}
+                        title="Switch projects — open a recent project or create a new one (keeps this project running)"
+                      >
+                        <CompareIcon />
+                        Switch projects
+                      </button>
+                      <div className="project-id-text">
+                        <h1 className="project-title">{active.name}</h1>
+                        <span className="project-subpath">{active.path}</span>
+                      </div>
+                    </div>
+                    <div className="project-tabs" role="tablist">
+                      <button
+                        className={`project-tab${viewMode === 'build' ? ' project-tab--active' : ''}`}
+                        role="tab"
+                        aria-selected={viewMode === 'build'}
+                        onClick={() => setViewMode('build')}
+                      >
+                        Build
+                      </button>
+                      <button
+                        className={`project-tab${viewMode === 'code' ? ' project-tab--active' : ''}`}
+                        role="tab"
+                        aria-selected={viewMode === 'code'}
+                        onClick={() => setViewMode('code')}
+                      >
+                        Code
+                      </button>
+                      <button
+                        className={`project-tab${viewMode === 'model' ? ' project-tab--active' : ''}`}
+                        role="tab"
+                        aria-selected={viewMode === 'model'}
+                        onClick={() => setViewMode('model')}
+                      >
+                        Model
+                      </button>
+                      <button
+                        className={`project-tab${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
+                        role="tab"
+                        aria-selected={viewMode === 'advisor'}
+                        onClick={() => setViewMode('advisor')}
+                      >
+                        Advisor
+                      </button>
+                    </div>
+                    <div className="project-meta">
+                      <DeploymentsControl
+                        project={active}
+                        running={Boolean(deploys[active.id]?.running)}
+                        reconciling={reconciling.has(active.id)}
+                        onCreate={(name, workspaceId) => {
+                          setViewMode('build')
+                          void (async () => {
+                            try {
+                              await window.api.deploy.setName(active.id, workspaceId, name)
+                            } catch {
+                              /* naming is best-effort; deploy anyway */
+                            }
+                            await requestUserDeploy(active.id, workspaceId)
+                          })()
+                        }}
+                        onRedeploy={() => {
+                          setViewMode('build')
+                          void requestUserDeploy(active.id)
+                        }}
+                        onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
+                        onChanged={() => void refreshProjects()}
+                        onSignedIn={() => void onAuthChanged()}
+                      />
+                    </div>
                   </div>
-                </div>
-                <div className="project-tabs" role="tablist">
-                  <button
-                    className={`project-tab${viewMode === 'build' ? ' project-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'build'}
-                    onClick={() => setViewMode('build')}
-                  >
-                    Build
-                  </button>
-                  <button
-                    className={`project-tab${viewMode === 'code' ? ' project-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'code'}
-                    onClick={() => setViewMode('code')}
-                  >
-                    Code
-                  </button>
-                  <button
-                    className={`project-tab${viewMode === 'model' ? ' project-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'model'}
-                    onClick={() => setViewMode('model')}
-                  >
-                    Model
-                  </button>
-                  <button
-                    className={`project-tab${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
-                    role="tab"
-                    aria-selected={viewMode === 'advisor'}
-                    onClick={() => setViewMode('advisor')}
-                  >
-                    Advisor
-                  </button>
-                </div>
-                <div className="project-meta">
-                  <DeploymentsControl
-                    project={active}
-                    running={Boolean(deploys[active.id]?.running)}
-                    reconciling={reconciling.has(active.id)}
-                    onCreate={(name, workspaceId) => {
-                      setViewMode('build')
-                      void (async () => {
-                        try {
-                          await window.api.deploy.setName(active.id, workspaceId, name)
-                        } catch {
-                          /* naming is best-effort; deploy anyway */
-                        }
-                        await requestUserDeploy(active.id, workspaceId)
-                      })()
-                    }}
-                    onRedeploy={() => {
-                      setViewMode('build')
-                      void requestUserDeploy(active.id)
-                    }}
-                    onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
-                    onChanged={() => void refreshProjects()}
-                    onSignedIn={() => void onAuthChanged()}
-                  />
-                </div>
-              </div>
-              {viewMode === 'code' ? (
-                <Suspense fallback={<div className="code-empty">Loading editor…</div>}>
-                  <CodeViewer
-                    project={active}
-                    refreshKey={gitRefresh}
-                    onRequestDeploy={() => {
-                      setViewMode('build')
-                      void requestUserDeploy(active.id)
-                    }}
-                    onSendToChat={sendHistoryToChat}
-                    openRequest={codeOpen ?? undefined}
-                    onSkillsChanged={() => setGitRefresh((n) => n + 1)}
-                  />
-                </Suspense>
-              ) : viewMode === 'model' ? (
-                <ModelTab
-                  project={active}
-                  refreshKey={gitRefresh}
-                  onOpenFile={openFileInCode}
-                  onSendToChat={sendModelToChat}
-                />
-              ) : viewMode === 'build' ? (
-                <div
-                  className={`panes${focusPane ? ` panes--focus-${focusPane}` : ''}${
-                    resizing ? ' panes--resizing' : ''
-                  }`}
-                  ref={panesRef}
-                  style={
-                    focusPane
-                      ? undefined
-                      : {
-                          gridTemplateColumns: `minmax(0, ${chatFrac}fr) 7px minmax(0, ${1 - chatFrac}fr)`
-                        }
-                  }
-                >
-                  <section className="pane pane--chat">
-                    <ChatPanel
-                      key={active.id}
+                  {viewMode === 'code' ? (
+                    <Suspense fallback={<div className="code-empty">Loading editor…</div>}>
+                      <CodeViewer
+                        project={active}
+                        refreshKey={gitRefresh}
+                        onRequestDeploy={() => {
+                          setViewMode('build')
+                          void requestUserDeploy(active.id)
+                        }}
+                        onSendToChat={sendHistoryToChat}
+                        openRequest={codeOpen ?? undefined}
+                        onSkillsChanged={() => setGitRefresh((n) => n + 1)}
+                      />
+                    </Suspense>
+                  ) : viewMode === 'model' ? (
+                    <ModelTab
                       project={active}
-                      messages={chats[active.id] ?? []}
-                      onChange={(updater) => setMessagesFor(active.id, updater)}
-                      onTurnComplete={(result) =>
-                        void handleTurnComplete(active.id, result)
-                      }
-                      onTurnStart={() => handleTurnStart(active.id)}
-                      attachments={shots[active.id] ?? []}
-                      onAddAttachment={(shot) => addShot(active.id, shot)}
-                      onRemoveAttachment={(path) => removeShot(active.id, path)}
-                      onAttachmentsConsumed={() => clearShots(active.id)}
-                      onClearHistory={() =>
-                        void window.api.chat.saveHistory(active.id, [])
-                      }
-                      onOptionsChanged={() => void refreshProjects()}
-                      outbound={
-                        chatOutbound?.projectId === active.id ? chatOutbound : null
-                      }
-                      onOutboundConsumed={() => setChatOutbound(null)}
-                      focused={focusPane === 'chat'}
-                      onToggleFocus={() =>
-                        setFocusPane((f) => (f === 'chat' ? null : 'chat'))
-                      }
-                      deployLock={active.awaitingFirstDeploy === true}
-                      deploying={Boolean(deploys[active.id]?.running)}
-                      blockSubmitWhileDeploying={Boolean(settings?.experiments?.localDevPreview)}
-                      onRequestDeploy={() => setCreateMode('deploy')}
-                      modeSelectorEnabled={Boolean(settings?.experiments?.chatModeSelector)}
-                      onOpenMention={openMention}
-                      draft={drafts[active.id] ?? ''}
-                      onDraftChange={(value) => setDraftFor(active.id, value)}
+                      refreshKey={gitRefresh}
+                      onOpenFile={openFileInCode}
+                      onSendToChat={sendModelToChat}
                     />
-                  </section>
-                  {!focusPane && (
+                  ) : viewMode === 'build' ? (
                     <div
-                      className="pane-divider"
-                      role="separator"
-                      aria-orientation="vertical"
-                      aria-label="Resize chat and preview"
-                      title="Drag to resize · double-click to reset"
-                      onMouseDown={onDividerDown}
-                      onDoubleClick={resetSplit}
+                      className={`panes${focusPane ? ` panes--focus-${focusPane}` : ''}${
+                        resizing ? ' panes--resizing' : ''
+                      }`}
+                      ref={panesRef}
+                      style={
+                        focusPane
+                          ? undefined
+                          : {
+                              gridTemplateColumns: `minmax(0, ${chatFrac}fr) 7px minmax(0, ${1 - chatFrac}fr)`
+                            }
+                      }
                     >
-                      <span className="pane-divider-grip" />
+                      <section className="pane pane--chat">
+                        <ChatPanel
+                          key={active.id}
+                          project={active}
+                          messages={chats[active.id] ?? []}
+                          onChange={(updater) => setMessagesFor(active.id, updater)}
+                          onTurnComplete={(result) => void handleTurnComplete(active.id, result)}
+                          onTurnStart={() => handleTurnStart(active.id)}
+                          attachments={shots[active.id] ?? []}
+                          onAddAttachment={(shot) => addShot(active.id, shot)}
+                          onRemoveAttachment={(path) => removeShot(active.id, path)}
+                          onAttachmentsConsumed={() => clearShots(active.id)}
+                          onClearHistory={() => void window.api.chat.saveHistory(active.id, [])}
+                          onOptionsChanged={() => void refreshProjects()}
+                          outbound={chatOutbound?.projectId === active.id ? chatOutbound : null}
+                          onOutboundConsumed={() => setChatOutbound(null)}
+                          focused={focusPane === 'chat'}
+                          onToggleFocus={() => setFocusPane((f) => (f === 'chat' ? null : 'chat'))}
+                          deployLock={active.awaitingFirstDeploy === true}
+                          deploying={Boolean(deploys[active.id]?.running)}
+                          blockSubmitWhileDeploying={Boolean(
+                            settings?.experiments?.localDevPreview
+                          )}
+                          onRequestDeploy={() => setCreateMode('deploy')}
+                          modeSelectorEnabled={Boolean(settings?.experiments?.chatModeSelector)}
+                          onOpenMention={openMention}
+                          draft={drafts[active.id] ?? ''}
+                          onDraftChange={(value) => setDraftFor(active.id, value)}
+                        />
+                      </section>
+                      {!focusPane && (
+                        <div
+                          className="pane-divider"
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label="Resize chat and preview"
+                          title="Drag to resize · double-click to reset"
+                          onMouseDown={onDividerDown}
+                          onDoubleClick={resetSplit}
+                        >
+                          <span className="pane-divider-grip" />
+                        </div>
+                      )}
+                      <section className="pane pane--preview">
+                        <PreviewPane
+                          project={active}
+                          deploy={deploys[active.id]}
+                          localPreviewUrl={
+                            devServers[active.id]?.status === 'running'
+                              ? (devServers[active.id]?.url ?? null)
+                              : null
+                          }
+                          focused={focusPane === 'preview'}
+                          onToggleFocus={() =>
+                            setFocusPane((f) => (f === 'preview' ? null : 'preview'))
+                          }
+                          onPreviewModeChanged={() => void refreshProjects()}
+                          onDesignHandoff={(instruction, shot) => {
+                            if (shot) addShot(active.id, shot)
+                            // Make the composer visible (design mode may have focused
+                            // the preview), then stage the instruction for review.
+                            setFocusPane((f) => (f === 'preview' ? null : f))
+                            setChatOutbound({
+                              id: `design-${Date.now()}`,
+                              projectId: active.id,
+                              display: 'Design-mode tweaks',
+                              prompt: instruction,
+                              stage: true
+                            })
+                          }}
+                          onLoadingChange={setPreviewLoading}
+                        />
+                        {previewLoading && (
+                          <div
+                            className={`project-loading${previewLoading.fading ? ' project-loading--out' : ''}`}
+                            role="status"
+                            aria-label="Loading project"
+                          >
+                            <span className="project-loading-spinner" />
+                            <span className="project-loading-label">
+                              Loading {previewLoading.name}…
+                            </span>
+                          </div>
+                        )}
+                      </section>
+                      {resizing && (
+                        <div
+                          className="pane-resize-overlay"
+                          onMouseMove={onResizeMove}
+                          onMouseUp={endResize}
+                          onMouseLeave={endResize}
+                        />
+                      )}
+                    </div>
+                  ) : null}
+                  {advisorMounted && (
+                    <div
+                      className={`advisor-host${viewMode === 'advisor' ? '' : ' advisor-host--hidden'}`}
+                    >
+                      <AdvisorView
+                        project={active}
+                        onFix={fixWithCopilot}
+                        onFixAll={fixAllFindings}
+                        chatBusy={(chats[active.id] ?? []).some(
+                          (m) => m.role === 'assistant' && m.pending
+                        )}
+                      />
                     </div>
                   )}
-                  <section className="pane pane--preview">
-                    <PreviewPane
-                      project={active}
-                      deploy={deploys[active.id]}
-                      localPreviewUrl={
-                        devServers[active.id]?.status === 'running'
-                          ? devServers[active.id]?.url ?? null
-                          : null
-                      }
-                      focused={focusPane === 'preview'}
-                      onToggleFocus={() =>
-                        setFocusPane((f) => (f === 'preview' ? null : 'preview'))
-                      }
-                      onPreviewModeChanged={() => void refreshProjects()}
-                      onDesignHandoff={(instruction, shot) => {
-                        if (shot) addShot(active.id, shot)
-                        // Make the composer visible (design mode may have focused
-                        // the preview), then stage the instruction for review.
-                        setFocusPane((f) => (f === 'preview' ? null : f))
-                        setChatOutbound({
-                          id: `design-${Date.now()}`,
-                          projectId: active.id,
-                          display: 'Design-mode tweaks',
-                          prompt: instruction,
-                          stage: true
-                        })
-                      }}
-                      onLoadingChange={setPreviewLoading}
-                    />
-                    {previewLoading && (
-                      <div
-                        className={`project-loading${previewLoading.fading ? ' project-loading--out' : ''}`}
-                        role="status"
-                        aria-label="Loading project"
-                      >
-                        <span className="project-loading-spinner" />
-                        <span className="project-loading-label">
-                          Loading {previewLoading.name}…
-                        </span>
-                      </div>
-                    )}
-                  </section>
-                  {resizing && (
-                    <div
-                      className="pane-resize-overlay"
-                      onMouseMove={onResizeMove}
-                      onMouseUp={endResize}
-                      onMouseLeave={endResize}
-                    />
-                  )}
                 </div>
-              ) : null}
-              {advisorMounted && (
-                <div
-                  className={`advisor-host${viewMode === 'advisor' ? '' : ' advisor-host--hidden'}`}
-                >
-                  <AdvisorView
-                    project={active}
-                    onFix={fixWithCopilot}
-                    onFixAll={fixAllFindings}
-                    chatBusy={(chats[active.id] ?? []).some(
-                      (m) => m.role === 'assistant' && m.pending
-                    )}
-                  />
-                </div>
-              )}
-            </div>
-          ) : null}
-          {showHome || !active ? (
-            <>
-              {/* Project stays mounted underneath; hide the native preview (it paints
+              </ProjectDependencyGuard>
+            ) : null}
+            {showHome || !active ? (
+              <>
+                {/* Project stays mounted underneath; hide the native preview (it paints
                   above all HTML) while the launcher covers it. */}
-              {active && <SuppressPreview />}
-              <HomeView
-                projects={projects?.projects ?? []}
-                activeId={active?.id}
-                workspaceRoot={projects?.workspaceRoot ?? ''}
-                opening={opening}
-                onSelect={(p) => void selectProject(p)}
-                onManageProject={setManagingProject}
-                onNewProject={() => setCreateMode('create')}
-                onOpenExisting={openExisting}
-                onCloneFromGitHub={() => setShowClone(true)}
-                onChangeWorkspaceRoot={changeWorkspaceRoot}
-              />
-            </>
-          ) : null}
-        </main>
-      </div>
+                {active && <SuppressPreview />}
+                <HomeView
+                  projects={projects?.projects ?? []}
+                  activeId={active?.id}
+                  workspaceRoot={projects?.workspaceRoot ?? ''}
+                  opening={opening}
+                  onSelect={(p) => void selectProject(p)}
+                  onManageProject={setManagingProject}
+                  onNewProject={() => setCreateMode('create')}
+                  onOpenExisting={openExisting}
+                  onCloneFromGitHub={() => setShowClone(true)}
+                  onChangeWorkspaceRoot={changeWorkspaceRoot}
+                />
+              </>
+            ) : null}
+          </main>
+        </div>
       )}
 
       <footer className="statusbar">
@@ -1220,8 +1228,8 @@ export default function Workbench({
                 <strong>
                   {confirmDeploy.behind} change{confirmDeploy.behind === 1 ? '' : 's'}
                 </strong>{' '}
-                you haven’t downloaded yet. Deploying now publishes your current version
-                without them.
+                you haven’t downloaded yet. Deploying now publishes your current version without
+                them.
               </p>
               {deployGuardError && <p className="confirm-error">{deployGuardError}</p>}
             </>

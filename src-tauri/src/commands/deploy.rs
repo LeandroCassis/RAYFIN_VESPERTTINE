@@ -281,6 +281,30 @@ pub(crate) async fn run_deploy(
     })
   };
 
+  if let Err(error) =
+    exec::ensure_project_dependencies(Path::new(&project.path), Some(on_data.clone())).await
+  {
+    patch_deploy(&project_id, |d| {
+      d.status = Some("error".into());
+      d.outcome = Some("error".into());
+      d.error = Some(error.clone());
+      d.at = Some(now_iso());
+    });
+    telemetry::track_deploy(get_cached_identity().as_ref(), false);
+    renderer(Stream::System, &format!("\nDeploy failed: {error}\n"));
+    return DeployResult {
+      ok: false,
+      outcome: "error".into(),
+      url: None,
+      api_url: None,
+      portal_url: None,
+      error: Some(error),
+    };
+  }
+  // The dependency-recovery output is useful in the live log, but must not be
+  // mistaken for `rayfin up` output when classifying a later deploy failure.
+  captured.lock().unwrap().clear();
+
   // Always force so destructive datamodel/schema changes are applied — a deploy
   // must never leave the published datamodel stale.
   let mut up_args: Vec<String> = vec!["up".into(), "-y".into(), "--force".into()];
@@ -689,4 +713,3 @@ mod tests {
     assert_eq!(last_lines("only", 3), "only");
   }
 }
-

@@ -1509,6 +1509,8 @@ export interface RayfinStudioApi {
     create: (input: CreateProjectInput) => Promise<ProjectActionResult>
     /** Register an existing Rayfin project by path and make it active. */
     open: (path: string) => Promise<ProjectActionResult>
+    /** Install missing dependencies so this project's pinned Rayfin CLI is ready. */
+    ensureDependencies: (id: string) => Promise<ProjectActionResult>
     setActive: (id: string | null) => Promise<ProjectsState>
     /** Rename a project (updates the display name and rayfin/rayfin.yml `name`). */
     rename: (id: string, name: string) => Promise<ProjectActionResult>

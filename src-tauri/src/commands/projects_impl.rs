@@ -486,6 +486,26 @@ pub async fn open_project(path: String) -> ProjectActionResult {
   }
 }
 
+/// Ensure an opened project's local Rayfin CLI is available before the renderer
+/// mounts tools that depend on it (Fabric workspaces, deploy, and model browsing).
+pub async fn prepare_project_dependencies(id: String) -> ProjectActionResult {
+  let Some(project) = store::find_project(&id) else {
+    return err("Project not found.");
+  };
+  let dir = Path::new(&project.path);
+  if !is_rayfin_project(&project.path) {
+    return err("That folder is no longer a Rayfin project (no rayfin/rayfin.yml).");
+  }
+  if let Err(error) = crate::services::exec::ensure_project_dependencies(dir, None).await {
+    return err(error);
+  }
+  ProjectActionResult {
+    ok: true,
+    error: None,
+    project: Some(with_missing(project)),
+  }
+}
+
 /// Rename a project's display name (and rayfin/rayfin.yml `name`).
 pub async fn rename_project(id: String, name: String) -> ProjectActionResult {
   let Some(project) = store::find_project(&id) else {
