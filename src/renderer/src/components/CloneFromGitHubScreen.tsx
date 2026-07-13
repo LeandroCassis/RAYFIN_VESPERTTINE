@@ -26,6 +26,66 @@ function errorMessage(reason: unknown, fallback: string): string {
   return reason instanceof Error && reason.message ? reason.message : fallback
 }
 
+type ClonePhase = 'cloning' | 'verifying' | 'installing' | 'opening'
+
+interface ClonePhaseDef {
+  id: ClonePhase
+  label: string
+  hint?: string
+  /** Loose, lowercase fragments that signal this stage has begun. */
+  markers: string[]
+}
+
+/**
+ * The visible clone stages. Each keys off a marker line the backend `say()`s on
+ * the `clone:project` channel: "Cloning …", "Verifying …", "Installing
+ * dependencies (npm install) …", and "… Opening …".
+ */
+const CLONE_PHASES: ClonePhaseDef[] = [
+  { id: 'cloning', label: 'Cloning repository', markers: ['cloning'] },
+  { id: 'verifying', label: 'Verifying project', markers: ['verifying'] },
+  {
+    id: 'installing',
+    label: 'Installing dependencies',
+    hint: 'First run can take a minute or two.',
+    markers: ['install']
+  },
+  { id: 'opening', label: 'Opening project', markers: ['opening'] }
+]
+
+const clonePhaseRank = (phase: ClonePhase): number => CLONE_PHASES.findIndex((p) => p.id === phase)
+
+/**
+ * Best-effort, purely cosmetic mapping of the cumulative clone log to the
+ * furthest stage reached. Markers are loose substrings; a miss only softens the
+ * indicator (the spinner + elapsed timer + {@link fallbackPhase} still convey
+ * motion) and it never drives completion — that is the backend result alone.
+ */
+function markerPhase(log: string): ClonePhase {
+  try {
+    const l = log.toLowerCase()
+    let reached: ClonePhase = 'cloning'
+    for (const def of CLONE_PHASES) {
+      if (def.markers.some((m) => l.includes(m))) reached = def.id
+    }
+    return reached
+  } catch {
+    return 'cloning'
+  }
+}
+
+/**
+ * Time-based floor so the indicator keeps advancing even if the backend output
+ * wording changes. Capped at `installing` (the dominant time sink) — it never
+ * fabricates `opening`, which requires a real signal.
+ */
+function fallbackPhase(elapsedSec: number, running: boolean): ClonePhase {
+  if (!running) return 'cloning'
+  if (elapsedSec >= 6) return 'installing'
+  if (elapsedSec >= 2) return 'verifying'
+  return 'cloning'
+}
+
 /** Keeps the repository pane spatially stable while `gh` performs its network query. */
 function RepositorySkeleton({ label }: { label: string }): JSX.Element {
   return (
@@ -94,6 +154,9 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
   const [cloneError, setCloneError] = useState<string | null>(null)
   const [showCloneLog, setShowCloneLog] = useState(false)
   const cloneLogRef = useRef<HTMLPreElement>(null)
+  // Elapsed-time clock backing the phase checklist (see the tick effect below).
+  const [cloneStartedAt, setCloneStartedAt] = useState<number | null>(null)
+  const [now, setNow] = useState(() => Date.now())
 
   const busy = checking || installing || cloning
 
@@ -185,6 +248,14 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
     if (cloneLogRef.current) cloneLogRef.current.scrollTop = cloneLogRef.current.scrollHeight
   }, [cloneLog, showCloneLog])
 
+  // Tick a 1s elapsed clock while a clone is in flight — the strongest "still
+  // working" cue during the output-silent npm install, independent of log wording.
+  useEffect(() => {
+    if (!cloning || cloneStartedAt == null) return
+    const id = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(id)
+  }, [cloning, cloneStartedAt])
+
   async function installGh(): Promise<void> {
     setInstalling(true)
     setInstallLog('')
@@ -223,6 +294,8 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
     setCloneError(null)
     setCloneLog('')
     setShowCloneLog(false)
+    setCloneStartedAt(Date.now())
+    setNow(Date.now())
     try {
       const res = await window.api.github.clone(cloneTarget)
       if (res.ok) {
@@ -246,6 +319,29 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
   const reposPending = signedIn && repos === null && !reposError
   const visibleRepos = filtered.slice(0, visibleRepoCount)
   const remainingRepoCount = filtered.length - visibleRepos.length
+
+  // ----- Clone progress (cosmetic; completion is driven by the backend result) -----
+  const cloneElapsedSec = cloneStartedAt
+    ? Math.max(0, Math.floor((now - cloneStartedAt) / 1000))
+    : 0
+  const cloneElapsedLabel = `${Math.floor(cloneElapsedSec / 60)}:${String(
+    cloneElapsedSec % 60
+  ).padStart(2, '0')}`
+  const cloneFailed = !cloning && Boolean(cloneError)
+  const cloneDone = !cloning && !cloneError && Boolean(cloneLog)
+  const detectedClonePhase = markerPhase(cloneLog)
+  const cloneFallback = fallbackPhase(cloneElapsedSec, cloning)
+  // Never regress: take the furthest of the parsed marker and the time floor.
+  const clonePhase: ClonePhase =
+    clonePhaseRank(detectedClonePhase) >= clonePhaseRank(cloneFallback)
+      ? detectedClonePhase
+      : cloneFallback
+  const cloneActiveIdx = cloneDone
+    ? CLONE_PHASES.length
+    : CLONE_PHASES.findIndex((p) => p.id === clonePhase)
+  const cloneActivePhaseLabel = cloneDone
+    ? 'Project ready'
+    : (CLONE_PHASES[cloneActiveIdx]?.label ?? 'Cloning repository')
 
   let sub = 'Sign in to GitHub to clone one of your repositories into your workspace.'
   if (signedIn) sub = 'Pick a repository to clone into your workspace, or paste a URL.'
@@ -286,7 +382,7 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
           </span>
         </header>
 
-        <div className="create-body clone-body">
+        <div className={`create-body clone-body${cloning ? ' clone-body--progress' : ''}`}>
           {initialChecking && (
             <section className="clone-loading-card" aria-label="Checking GitHub connection">
               <div className="clone-loading-copy">
@@ -418,7 +514,7 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
             </section>
           )}
 
-          {!statusError && (initialChecking || signedIn) && (
+          {!statusError && (initialChecking || signedIn) && !cloning && (
             <section className="clone-manual" aria-labelledby="clone-manual-title">
               <div className="clone-section-head">
                 <div>
@@ -460,140 +556,191 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
 
           {!initialChecking && !statusError && signedIn && (
             <>
-              <section className="clone-repo-panel" aria-labelledby="clone-repositories-title">
-                <div className="clone-section-head">
-                  <div>
-                    <p className="clone-section-eyebrow">Your repositories</p>
-                    <h2 id="clone-repositories-title">Choose a repository</h2>
-                  </div>
-                  <span className="clone-account">
-                    <span className="codicon codicon-account" aria-hidden="true" />
-                    {status?.user ?? 'GitHub account'}
-                  </span>
-                </div>
-                <label className="clone-search">
-                  <span className="sr-only">Filter repositories</span>
-                  <span className="clone-search-icon codicon codicon-search" aria-hidden="true" />
-                  <input
-                    className="field-input clone-search-input"
-                    type="text"
-                    value={filter}
-                    placeholder="Filter repositories"
-                    autoCapitalize="off"
-                    autoCorrect="off"
-                    autoComplete="off"
-                    spellCheck={false}
-                    disabled={cloning || reposPending}
-                    onChange={(event) => {
-                      setFilter(event.target.value)
-                      setVisibleRepoCount(INITIAL_REPO_RENDER_COUNT)
-                    }}
-                  />
-                </label>
-
-                {reposPending ? (
-                  <RepositorySkeleton label="Loading your repositories..." />
-                ) : reposError ? (
-                  <div className="clone-list-state" role="alert">
-                    <p>{reposError}</p>
-                    <button
-                      type="button"
-                      className="btn btn--sm"
-                      onClick={() => {
-                        setRepos(null)
-                        setReposError(null)
-                      }}
-                    >
-                      Try again
-                    </button>
-                  </div>
-                ) : filtered.length === 0 ? (
-                  <div className="clone-list-state">
-                    <p>
-                      {repos && repos.length === 0
-                        ? 'No repositories found for this account.'
-                        : 'No repositories match your filter.'}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="clone-repo-scroll" role="list">
-                      {visibleRepos.map((repo) => (
-                        <button
-                          key={repo.nameWithOwner}
-                          type="button"
-                          className={`clone-repo${
-                            selected === repo.nameWithOwner ? ' clone-repo--active' : ''
-                          }`}
-                          disabled={cloning}
-                          onClick={() => {
-                            setSelected(repo.nameWithOwner)
-                            setManual('')
-                          }}
-                        >
-                          <span className="clone-repo-mark" aria-hidden="true">
-                            {repo.name.trim()[0]?.toUpperCase() ?? '?'}
-                          </span>
-                          <span className="clone-repo-main">
-                            <span className="clone-repo-name">
-                              {repo.nameWithOwner}
-                              {repo.isPrivate && <span className="clone-repo-tag">Private</span>}
-                              {repo.primaryLanguage && (
-                                <span className="clone-repo-tag clone-repo-tag--language">
-                                  {repo.primaryLanguage}
-                                </span>
-                              )}
-                            </span>
-                            <span className="clone-repo-path" title={repo.description ?? ''}>
-                              {repo.description || repo.url || 'No description'}
-                            </span>
-                          </span>
-                          {selected === repo.nameWithOwner && (
-                            <span
-                              className="clone-repo-selected codicon codicon-check"
-                              aria-hidden="true"
-                            />
-                          )}
-                        </button>
-                      ))}
+              {!cloning && (
+                <section className="clone-repo-panel" aria-labelledby="clone-repositories-title">
+                  <div className="clone-section-head">
+                    <div>
+                      <p className="clone-section-eyebrow">Your repositories</p>
+                      <h2 id="clone-repositories-title">Choose a repository</h2>
                     </div>
-                    {remainingRepoCount > 0 && (
-                      <div className="clone-repo-more">
-                        <span>
-                          Showing {visibleRepos.length} of {filtered.length} repositories
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn--ghost btn--sm"
-                          disabled={cloning}
-                          onClick={() =>
-                            setVisibleRepoCount((count) => count + INITIAL_REPO_RENDER_COUNT)
-                          }
-                        >
-                          Show {Math.min(INITIAL_REPO_RENDER_COUNT, remainingRepoCount)} more
-                        </button>
+                    <span className="clone-account">
+                      <span className="codicon codicon-account" aria-hidden="true" />
+                      {status?.user ?? 'GitHub account'}
+                    </span>
+                  </div>
+                  <label className="clone-search">
+                    <span className="sr-only">Filter repositories</span>
+                    <span className="clone-search-icon codicon codicon-search" aria-hidden="true" />
+                    <input
+                      className="field-input clone-search-input"
+                      type="text"
+                      value={filter}
+                      placeholder="Filter repositories"
+                      autoCapitalize="off"
+                      autoCorrect="off"
+                      autoComplete="off"
+                      spellCheck={false}
+                      disabled={cloning || reposPending}
+                      onChange={(event) => {
+                        setFilter(event.target.value)
+                        setVisibleRepoCount(INITIAL_REPO_RENDER_COUNT)
+                      }}
+                    />
+                  </label>
+
+                  {reposPending ? (
+                    <RepositorySkeleton label="Loading your repositories..." />
+                  ) : reposError ? (
+                    <div className="clone-list-state" role="alert">
+                      <p>{reposError}</p>
+                      <button
+                        type="button"
+                        className="btn btn--sm"
+                        onClick={() => {
+                          setRepos(null)
+                          setReposError(null)
+                        }}
+                      >
+                        Try again
+                      </button>
+                    </div>
+                  ) : filtered.length === 0 ? (
+                    <div className="clone-list-state">
+                      <p>
+                        {repos && repos.length === 0
+                          ? 'No repositories found for this account.'
+                          : 'No repositories match your filter.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="clone-repo-scroll" role="list">
+                        {visibleRepos.map((repo) => (
+                          <button
+                            key={repo.nameWithOwner}
+                            type="button"
+                            className={`clone-repo${
+                              selected === repo.nameWithOwner ? ' clone-repo--active' : ''
+                            }`}
+                            disabled={cloning}
+                            onClick={() => {
+                              setSelected(repo.nameWithOwner)
+                              setManual('')
+                            }}
+                          >
+                            <span className="clone-repo-mark" aria-hidden="true">
+                              {repo.name.trim()[0]?.toUpperCase() ?? '?'}
+                            </span>
+                            <span className="clone-repo-main">
+                              <span className="clone-repo-name">
+                                {repo.nameWithOwner}
+                                {repo.isPrivate && <span className="clone-repo-tag">Private</span>}
+                                {repo.primaryLanguage && (
+                                  <span className="clone-repo-tag clone-repo-tag--language">
+                                    {repo.primaryLanguage}
+                                  </span>
+                                )}
+                              </span>
+                              <span className="clone-repo-path" title={repo.description ?? ''}>
+                                {repo.description || repo.url || 'No description'}
+                              </span>
+                            </span>
+                            {selected === repo.nameWithOwner && (
+                              <span
+                                className="clone-repo-selected codicon codicon-check"
+                                aria-hidden="true"
+                              />
+                            )}
+                          </button>
+                        ))}
                       </div>
-                    )}
-                  </>
-                )}
-              </section>
+                      {remainingRepoCount > 0 && (
+                        <div className="clone-repo-more">
+                          <span>
+                            Showing {visibleRepos.length} of {filtered.length} repositories
+                          </span>
+                          <button
+                            type="button"
+                            className="btn btn--ghost btn--sm"
+                            disabled={cloning}
+                            onClick={() =>
+                              setVisibleRepoCount((count) => count + INITIAL_REPO_RENDER_COUNT)
+                            }
+                          >
+                            Show {Math.min(INITIAL_REPO_RENDER_COUNT, remainingRepoCount)} more
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </section>
+              )}
 
               {(cloning || cloneLog) && (
                 <div className="create-progress clone-progress" aria-busy={cloning}>
-                  <p className="gallery-empty-msg">
-                    {cloning ? (
-                      <>
-                        <span className="ws-spinner" aria-hidden="true" /> Cloning{' '}
-                        <code>{cloneTarget}</code> and installing dependencies...
-                      </>
-                    ) : cloneError ? (
-                      'Clone failed.'
-                    ) : (
-                      'Done.'
-                    )}
-                  </p>
+                  <div className="clone-progress-head">
+                    <span className="clone-progress-ico" aria-hidden="true">
+                      <span className="codicon codicon-repo-clone" />
+                    </span>
+                    <span className="clone-progress-heading">
+                      <span className="clone-progress-title">
+                        {cloneFailed
+                          ? 'Could not clone repository'
+                          : cloneDone
+                            ? 'Repository ready'
+                            : 'Setting up your project'}
+                      </span>
+                      {cloneTarget && <code className="clone-progress-target">{cloneTarget}</code>}
+                    </span>
+                  </div>
+                  <span className="sr-only" role="status" aria-live="polite">
+                    {cloning
+                      ? cloneActivePhaseLabel
+                      : cloneFailed
+                        ? 'Clone failed'
+                        : 'Project ready'}
+                  </span>
+                  <ol className="create-phases">
+                    {CLONE_PHASES.map((phaseDef, i) => {
+                      const state =
+                        i < cloneActiveIdx ? 'done' : i === cloneActiveIdx ? 'active' : 'pending'
+                      return (
+                        <li
+                          key={phaseDef.id}
+                          className={`create-phase create-phase--${state}${
+                            cloneFailed && state === 'active' ? ' create-phase--failed' : ''
+                          }`}
+                        >
+                          <span className="create-phase-ico" aria-hidden="true">
+                            {state === 'active' ? (
+                              cloning ? (
+                                <span className="ws-spinner" />
+                              ) : cloneFailed ? (
+                                '✕'
+                              ) : null
+                            ) : state === 'done' ? (
+                              '✓'
+                            ) : null}
+                          </span>
+                          <span className="create-phase-text">
+                            <span className="create-phase-label">{phaseDef.label}</span>
+                            {phaseDef.id === 'installing' && state === 'active' && (
+                              <span className="create-phase-hint">
+                                {cloneElapsedSec > 75
+                                  ? 'Still working — large dependency trees take a little longer.'
+                                  : phaseDef.hint}
+                              </span>
+                            )}
+                          </span>
+                        </li>
+                      )
+                    })}
+                  </ol>
+
                   <div className="create-progress-meta">
-                    <span />
+                    <span className="create-elapsed" aria-hidden="true">
+                      {cloning ? `${cloneElapsedLabel} elapsed` : cloneFailed ? '' : 'Done'}
+                    </span>
                     <button
                       type="button"
                       className="link-btn create-progress-toggle"

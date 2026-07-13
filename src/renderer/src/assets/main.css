@@ -12689,15 +12689,24 @@ code {
 }
 
 .clone-repo-selected {
-  display: grid;
   width: 20px;
   height: 20px;
   flex: none;
-  place-items: center;
   color: var(--on-accent);
-  font-size: 12px;
   background: var(--accent);
   border-radius: 50%;
+}
+
+/* Codicon's base rule (`.codicon[class*='codicon-']`, specificity 0,2,0) forces
+   `display:inline-block` and `font:…16px/1`, overriding a single class — so the
+   intended grid-centering never applied and the 16px glyph sat high/off-center in
+   the 20px circle. Re-apply the centering layout + a smaller size at higher
+   specificity (0,3,0) so the check is properly centered. */
+.clone-repo .clone-repo-selected.codicon {
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .clone-list-state {
@@ -12735,6 +12744,58 @@ code {
 
 .clone-progress {
   margin-top: 0;
+}
+
+/* Focused "cloning in progress" view: the picker is hidden and the progress card
+   is centered in the body so the checklist is unmissable. */
+.clone-body--progress {
+  justify-content: center;
+  align-items: center;
+}
+
+.clone-body--progress .clone-progress {
+  width: 100%;
+  max-width: 440px;
+}
+
+.clone-progress-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.clone-progress-ico {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  font-size: 16px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 10px;
+}
+
+.clone-progress-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.clone-progress-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.clone-progress-target {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .clone-foot {

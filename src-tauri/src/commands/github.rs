@@ -322,6 +322,7 @@ pub async fn github_clone(app: AppHandle, input: String) -> ProjectActionResult 
     });
   }
 
+  say(&on, "\nVerifying Rayfin project…\n");
   if !is_rayfin_project(&dir_str) {
     // Not a Rayfin app — discard the fresh clone and report it.
     let _ = std::fs::remove_dir_all(&dir);

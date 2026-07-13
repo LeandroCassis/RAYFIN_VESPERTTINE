@@ -211,4 +211,71 @@ describe('CloneFromGitHubScreen', () => {
     await waitFor(() => expect(api.clone).toHaveBeenCalledWith('octocat/beta-tool'))
     await waitFor(() => expect(onCloned).toHaveBeenCalledTimes(1))
   })
+
+  it('marks only the selected repository with a checkmark', async () => {
+    installApi({
+      status: vi.fn(() => Promise.resolve({ ghInstalled: true, signedIn: true, user: 'octocat' })),
+      listRepos: vi.fn(() =>
+        Promise.resolve({
+          ok: true,
+          repos: [
+            makeRepo(),
+            makeRepo({ nameWithOwner: 'octocat/beta-tool', name: 'beta-tool' })
+          ]
+        })
+      )
+    })
+    renderScreen()
+
+    const repo = await screen.findByRole('button', { name: /alpha-app/ })
+    expect(repo.querySelector('.clone-repo-selected')).toBeNull()
+
+    fireEvent.click(repo)
+
+    expect(repo.classList.contains('clone-repo--active')).toBe(true)
+    expect(repo.querySelector('.clone-repo-selected')).not.toBeNull()
+    // The unselected repo has no checkmark.
+    expect(
+      screen.getByRole('button', { name: /beta-tool/ }).querySelector('.clone-repo-selected')
+    ).toBeNull()
+  })
+
+  it('advances the clone checklist as the backend streams progress markers', async () => {
+    let emitLog: ((event: { channel: string; data: string }) => void) | null = null
+    const cloneCall = deferred<{ ok: boolean }>()
+    installApi({
+      status: vi.fn(() => Promise.resolve({ ghInstalled: true, signedIn: true, user: 'octocat' })),
+      listRepos: vi.fn(() => Promise.resolve({ ok: true, repos: [makeRepo()] })),
+      clone: vi.fn(() => cloneCall.promise)
+    })
+    // Capture the streamed-log subscriber so the test can drive phase markers.
+    ;(
+      window as unknown as {
+        api: { onProcLog: (cb: (event: { channel: string; data: string }) => void) => () => void }
+      }
+    ).api.onProcLog = (cb) => {
+      emitLog = cb
+      return () => {}
+    }
+
+    renderScreen()
+    fireEvent.click(await screen.findByRole('button', { name: /alpha-app/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clone and open' }))
+
+    // The progress checklist appears; the install step is not active yet (no hint).
+    expect(await screen.findByRole('button', { name: 'Show details' })).toBeTruthy()
+    expect(screen.getByText('Installing dependencies')).toBeTruthy()
+    expect(screen.queryByText(/First run can take a minute or two/i)).toBeNull()
+
+    // Streaming the npm-install marker activates the dependency-install step —
+    // regression cover for surfacing that clone runs `npm install`.
+    await act(async () => {
+      emitLog?.({ channel: 'clone:project', data: '\nInstalling dependencies (npm install)…\n' })
+    })
+    expect(await screen.findByText(/First run can take a minute or two/i)).toBeTruthy()
+
+    await act(async () => {
+      cloneCall.resolve({ ok: true })
+    })
+  })
 })

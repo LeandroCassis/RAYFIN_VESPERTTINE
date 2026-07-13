@@ -99,7 +99,9 @@ export default function DeleteProjectModal({ project, onRemoved, onClose }: Prop
   const titleId = useId()
   const dialogRef = useModalFocus<HTMLDivElement>()
   const hasDeploy = Boolean(project.lastDeploy?.url)
-  const [alsoDeleteFabric, setAlsoDeleteFabric] = useState(false)
+  // Default the destructive Fabric cleanup on when there's actually a deployed app
+  // to remove (the toggle is only shown when `hasDeploy`); opt-out, not opt-in.
+  const [alsoDeleteFabric, setAlsoDeleteFabric] = useState(hasDeploy)
   const [phase, setPhase] = useState<'confirm' | 'running' | 'error' | 'done'>('confirm')
   const [steps, setSteps] = useState<Step[]>([])
   const [error, setError] = useState<string | null>(null)

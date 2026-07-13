@@ -16,7 +16,7 @@ afterEach(() => {
 })
 
 describe('DeleteProjectModal', () => {
-  it('keeps permanent Fabric app cleanup off until the user explicitly toggles it on', () => {
+  it('defaults permanent Fabric app cleanup on for a deployed project, and lets the user turn it off', () => {
     installApi()
     render(
       <OverlayProvider>
@@ -36,16 +36,18 @@ describe('DeleteProjectModal', () => {
     const toggle = screen.getByRole('checkbox', {
       name: /also permanently delete the deployed Fabric app/i
     }) as HTMLInputElement
-    expect(toggle.checked).toBe(false)
-    expect(screen.getByText(/Fabric workspace itself is not deleted/i)).toBeTruthy()
-    expect(screen.getByRole('button', { name: 'Move folder to trash' })).toBeTruthy()
-
-    fireEvent.click(toggle)
-
+    // Checked by default when a deployed Fabric app exists.
     expect(toggle.checked).toBe(true)
+    expect(screen.getByText(/Fabric workspace itself is not deleted/i)).toBeTruthy()
     expect(
       screen.getByRole('button', { name: 'Move folder to trash and delete Fabric app' })
     ).toBeTruthy()
+
+    // The destructive default is still opt-out.
+    fireEvent.click(toggle)
+
+    expect(toggle.checked).toBe(false)
+    expect(screen.getByRole('button', { name: 'Move folder to trash' })).toBeTruthy()
     expect(screen.queryByRole('heading', { name: 'Delete project?' })).toBeNull()
   })
 
