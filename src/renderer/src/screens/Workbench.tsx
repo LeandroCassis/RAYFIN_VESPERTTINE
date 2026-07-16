@@ -129,6 +129,7 @@ export default function Workbench({
   const [signingIn, setSigningIn] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [showOrganizations, setShowOrganizations] = useState(false)
+  const [showAccountMenu, setShowAccountMenu] = useState(false)
   const [organizationBusy, setOrganizationBusy] = useState(false)
   const [showOrganizationForm, setShowOrganizationForm] = useState(false)
   const [organizationName, setOrganizationName] = useState('')
@@ -259,6 +260,9 @@ export default function Workbench({
   /** The currently active project (or null). Declared early — effects depend on it. */
   const active =
     organizationProjects.find((project) => project.id === projects?.activeProjectId) ?? null
+  /** An open project gets one compact workspace bar instead of the old stacked
+   * product + project headers. Launchers and full-screen flows keep the product bar. */
+  const workspaceActive = Boolean(active && !showHome && !showClone && !createMode)
 
   /** Projects with a deploy queued behind the running one (coalesced). */
   const pendingDeployRef = useRef<Set<string>>(new Set())
@@ -807,6 +811,7 @@ export default function Workbench({
       setProjects(await window.api.projects.setActive(nextProject?.id ?? null))
       await onAuthChanged()
       setShowOrganizations(false)
+      setShowAccountMenu(false)
     } finally {
       setOrganizationBusy(false)
     }
@@ -827,6 +832,175 @@ export default function Workbench({
     setOrganizationGithub('')
     setShowOrganizationForm(false)
     await switchOrganization(profile)
+  }
+
+  function renderOrganizationSwitcher(compact = false): JSX.Element {
+    return (
+      <div className={`organization-switcher${compact ? ' organization-switcher--compact' : ''}`}>
+        <button
+          type="button"
+          className="organization-trigger"
+          aria-expanded={showOrganizations}
+          onClick={() => {
+            setShowOrganizations((open) => !open)
+            setShowAccountMenu(false)
+            void window.api.github.status().then((status) => {
+              setGithubStatus(status)
+              if (!organizationGithub) setOrganizationGithub(status.user ?? '')
+            })
+          }}
+        >
+          <span className="organization-trigger-mark">
+            {(activeOrganization?.name ?? 'Organization').slice(0, 1).toUpperCase()}
+          </span>
+          <span className="organization-trigger-copy">
+            <strong>{activeOrganization?.name ?? 'Select organization'}</strong>
+            <small>{activeOrganization?.tenantId ?? auth.rayfin.tenant ?? 'No tenant selected'}</small>
+          </span>
+          <span className="codicon codicon-chevron-down" aria-hidden="true" />
+        </button>
+        {showOrganizations && (
+          <>
+            <SuppressPreview />
+            <div className="organization-popover">
+              <div className="organization-popover-head">
+                <strong>Organizations</strong>
+                <small>Tenant-specific Fabric and GitHub accounts</small>
+              </div>
+              <div className="organization-list">
+                {organizationProfiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    type="button"
+                    className={`organization-option${profile.id === activeOrganization?.id ? ' organization-option--active' : ''}`}
+                    disabled={organizationBusy}
+                    onClick={() => void switchOrganization(profile)}
+                  >
+                    <span className="organization-option-mark">
+                      {profile.name.slice(0, 1).toUpperCase()}
+                    </span>
+                    <span>
+                      <strong>{profile.name}</strong>
+                      <small>{profile.fabricUser ?? profile.tenantId}</small>
+                    </span>
+                    {profile.id === activeOrganization?.id && (
+                      <span className="codicon codicon-check" aria-hidden="true" />
+                    )}
+                  </button>
+                ))}
+              </div>
+              {showOrganizationForm ? (
+                <div className="organization-form">
+                  <input
+                    value={organizationName}
+                    onChange={(e) => setOrganizationName(e.target.value)}
+                    placeholder="Organization name"
+                  />
+                  <input
+                    value={organizationTenant}
+                    onChange={(e) => setOrganizationTenant(e.target.value)}
+                    placeholder="Microsoft tenant ID or domain"
+                  />
+                  <input
+                    value={organizationGithub}
+                    onChange={(e) => setOrganizationGithub(e.target.value)}
+                    placeholder="GitHub username"
+                  />
+                  <div className="organization-form-actions">
+                    <button
+                      className="btn btn--sm btn--ghost"
+                      onClick={() => setShowOrganizationForm(false)}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      className="btn btn--sm btn--primary"
+                      disabled={!organizationName.trim() || !organizationTenant.trim() || organizationBusy}
+                      onClick={() => void addOrganization()}
+                    >
+                      {organizationBusy ? 'Connecting…' : 'Add and connect'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="organization-add"
+                  onClick={() => setShowOrganizationForm(true)}
+                >
+                  <span className="codicon codicon-add" aria-hidden="true" /> Add organization
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    )
+  }
+
+  function renderAccountMenu(): JSX.Element {
+    const identity = auth.rayfin.user ?? 'Fabric account'
+    const tenant = auth.rayfin.tenant ?? 'No tenant selected'
+    return (
+      <div className="account-menu">
+        <button
+          type="button"
+          className="account-menu-trigger"
+          title="Account and settings"
+          aria-label="Account and settings"
+          aria-expanded={showAccountMenu}
+          onClick={() => {
+            setShowAccountMenu((open) => !open)
+            setShowOrganizations(false)
+          }}
+        >
+          <span className="account-menu-avatar">{avatarInitials(auth.rayfin.user)}</span>
+        </button>
+        {showAccountMenu && (
+          <>
+            <SuppressPreview />
+            <div className="account-popover" role="menu" aria-label="Account menu">
+              <div className="account-popover-head">
+                <strong title={identity}>{identity}</strong>
+                <small title={tenant}>{tenant}</small>
+              </div>
+              <button
+                className="account-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setShowAccountMenu(false)
+                  setShowSettings(true)
+                }}
+              >
+                <GearIcon /> Settings
+              </button>
+              {auth.rayfin.signedIn ? (
+                <button
+                  className="account-menu-item account-menu-item--danger"
+                  role="menuitem"
+                  disabled={signingOut}
+                  onClick={() => {
+                    setShowAccountMenu(false)
+                    void signOut()
+                  }}
+                >
+                  <SignOutIcon /> {signingOut ? 'Signing out…' : 'Sign out'}
+                </button>
+              ) : (
+                <button
+                  className="account-menu-item"
+                  role="menuitem"
+                  disabled={signingIn}
+                  onClick={() => void signIn()}
+                >
+                  {signingIn ? 'Signing in…' : 'Sign in to Fabric'}
+                </button>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    )
   }
 
   // Show the projects launcher over the current project WITHOUT closing it, so any
@@ -915,143 +1089,22 @@ export default function Workbench({
   }
 
   return (
-    <div className="app-shell">
-      <header className="titlebar">
-        <div className="brand">
-          <FabricatorMark className="brand-mark" />
-          <span className="brand-copy">
-            <span className="brand-kicker">VESPERTTINE</span>
-            <span className="brand-name">RAYFIN EDITOR</span>
-          </span>
-        </div>
-        <div className="titlebar-status">
-          <div className="organization-switcher">
-            <button
-              type="button"
-              className="organization-trigger"
-              aria-expanded={showOrganizations}
-              onClick={() => {
-                setShowOrganizations((open) => !open)
-                void window.api.github.status().then((status) => {
-                  setGithubStatus(status)
-                  if (!organizationGithub) setOrganizationGithub(status.user ?? '')
-                })
-              }}
-            >
-              <span className="organization-trigger-mark">
-                {(activeOrganization?.name ?? 'Organization').slice(0, 1).toUpperCase()}
-              </span>
-              <span className="organization-trigger-copy">
-                <strong>{activeOrganization?.name ?? 'Select organization'}</strong>
-                <small>
-                  {activeOrganization?.tenantId ?? auth.rayfin.tenant ?? 'No tenant selected'}
-                </small>
-              </span>
-              <span className="codicon codicon-chevron-down" aria-hidden="true" />
-            </button>
-            {showOrganizations && (
-              <>
-                <SuppressPreview />
-                <div className="organization-popover">
-                <div className="organization-popover-head">
-                  <strong>Organizations</strong>
-                  <small>Tenant-specific Fabric and GitHub accounts</small>
-                </div>
-                <div className="organization-list">
-                  {organizationProfiles.map((profile) => (
-                    <button
-                      key={profile.id}
-                      type="button"
-                      className={`organization-option${profile.id === activeOrganization?.id ? ' organization-option--active' : ''}`}
-                      disabled={organizationBusy}
-                      onClick={() => void switchOrganization(profile)}
-                    >
-                      <span className="organization-option-mark">
-                        {profile.name.slice(0, 1).toUpperCase()}
-                      </span>
-                      <span>
-                        <strong>{profile.name}</strong>
-                        <small>{profile.fabricUser ?? profile.tenantId}</small>
-                      </span>
-                      {profile.id === activeOrganization?.id && (
-                        <span className="codicon codicon-check" aria-hidden="true" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-                {showOrganizationForm ? (
-                  <div className="organization-form">
-                    <input
-                      value={organizationName}
-                      onChange={(e) => setOrganizationName(e.target.value)}
-                      placeholder="Organization name"
-                    />
-                    <input
-                      value={organizationTenant}
-                      onChange={(e) => setOrganizationTenant(e.target.value)}
-                      placeholder="Microsoft tenant ID or domain"
-                    />
-                    <input
-                      value={organizationGithub}
-                      onChange={(e) => setOrganizationGithub(e.target.value)}
-                      placeholder="GitHub username"
-                    />
-                    <div className="organization-form-actions">
-                      <button
-                        className="btn btn--sm btn--ghost"
-                        onClick={() => setShowOrganizationForm(false)}
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        className="btn btn--sm btn--primary"
-                        disabled={!organizationName.trim() || !organizationTenant.trim() || organizationBusy}
-                        onClick={() => void addOrganization()}
-                      >
-                        {organizationBusy ? 'Connecting…' : 'Add and connect'}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    className="organization-add"
-                    onClick={() => setShowOrganizationForm(true)}
-                  >
-                    <span className="codicon codicon-add" aria-hidden="true" /> Add organization
-                  </button>
-                )}
-                </div>
-              </>
-            )}
+    <div className={`app-shell${workspaceActive ? ' app-shell--workspace' : ''}`}>
+      {!workspaceActive && (
+        <header className="titlebar">
+          <div className="brand">
+            <FabricatorMark className="brand-mark" />
+            <span className="brand-copy">
+              <span className="brand-kicker">VESPERTTINE</span>
+              <span className="brand-name">RAYFIN EDITOR</span>
+            </span>
           </div>
-          {auth.rayfin.signedIn && (
-            <div
-              className="who-avatar"
-              title={auth.rayfin.user ?? 'Signed in'}
-              aria-label={auth.rayfin.user ? `Signed in as ${auth.rayfin.user}` : 'Signed in'}
-            >
-              {avatarInitials(auth.rayfin.user)}
-            </div>
-          )}
-          <div className="seg seg--toolbar">
-            <button className="seg-btn" onClick={() => setShowSettings(true)} title="Settings">
-              <GearIcon />
-              Settings
-            </button>
-            {auth.rayfin.signedIn ? (
-              <button className="seg-btn" disabled={signingOut} onClick={signOut} title="Sign out">
-                <SignOutIcon />
-                {signingOut ? 'Signing out…' : 'Sign out'}
-              </button>
-            ) : (
-              <button className="seg-btn" disabled={signingIn} onClick={signIn}>
-                {signingIn ? 'Signing in…' : 'Sign in to Fabric'}
-              </button>
-            )}
+          <div className="titlebar-status">
+            {renderOrganizationSwitcher()}
+            {renderAccountMenu()}
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {showClone ? (
         <CloneFromGitHubScreen
@@ -1097,15 +1150,17 @@ export default function Workbench({
                 <div className={`project-pane${showHome ? ' project-pane--hidden' : ''}`}>
                   <div className="project-header">
                     <div className="project-id">
+                      <FabricatorMark className="workspace-mark" />
                       <button
                         className="switch-projects-btn"
                         onClick={goHome}
+                        aria-label="Projects"
                         title="Switch projects — open a recent project or create a new one (keeps this project running)"
                       >
                         <CompareIcon />
-                        Switch projects
+                        <span>Projects</span>
                       </button>
-                      <div className="project-id-text">
+                      <div className="project-id-text" title={active.path}>
                         <h1 className="project-title">{active.name}</h1>
                         <span className="project-subpath">{active.path}</span>
                       </div>
@@ -1168,6 +1223,8 @@ export default function Workbench({
                         onChanged={() => void refreshProjects()}
                         onSignedIn={() => void onAuthChanged()}
                       />
+                      {renderOrganizationSwitcher(true)}
+                      {renderAccountMenu()}
                     </div>
                   </div>
                   {viewMode === 'code' ? (
