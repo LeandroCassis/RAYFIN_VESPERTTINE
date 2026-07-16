@@ -14560,7 +14560,7 @@ code {
   }
 }
 
-/* Codex-inspired minimal interface: neutral surfaces and typographic hierarchy. */
+/* VESPERTTINE visual system: quiet charcoal surfaces with a single botanical-green action color. */
 :root {
   --bg: #151515;
   --bg-elev: #1b1b1b;
@@ -14572,15 +14572,15 @@ code {
   --text: #f1f1ed;
   --text-dim: #aaa9a4;
   --text-faint: #74736f;
-  --accent: #deded8;
-  --accent-2: #bdbdb7;
-  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
-  --accent-ring: color-mix(in srgb, var(--accent) 25%, transparent);
-  --on-accent: #171717;
-  --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 11px;
-  --radius-xl: 14px;
+  --accent: #78a879;
+  --accent-2: #5d8d60;
+  --accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
+  --accent-ring: color-mix(in srgb, var(--accent) 32%, transparent);
+  --on-accent: #102012;
+  --radius-sm: 5px;
+  --radius: 7px;
+  --radius-lg: 9px;
+  --radius-xl: 12px;
   --shadow-sm: none;
   --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.32);
   --shadow-lg: 0 22px 60px rgba(0, 0, 0, 0.46);
@@ -14635,9 +14635,9 @@ body {
 }
 .organization-popover-head { padding: 8px 9px 11px; }
 .organization-option { min-height: 42px; border: 0; border-radius: 7px; }
-.organization-option:hover,
-.organization-option--active { border-color: transparent; background: #2c2c2a; }
-.organization-option-mark { color: var(--text-dim); background: #353533; }
+.organization-option:hover { border-color: transparent; background: #2c2c2a; }
+.organization-option--active { border-color: transparent; color: #dceadc; background: #263127; }
+.organization-option-mark { color: #c3d2c3; background: #2a3329; }
 .organization-add { border: 0; border-radius: 7px; text-align: left; }
 .organization-add:hover { border-color: transparent; color: var(--text); background: #2c2c2a; }
 .organization-form {
@@ -14701,7 +14701,7 @@ body {
 }
 .project-tab { padding: 6px 10px; border-radius: 6px; font-size: 11.5px; }
 .project-tab:hover { background: var(--bg-elev-2); }
-.project-tab--active { color: var(--text); background: var(--bg-elev-3); }
+.project-tab--active { color: #dceadc; background: color-mix(in srgb, var(--accent) 18%, #20201f); }
 .project-tab--active::after { display: none; }
 
 .panes, .pane { background: var(--bg); }
@@ -15745,7 +15745,7 @@ body {
   font-weight: 550;
 }
 .project-tab:hover { color: var(--text); background: #292927; }
-.project-tab--active { color: var(--text); background: #30302e; }
+.project-tab--active { color: #dceadc; background: color-mix(in srgb, var(--accent) 18%, #20201f); }
 .project-tab--icon {
   display: inline-flex;
   align-items: center;
@@ -15759,10 +15759,27 @@ body {
 .project-meta {
   justify-self: end;
   min-width: 0;
-  gap: 2px;
+  display: flex;
+  align-items: center;
+  gap: 11px;
 }
-.project-meta .dep-control { gap: 2px; }
-.project-meta .dep-seg { gap: 2px; }
+.project-meta-group {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+.project-meta-group--deploy {
+  padding-right: 11px;
+  border-right: 1px solid #30302d;
+}
+.project-meta-group--identity { gap: 8px; }
+.project-meta .dep-control { gap: 0; }
+.project-meta .dep-seg {
+  gap: 5px;
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
 .project-meta .dep-chip-prefix { display: none; }
 .project-meta .dep-chip-label { max-width: 110px; }
 .project-meta .seg--toolbar .seg-btn {
@@ -15771,13 +15788,30 @@ body {
   padding: 0 8px;
   border-radius: 6px !important;
   font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: 0;
+}
+.project-meta .dep-select {
+  border: 1px solid #393936 !important;
+  color: #bfc9bf;
+  background: #20201f;
+}
+.project-meta .dep-select:hover:not(:disabled) {
+  border-color: #555550 !important;
+  background: #292927;
 }
 .project-meta .seg--toolbar .dep-deploy {
   padding-inline: 9px;
-  color: #191919;
-  background: #e1e1db;
+  border: 1px solid #5e7560 !important;
+  color: #eff4ed;
+  background: #314336;
+  font-weight: 550;
+  letter-spacing: 0;
 }
-.project-meta .seg--toolbar .dep-deploy:hover:not(:disabled) { background: #f1f1eb; }
+.project-meta .seg--toolbar .dep-deploy:hover:not(:disabled) {
+  border-color: #769078 !important;
+  background: #3a5040;
+}
 
 .organization-switcher--compact .organization-trigger {
   min-width: 0;
@@ -15785,19 +15819,25 @@ body {
   height: 28px;
   gap: 6px;
   padding: 3px 6px;
-  border-color: transparent;
+  border-color: #333330;
   border-radius: 6px;
+  background: #20201f;
 }
 .organization-switcher--compact .organization-trigger-mark {
   display: grid;
   width: 18px;
   height: 18px;
   border-radius: 5px;
-  color: var(--text-dim);
-  background: #30302e;
+  color: #c3d2c3;
+  background: #2a3329;
   font-size: 9px;
 }
-.organization-switcher--compact .organization-trigger-copy strong { font-size: 10.5px; }
+.organization-switcher--compact .organization-trigger-copy strong {
+  color: #bfc9bf;
+  font-size: 10.5px;
+  font-weight: 550;
+  letter-spacing: 0;
+}
 .organization-switcher--compact .organization-trigger-copy small { display: none; }
 .organization-switcher--compact .organization-trigger > .codicon { font-size: 10px; }
 
@@ -15813,14 +15853,14 @@ body {
   width: 28px;
   height: 28px;
   padding: 0;
-  border: 0;
+  border: 1px solid #333330;
   border-radius: 6px;
   color: var(--text);
-  background: transparent;
+  background: #20201f;
   cursor: pointer;
 }
 .account-menu-trigger:hover,
-.account-menu-trigger[aria-expanded='true'] { background: #292927; }
+.account-menu-trigger[aria-expanded='true'] { border-color: #555550; background: #292927; }
 .account-menu-avatar {
   display: grid;
   place-items: center;
@@ -15894,6 +15934,30 @@ body {
   min-height: 36px;
   padding: 3px 9px;
 }
+.preview-toolbar-right { gap: 10px; }
+.preview-mode-seg,
+.preview-utility-seg {
+  gap: 4px;
+  padding: 0;
+  background: transparent;
+  overflow: visible;
+}
+.preview-mode-seg .seg-btn,
+.preview-utility-seg .seg-btn {
+  border: 1px solid #343431 !important;
+  border-radius: 5px !important;
+  background: #20201f;
+}
+.preview-mode-seg .seg-btn + .seg-btn,
+.preview-utility-seg .seg-btn + .seg-btn { border-left: 1px solid #343431; }
+.preview-mode-seg .seg-btn:hover:not(:disabled),
+.preview-utility-seg .seg-btn:hover:not(:disabled) { background: #2a2a28; }
+.preview-mode-seg .seg-btn--on,
+.preview-utility-seg .seg-btn--on {
+  border-color: color-mix(in srgb, var(--accent) 48%, #343431) !important;
+  color: #dceadc;
+  background: color-mix(in srgb, var(--accent) 16%, #20201f);
+}
 .model-toolbar--schema {
   min-height: 48px;
   padding-block: 6px;
@@ -15903,6 +15967,8 @@ body {
   .project-header { grid-template-columns: minmax(150px, 1fr) auto minmax(220px, 1fr); }
   .organization-switcher--compact .organization-trigger { width: 122px; }
   .project-meta .dep-chip-label { max-width: 82px; }
+  .project-meta { gap: 7px; }
+  .project-meta-group--deploy { padding-right: 7px; }
 }
 
 @media (max-width: 820px) {
@@ -15911,6 +15977,7 @@ body {
   .project-id-text { padding-left: 3px; }
   .project-meta .organization-switcher--compact { display: none; }
   .project-meta .dep-chip-label { max-width: 66px; }
+  .project-meta-group--deploy { padding-right: 0; border-right: 0; }
 }
 
 /* Skills catalog: a quiet desktop layout that gives each guidance group room to

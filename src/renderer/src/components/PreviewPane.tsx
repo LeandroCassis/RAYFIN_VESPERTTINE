@@ -1024,7 +1024,7 @@ export default function PreviewPane({
         </div>
         <div className="preview-toolbar-right">
           {loading && showWebview && <span className="preview-loading">Loading…</span>}
-          <div className="seg seg--toolbar">
+          <div className="seg seg--toolbar preview-mode-seg">
             <button
               className={`seg-btn ${previewMode === 'fabric' ? 'seg-btn--on' : ''}`}
               onClick={() => {
@@ -1068,6 +1068,8 @@ export default function PreviewPane({
                     : 'Design'}
               </span>
             </button>
+          </div>
+          <div className="seg seg--toolbar preview-utility-seg">
             <button
               className={`seg-btn seg-btn--icon ${focused ? 'seg-btn--on' : ''}`}
               onClick={onToggleFocus}

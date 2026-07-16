@@ -1245,6 +1245,17 @@ export default function Workbench({
                     </div>
                     <div className="project-tabs" role="tablist">
                       <button
+                        className="project-tab project-tab--icon project-tab--home"
+                        role="tab"
+                        aria-selected={false}
+                        onClick={goHome}
+                        aria-label="Home"
+                        title="Home"
+                      >
+                        <Codicon name="home" />
+                        <span className="sr-only">Home</span>
+                      </button>
+                      <button
                         className={`project-tab project-tab--icon${viewMode === 'build' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'build'}
@@ -1301,31 +1312,35 @@ export default function Workbench({
                       </button>
                     </div>
                     <div className="project-meta">
-                      <DeploymentsControl
-                        project={active}
-                        running={Boolean(deploys[active.id]?.running)}
-                        reconciling={reconciling.has(active.id)}
-                        onCreate={(name, workspaceId) => {
-                          setViewMode('build')
-                          void (async () => {
-                            try {
-                              await window.api.deploy.setName(active.id, workspaceId, name)
-                            } catch {
-                              /* naming is best-effort; deploy anyway */
-                            }
-                            await requestUserDeploy(active.id, workspaceId)
-                          })()
-                        }}
-                        onRedeploy={() => {
-                          setViewMode('build')
-                          void requestUserDeploy(active.id)
-                        }}
-                        onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
-                        onChanged={() => void refreshProjects()}
-                        onSignedIn={() => void onAuthChanged()}
-                      />
-                      {renderOrganizationSwitcher(true)}
-                      {renderAccountMenu()}
+                      <div className="project-meta-group project-meta-group--deploy">
+                        <DeploymentsControl
+                          project={active}
+                          running={Boolean(deploys[active.id]?.running)}
+                          reconciling={reconciling.has(active.id)}
+                          onCreate={(name, workspaceId) => {
+                            setViewMode('build')
+                            void (async () => {
+                              try {
+                                await window.api.deploy.setName(active.id, workspaceId, name)
+                              } catch {
+                                /* naming is best-effort; deploy anyway */
+                              }
+                              await requestUserDeploy(active.id, workspaceId)
+                            })()
+                          }}
+                          onRedeploy={() => {
+                            setViewMode('build')
+                            void requestUserDeploy(active.id)
+                          }}
+                          onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
+                          onChanged={() => void refreshProjects()}
+                          onSignedIn={() => void onAuthChanged()}
+                        />
+                      </div>
+                      <div className="project-meta-group project-meta-group--identity">
+                        {renderOrganizationSwitcher(true)}
+                        {renderAccountMenu()}
+                      </div>
                     </div>
                   </div>
                   {viewMode === 'backup' ? (
