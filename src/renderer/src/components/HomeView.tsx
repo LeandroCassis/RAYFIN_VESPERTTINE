@@ -44,7 +44,7 @@ export default function HomeView({
           <div className="home-brand">
             <FabricatorMark className="home-mark" />
             <div>
-              <p className="home-eyebrow">Fabricator</p>
+              <p className="home-eyebrow">VESPERTTINE RAYFIN EDITOR</p>
               <h1 className="home-title">Your projects</h1>
             </div>
           </div>
@@ -87,7 +87,7 @@ export default function HomeView({
               </span>
               <span className="home-action-text">
                 <span className="home-action-label">Clone from GitHub</span>
-                <span className="home-action-hint">Bring a repository into Fabricator</span>
+                <span className="home-action-hint">Bring a repository into your editor</span>
               </span>
             </button>
           </div>

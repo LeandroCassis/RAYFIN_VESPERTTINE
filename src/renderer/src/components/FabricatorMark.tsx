@@ -16,9 +16,9 @@ export const MARK_BRACKET_RX = 5
 
 /** Blue→cyan→green gradient stops (Edge-style). Works on light and dark. */
 export const MARK_GRADIENT_STOPS: ReadonlyArray<{ offset: string; color: string }> = [
-  { offset: '0%', color: '#1183dd' },
-  { offset: '52%', color: '#15a4d3' },
-  { offset: '100%', color: '#41c795' }
+  { offset: '0%', color: '#8f8f8a' },
+  { offset: '52%', color: '#e1e1dc' },
+  { offset: '100%', color: '#b5b5af' }
 ]
 /** Gradient axis, in viewBox user space, spanning the mark's bounding box. */
 export const MARK_GRADIENT_LINE = { x1: 40, y1: 40, x2: 412, y2: 418 }
@@ -106,6 +106,7 @@ export function FabricatorMark({ className, title }: FabricatorMarkProps): JSX.E
       <defs>
         <MarkGradient id={gid} />
       </defs>
+      <path className="fab-mark-monogram" d="M56 70h76l82 208L296 70h76L214 362 56 70Z" fill={fill} />
       {MARK_TILES.map((t) => (
         <rect
           key={t.cls}

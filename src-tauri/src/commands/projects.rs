@@ -80,6 +80,18 @@ pub fn projects_set_active(id: Option<String>) -> ProjectsState {
 }
 
 #[tauri::command]
+pub fn projects_set_organization(id: String, organization_id: Option<String>) -> ProjectActionResult {
+  store::mutate_project(&id, |project| {
+    project.organization_id = organization_id.clone();
+  });
+  ProjectActionResult {
+    ok: true,
+    error: None,
+    project: store::find_project(&id).map(with_missing),
+  }
+}
+
+#[tauri::command]
 pub async fn projects_rename(id: String, name: String) -> ProjectActionResult {
   crate::commands::projects_impl::rename_project(id, name).await
 }

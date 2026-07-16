@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
-import type { AuthStatus, DoctorReport, ToolStatus } from '@shared/ipc'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import type { AppSettings, AuthStatus, DoctorReport, ToolStatus } from '@shared/ipc'
 import SetupScreen from './SetupScreen'
 
 function tool(overrides: Partial<ToolStatus>): ToolStatus {
@@ -42,7 +42,14 @@ beforeEach(() => {
     },
     auth: {
       loginCopilot: vi.fn(),
-      loginAz: vi.fn()
+      loginAz: vi.fn(),
+      loginRayfin: vi.fn().mockResolvedValue({ ok: true }),
+      status: vi.fn().mockResolvedValue(auth)
+    },
+    github: {
+      status: vi.fn().mockResolvedValue({ ghInstalled: true, signedIn: true, user: 'octocat' }),
+      switchAccount: vi.fn().mockResolvedValue({ ok: true }),
+      login: vi.fn()
     },
     relaunch: vi.fn()
   }
@@ -68,5 +75,40 @@ describe('SetupScreen sign-in providers', () => {
     expect(screen.getByText('GitHub Copilot')).toBeTruthy()
     expect(screen.getAllByText('Azure CLI').length).toBeGreaterThan(0)
     expect(screen.queryByText('Microsoft Fabric')).toBeNull()
+  })
+
+  it('selects an organization and switches its tenant before entering the editor', async () => {
+    const profile = {
+      id: 'org-1',
+      name: 'Contoso',
+      tenantId: 'contoso.onmicrosoft.com',
+      githubUser: 'octocat'
+    }
+    const settings: AppSettings = {
+      theme: 'dark',
+      organizationProfiles: [profile]
+    }
+    const onSettingsChange = vi.fn().mockResolvedValue(undefined)
+
+    render(
+      <SetupScreen
+        doctor={doctor}
+        auth={auth}
+        refreshing={false}
+        onRefresh={() => {}}
+        onEnter={() => {}}
+        settings={settings}
+        onSettingsChange={onSettingsChange}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use organization' }))
+
+    await waitFor(() => {
+      expect(onSettingsChange).toHaveBeenCalledWith(
+        expect.objectContaining({ activeOrganizationId: 'org-1' })
+      )
+      expect(window.api.auth.loginRayfin).toHaveBeenCalledWith('contoso.onmicrosoft.com')
+    })
   })
 })

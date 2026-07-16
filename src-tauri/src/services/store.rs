@@ -10,7 +10,9 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::paths;
-use crate::types::{AppSettings, ExperimentFlags, ProjectsState, StudioProject};
+use crate::types::{
+  AppSettings, ExperimentFlags, OrganizationProfile, ProjectsState, StudioProject, VisualSettings,
+};
 
 struct Cache {
   state: ProjectsState,
@@ -32,13 +34,16 @@ fn default_state() -> ProjectsState {
 
 fn default_settings() -> AppSettings {
   AppSettings {
-    theme: "system".to_string(),
+    theme: "dark".to_string(),
     ui_scale: Some(1.0),
     experiments: Some(ExperimentFlags {
       compatibility_rendering: Some(false),
       chat_mode_selector: Some(false),
       local_dev_preview: Some(false),
     }),
+    visual: None,
+    organization_profiles: None,
+    active_organization_id: None,
     full_diagnostics: Some(false),
   }
 }
@@ -118,11 +123,20 @@ pub fn get_settings() -> AppSettings {
   with_cache(|c| c.settings.clone())
 }
 
-/// Patch fields of the settings (deep-merging experiment flags) and persist.
+fn valid_hex_color(color: &str) -> bool {
+  color.len() == 7
+    && color.starts_with('#')
+    && color.chars().skip(1).all(|c| c.is_ascii_hexdigit())
+}
+
+/// Patch fields of the settings (deep-merging nested settings) and persist.
 pub fn set_settings(
   theme: Option<String>,
   ui_scale: Option<f64>,
   experiments: Option<ExperimentFlags>,
+  visual: Option<VisualSettings>,
+  organization_profiles: Option<Vec<OrganizationProfile>>,
+  active_organization_id: Option<String>,
   full_diagnostics: Option<bool>,
 ) -> AppSettings {
   with_cache(|c| {
@@ -151,6 +165,37 @@ pub fn set_settings(
         current.local_dev_preview = Some(v);
       }
     }
+    if let Some(patch) = visual {
+      let current = c.settings.visual.get_or_insert(VisualSettings {
+        accent_color: None,
+        surface_color: None,
+        border_radius: None,
+        app_icon: None,
+      });
+      if let Some(color) = patch.accent_color.filter(|value| valid_hex_color(value)) {
+        current.accent_color = Some(color);
+      }
+      if let Some(color) = patch.surface_color.filter(|value| valid_hex_color(value)) {
+        current.surface_color = Some(color);
+      }
+      if let Some(radius) = patch.border_radius {
+        current.border_radius = Some(radius.clamp(0.0, 28.0));
+      }
+      if let Some(icon) = patch.app_icon.filter(|value| value == "mark" || value == "monogram") {
+        current.app_icon = Some(icon);
+      }
+    }
+    if let Some(profiles) = organization_profiles {
+      c.settings.organization_profiles = Some(
+        profiles
+          .into_iter()
+          .filter(|p| !p.id.trim().is_empty() && !p.name.trim().is_empty() && !p.tenant_id.trim().is_empty())
+          .collect(),
+      );
+    }
+    if let Some(id) = active_organization_id.filter(|value| !value.trim().is_empty()) {
+      c.settings.active_organization_id = Some(id);
+    }
     persist(c);
     c.settings.clone()
   })
@@ -167,6 +212,21 @@ pub fn set_workspace_root(path: String) -> ProjectsState {
 pub fn set_active(id: Option<String>) -> ProjectsState {
   with_cache(|c| {
     if let Some(ref want) = id {
+      // The active project must belong to the active organization. This mirrors
+      // the renderer filter at the persistence boundary, preventing an old id
+      // from carrying across a tenant switch.
+      if let Some(ref organization_id) = c.settings.active_organization_id {
+        let belongs = c
+          .state
+          .projects
+          .iter()
+          .find(|p| &p.id == want)
+          .and_then(|p| p.organization_id.as_ref())
+          == Some(organization_id);
+        if !belongs {
+          return c.state.clone();
+        }
+      }
       // Bump the selected project to the front so Home shows true
       // most-recently-used order (matches how upsert_project front-loads
       // newly created / opened projects).
@@ -188,6 +248,10 @@ pub fn set_active(id: Option<String>) -> ProjectsState {
 /// Insert or update a project (matched by id), keeping it at the front.
 pub fn upsert_project(project: StudioProject) -> ProjectsState {
   with_cache(|c| {
+    let mut project = project;
+    if project.organization_id.is_none() {
+      project.organization_id = c.settings.active_organization_id.clone();
+    }
     c.state.projects.retain(|p| p.id != project.id);
     c.state.projects.insert(0, project);
     persist(c);

@@ -220,12 +220,15 @@ pub async fn auth_status() -> AuthStatus {
 }
 
 #[tauri::command]
-pub async fn auth_login_copilot(app: AppHandle) -> ProcResult {
+pub async fn auth_login_copilot(
+  app: AppHandle,
+  state: tauri::State<'_, crate::state::AppState>,
+) -> Result<ProcResult, String> {
   let on_data = proc_streamer(&app, "login:copilot");
   on_data(exec::Stream::Stdout, "Starting GitHub Copilot sign-in…\n");
   let Some(cli) = crate::services::copilot::bundled_cli_path() else {
     on_data(exec::Stream::Stderr, "The bundled Copilot CLI is unavailable on this platform.\n");
-    return ProcResult { ok: false, exit_code: None };
+    return Ok(ProcResult { ok: false, exit_code: None });
   };
   let res = exec::run_program(
     cli,
@@ -237,10 +240,13 @@ pub async fn auth_login_copilot(app: AppHandle) -> ProcResult {
     },
   )
   .await;
-  ProcResult {
+  if res.ok {
+    state.copilot.reset_after_login().await;
+  }
+  Ok(ProcResult {
     ok: res.ok,
     exit_code: res.exit_code,
-  }
+  })
 }
 
 #[tauri::command]

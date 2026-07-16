@@ -606,6 +606,8 @@ export interface StudioProject {
   previewMode?: PreviewMode
   /** True when the folder no longer exists / is no longer a Rayfin project. */
   missing?: boolean
+  /** Organization/tenant profile this project deploys through. */
+  organizationId?: string
 }
 
 export interface ProjectsState {
@@ -616,15 +618,40 @@ export interface ProjectsState {
   projects: StudioProject[]
 }
 
+export interface OrganizationProfile {
+  id: string
+  name: string
+  tenantId: string
+  fabricUser?: string
+  githubUser?: string
+}
+
 export type ThemePreference = 'dark' | 'light' | 'system'
 
+/** Visual tokens the user can personalize without changing the app's layout. */
+export interface VisualSettings {
+  /** Main interactive colour, expressed as a six-digit hex colour. */
+  accentColor?: string
+  /** Base surface colour, expressed as a six-digit hex colour. */
+  surfaceColor?: string
+  /** Shared component corner radius in pixels. */
+  borderRadius?: number
+  /** Which product mark is shown throughout the interface. */
+  appIcon?: 'mark' | 'monogram'
+}
+
 export interface AppSettings {
-  /** UI theme; 'system' follows the OS dark/light setting. */
+  /** UI theme; dark is the product default and 'system' follows the OS setting. */
   theme: ThemePreference
   /** UI zoom factor (1 = 100%). Scales the whole interface for large monitors. */
   uiScale?: number
   /** Experimental, opt-in features (off by default). */
   experiments?: ExperimentFlags
+  /** User-selected visual tokens applied immediately across the interface. */
+  visual?: VisualSettings
+  /** Tenant/account profiles used to isolate projects and switch deployment context. */
+  organizationProfiles?: OrganizationProfile[]
+  activeOrganizationId?: string
   /**
    * Capture full chat diagnostics (prompt/response text + tool I/O) for bug
    * reports. Off by default — only lightweight metadata is captured. Opt-in via
@@ -1535,6 +1562,8 @@ export interface RayfinStudioApi {
     status: () => Promise<GithubStatus>
     /** Launch an external terminal running `gh auth login --web` (browser flow). */
     login: () => Promise<ProcResult>
+    /** Select an already authenticated GitHub CLI account. */
+    switchAccount: (user: string) => Promise<ProcResult>
     /** List the signed-in user's repositories. */
     listRepos: () => Promise<GithubReposResult>
     /**
@@ -1585,6 +1614,7 @@ export interface RayfinStudioApi {
     /** Install missing dependencies so this project's pinned Rayfin CLI is ready. */
     ensureDependencies: (id: string) => Promise<ProjectActionResult>
     setActive: (id: string | null) => Promise<ProjectsState>
+    setOrganization: (id: string, organizationId?: string) => Promise<ProjectActionResult>
     /** Rename a project (updates the display name and rayfin/rayfin.yml `name`). */
     rename: (id: string, name: string) => Promise<ProjectActionResult>
     /** Set (or clear, when empty) the Fabric workspace a project deploys to. */

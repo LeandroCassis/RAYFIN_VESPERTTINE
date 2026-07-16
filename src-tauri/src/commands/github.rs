@@ -99,6 +99,22 @@ pub fn github_login() -> ProcResult {
   }
 }
 
+/// Switch to an already authenticated github.com account without exposing its token.
+#[tauri::command]
+pub async fn github_switch_account(user: String) -> ProcResult {
+  let user = user.trim();
+  if user.is_empty() {
+    return ProcResult { ok: false, exit_code: None };
+  }
+  let res = exec::run(
+    "gh",
+    &["auth", "switch", "--hostname", "github.com", "--user", user],
+    RunOptions::timeout(20_000),
+  )
+  .await;
+  ProcResult { ok: res.ok, exit_code: res.exit_code }
+}
+
 #[cfg(target_os = "windows")]
 fn launch_login_terminal() -> bool {
   // `start "" cmd /K <cmd>` opens a fresh console window that stays open (so the

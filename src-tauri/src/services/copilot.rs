@@ -42,6 +42,8 @@ const CLIENT_NAME: &str = "rayfin-fabricator";
 /// model) resolves to this when we must issue an explicit `set_model` — e.g. to
 /// switch a resumed session, which otherwise keeps its last concrete model.
 const AUTO_MODEL_ID: &str = "auto";
+const LOGIN_REQUIRED_MESSAGE: &str =
+  "GitHub Copilot is not authenticated. In Setup, sign in to Copilot and try again.";
 
 /// A live session plus the model/effort currently applied to it, so a turn only
 /// issues a `set_model` RPC when the user actually changed them.
@@ -316,6 +318,10 @@ async fn open_session(
   }
 }
 
+fn session_not_found(error: &SdkError) -> bool {
+  error.to_string().to_ascii_lowercase().contains("session not found")
+}
+
 /// Map an SDK [`Model`] to the renderer DTO, dropping models disabled by org
 /// policy. The policy state enum isn't re-exported by the SDK, so we compare its
 /// serialized wire string (`"disabled"`) instead of naming the variant.
@@ -349,11 +355,22 @@ impl CopilotManager {
     if let Some(c) = guard.as_ref() {
       return Ok(c.clone());
     }
-    let client = Client::start(ClientOptions::default())
+    // Explicitly opt into the authenticated Copilot CLI user. The SDK defaults
+    // to this today, but keeping it explicit prevents a future SDK default from
+    // launching the server without the login the setup flow creates.
+    let client = Client::start(ClientOptions::default().with_use_logged_in_user(true))
       .await
       .map_err(|e| format!("Failed to start the Copilot engine: {e}"))?;
     *guard = Some(client.clone());
     Ok(client)
+  }
+
+  async fn ensure_authenticated(&self, client: &Client) -> Result<(), String> {
+    match client.get_auth_status().await {
+      Ok(status) if status.is_authenticated => Ok(()),
+      Ok(_) => Err(LOGIN_REQUIRED_MESSAGE.to_string()),
+      Err(error) => Err(format!("Could not verify GitHub Copilot sign-in: {error}")),
+    }
   }
 
   /// Tear down the shared client (e.g. after a transport failure) so the next
@@ -363,6 +380,15 @@ impl CopilotManager {
     if let Some(c) = taken {
       let _ = c.stop().await;
     }
+  }
+
+  /// Drop live sessions and restart the CLI after a user reauthenticates.
+  pub async fn reset_after_login(&self) {
+    let sessions = std::mem::take(&mut *self.sessions.lock().await);
+    for (_, entry) in sessions {
+      let _ = entry.session.disconnect().await;
+    }
+    self.reset_client().await;
   }
 
   /// List the Copilot models available to the signed-in user. The SDK caches the
@@ -448,6 +474,7 @@ impl CopilotManager {
     }
 
     let client = self.ensure_client().await?;
+    self.ensure_authenticated(&client).await?;
     let session = match open_session(
       &client,
       cwd,
@@ -468,6 +495,15 @@ impl CopilotManager {
         open_session(&client, cwd, session_id, &model, &effort, exit_plan, user_input, tools)
           .await
           .map_err(|e| e.to_string())?
+      }
+      Err(e) if session_not_found(&e) => {
+        // A CLI update or interrupted shutdown can leave an on-disk session
+        // record that no longer exists in the server. Recreate it once under
+        // the same project id instead of leaving the user stuck on Retry.
+        let _ = std::fs::remove_dir_all(session_state_dir(session_id));
+        open_session(&client, cwd, session_id, &model, &effort, exit_plan, user_input, tools)
+          .await
+          .map_err(|retry| retry.to_string())?
       }
       Err(e) => return Err(e.to_string()),
     };
@@ -494,6 +530,7 @@ impl CopilotManager {
     effort: Option<String>,
   ) -> Result<Arc<Session>, String> {
     let client = self.ensure_client().await?;
+    self.ensure_authenticated(&client).await?;
     let id = uuid::Uuid::new_v4().to_string();
     let session = match open_session(&client, cwd, &id, &model, &effort, None, None, Vec::new()).await {
       Ok(s) => s,

@@ -1,8 +1,8 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "Rayfin Fabricator",
+  "productName": "VESPERTTINE RAYFIN EDITOR",
   "version": "0.93.0",
-  "identifier": "com.rayfin.fabricator",
+  "identifier": "com.vesperttine.rayfineditor",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:1420",
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "Fabricator",
+        "title": "VESPERTTINE RAYFIN EDITOR",
         "width": 1360,
         "height": 880,
         "minWidth": 960,
@@ -32,7 +32,7 @@
     "active": true,
     "createUpdaterArtifacts": true,
     "targets": "all",
-    "publisher": "Rayfin Fabricator",
+    "publisher": "VESPERTTINE RAYFIN EDITOR",
     "category": "DeveloperTool",
     "copyright": "Copyright © 2026 Sachin Patney",
     "resources": {
