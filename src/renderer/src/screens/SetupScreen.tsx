@@ -188,7 +188,7 @@ export default function SetupScreen({
 
   function openEditor(): void {
     if (!activeOrganization) {
-      setOrganizationError('Select an organization before opening the editor.')
+      setOrganizationError('Select a tenant before opening the editor.')
       setTab('organizations')
       return
     }
@@ -200,7 +200,7 @@ export default function SetupScreen({
   }
 
   const loginProvider = organizationBusy
-    ? 'your organization accounts'
+    ? 'your tenant accounts'
     : busy === 'login:copilot'
       ? 'GitHub Copilot'
       : busy === 'login:az'
@@ -230,10 +230,10 @@ export default function SetupScreen({
         <main className="setup-launch-main">
           <div className="setup-launch-intro">
             <span className="setup-eyebrow">Workspace</span>
-            <h1>{tab === 'organizations' ? 'Choose an organization' : 'Environment status'}</h1>
+            <h1>{tab === 'organizations' ? 'Choose a tenant' : 'Environment status'}</h1>
             <p>
               {tab === 'organizations'
-                ? 'Projects, Fabric credentials and GitHub accounts stay isolated per organization.'
+                ? 'Projects, Fabric credentials and GitHub accounts stay isolated per tenant.'
                 : 'Review local tools and the accounts used to build and deploy your projects.'}
             </p>
           </div>
@@ -243,7 +243,7 @@ export default function SetupScreen({
               className={tab === 'organizations' ? 'setup-launch-tab--active' : ''}
               onClick={() => setTab('organizations')}
             >
-              Organizations <span>{profiles.length}</span>
+              Tenants <span>{profiles.length}</span>
             </button>
             <button
               className={tab === 'environment' ? 'setup-launch-tab--active' : ''}
@@ -259,11 +259,11 @@ export default function SetupScreen({
           >
             <div className="setup-launch-section-head">
               <div>
-                <h2>Your organizations</h2>
+                <h2>Your tenants</h2>
                 <p>Selecting one switches its Fabric tenant and GitHub identity.</p>
               </div>
               <button className="btn btn--primary btn--sm" onClick={() => setShowOrganizationForm(true)}>
-                Add organization
+                Add tenant
               </button>
             </div>
 
@@ -273,7 +273,7 @@ export default function SetupScreen({
               <div className="setup-org-form">
                 <div className="setup-org-form-head">
                   <div>
-                    <strong>New organization</strong>
+                    <strong>New tenant</strong>
                     <span>Use the Microsoft tenant and GitHub account for this client.</span>
                   </div>
                   <button className="btn btn--ghost btn--sm" onClick={() => setShowOrganizationForm(false)}>
@@ -282,7 +282,7 @@ export default function SetupScreen({
                 </div>
                 <div className="setup-org-fields">
                   <label>
-                    <span>Organization name</span>
+                    <span>Tenant name</span>
                     <input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} placeholder="Contoso" />
                   </label>
                   <label>
@@ -328,9 +328,21 @@ export default function SetupScreen({
                       <button
                         className={`btn ${active ? 'btn--ghost' : 'btn--primary'} setup-org-select`}
                         disabled={Boolean(organizationBusy)}
-                        onClick={() => void selectOrganization(profile)}
+                        onClick={() => {
+                          if (active && allReady) {
+                            openEditor()
+                            return
+                          }
+                          void selectOrganization(profile)
+                        }}
                       >
-                        {switching ? 'Connecting…' : active ? 'Reconnect accounts' : 'Use organization'}
+                        {switching
+                          ? 'Connecting…'
+                          : active
+                            ? allReady
+                              ? 'Open editor →'
+                              : 'Reconnect accounts'
+                            : 'Use tenant'}
                       </button>
                     </article>
                   )
@@ -339,7 +351,7 @@ export default function SetupScreen({
             ) : !showOrganizationForm ? (
               <button className="setup-org-empty" onClick={() => setShowOrganizationForm(true)}>
                 <span>+</span>
-                <strong>Add your first organization</strong>
+                <strong>Add your first tenant</strong>
                 <small>Connect a Fabric tenant and GitHub account to begin.</small>
               </button>
             ) : null}
@@ -439,11 +451,8 @@ export default function SetupScreen({
           <button className="btn btn--ghost btn--sm" onClick={() => setShowLog((value) => !value)}>{showLog ? 'Hide log' : 'Show log'}</button>
           <div className="setup-actionbar-right">
             <span className="setup-actionbar-status">
-              {activeOrganization ? `${activeOrganization.name} selected` : 'Choose an organization'}
+              {activeOrganization ? `${activeOrganization.name} selected` : 'Choose a tenant'}
             </span>
-            <button className="btn btn--primary setup-enter" disabled={!activeOrganization || !allReady || Boolean(organizationBusy)} onClick={openEditor}>
-              Open editor <span aria-hidden="true">→</span>
-            </button>
           </div>
         </div>
       </footer>

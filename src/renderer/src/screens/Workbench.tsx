@@ -45,7 +45,7 @@ import AdvisorView, { categoryMeta } from '../components/AdvisorView'
 import ModelTab from '../components/ModelTab'
 import { useToast } from '../toast'
 import { reportIssue as runReportIssue } from './reportIssue'
-import { InfoIcon, GearIcon, SignOutIcon, CompareIcon } from '../components/icons'
+import { Codicon, InfoIcon, GearIcon, SignOutIcon, CompareIcon } from '../components/icons'
 import { FabricatorMark } from '../components/FabricatorMark'
 
 // Monaco is heavy (~7 MB); only load the code viewer when the Code tab is opened.
@@ -851,10 +851,10 @@ export default function Workbench({
           }}
         >
           <span className="organization-trigger-mark">
-            {(activeOrganization?.name ?? 'Organization').slice(0, 1).toUpperCase()}
+            {(activeOrganization?.name ?? 'Tenant').slice(0, 1).toUpperCase()}
           </span>
           <span className="organization-trigger-copy">
-            <strong>{activeOrganization?.name ?? 'Select organization'}</strong>
+            <strong>{activeOrganization?.name ?? 'Select tenant'}</strong>
             <small>{activeOrganization?.tenantId ?? auth.rayfin.tenant ?? 'No tenant selected'}</small>
           </span>
           <span className="codicon codicon-chevron-down" aria-hidden="true" />
@@ -864,7 +864,7 @@ export default function Workbench({
             <SuppressPreview />
             <div className="organization-popover">
               <div className="organization-popover-head">
-                <strong>Organizations</strong>
+                <strong>Tenants</strong>
                 <small>Tenant-specific Fabric and GitHub accounts</small>
               </div>
               <div className="organization-list">
@@ -894,7 +894,7 @@ export default function Workbench({
                   <input
                     value={organizationName}
                     onChange={(e) => setOrganizationName(e.target.value)}
-                    placeholder="Organization name"
+                    placeholder="Tenant name"
                   />
                   <input
                     value={organizationTenant}
@@ -928,7 +928,7 @@ export default function Workbench({
                   className="organization-add"
                   onClick={() => setShowOrganizationForm(true)}
                 >
-                  <span className="codicon codicon-add" aria-hidden="true" /> Add organization
+                  <span className="codicon codicon-add" aria-hidden="true" /> Add tenant
                 </button>
               )}
             </div>
@@ -1167,36 +1167,48 @@ export default function Workbench({
                     </div>
                     <div className="project-tabs" role="tablist">
                       <button
-                        className={`project-tab${viewMode === 'build' ? ' project-tab--active' : ''}`}
+                        className={`project-tab project-tab--icon${viewMode === 'build' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'build'}
                         onClick={() => setViewMode('build')}
+                        aria-label="Build"
+                        title="Build"
                       >
-                        Build
+                        <Codicon name="comment-discussion" />
+                        <span className="sr-only">Build</span>
                       </button>
                       <button
-                        className={`project-tab${viewMode === 'code' ? ' project-tab--active' : ''}`}
+                        className={`project-tab project-tab--icon${viewMode === 'code' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'code'}
                         onClick={() => setViewMode('code')}
+                        aria-label="Code"
+                        title="Code"
                       >
-                        Code
+                        <Codicon name="code" />
+                        <span className="sr-only">Code</span>
                       </button>
                       <button
-                        className={`project-tab${viewMode === 'model' ? ' project-tab--active' : ''}`}
+                        className={`project-tab project-tab--icon${viewMode === 'model' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'model'}
                         onClick={() => setViewMode('model')}
+                        aria-label="Model"
+                        title="Model"
                       >
-                        Model
+                        <Codicon name="database" />
+                        <span className="sr-only">Model</span>
                       </button>
                       <button
-                        className={`project-tab${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
+                        className={`project-tab project-tab--icon${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'advisor'}
                         onClick={() => setViewMode('advisor')}
+                        aria-label="Advisor"
+                        title="Advisor"
                       >
-                        Advisor
+                        <Codicon name="lightbulb-sparkle" />
+                        <span className="sr-only">Advisor</span>
                       </button>
                     </div>
                     <div className="project-meta">
@@ -1391,21 +1403,21 @@ export default function Workbench({
                   onNewProject={() => {
                     if (activeOrganization) setCreateMode('create')
                     else {
-                      setNotice('Select or add an organization before creating a project.')
+                      setNotice('Select or add a tenant before creating a project.')
                       setShowOrganizations(true)
                     }
                   }}
                   onOpenExisting={() => {
                     if (activeOrganization) void openExisting()
                     else {
-                      setNotice('Select or add an organization before opening a project.')
+                      setNotice('Select or add a tenant before opening a project.')
                       setShowOrganizations(true)
                     }
                   }}
                   onCloneFromGitHub={() => {
                     if (activeOrganization) setShowClone(true)
                     else {
-                      setNotice('Select or add an organization before cloning a project.')
+                      setNotice('Select or add a tenant before cloning a project.')
                       setShowOrganizations(true)
                     }
                   }}

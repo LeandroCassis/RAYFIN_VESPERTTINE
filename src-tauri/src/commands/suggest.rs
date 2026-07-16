@@ -78,8 +78,15 @@ struct GenState {
 fn map_gen_event(event_type: &str, data: &Value, st: &mut GenState) -> bool {
   match event_type {
     "assistant.message_delta" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-      let text = data.get("deltaContent").and_then(|v| v.as_str()).unwrap_or("");
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      let text = data
+        .get("deltaContent")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
       if text.is_empty() {
         return false;
       }
@@ -87,7 +94,11 @@ fn map_gen_event(event_type: &str, data: &Value, st: &mut GenState) -> bool {
       *st.streamed.entry(id).or_insert(0) += text.chars().count();
     }
     "assistant.message" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
       let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
       let total = content.chars().count();
       let have = *st.streamed.get(&id).unwrap_or(&0);
@@ -195,7 +206,11 @@ pub async fn chat_suggest(
   };
 
   // A transient, uncached session keeps this out of the project's chat history.
-  let session = match state.copilot.transient_session(&project.path, None, None).await {
+  let session = match state
+    .copilot
+    .transient_session(&project.path, None, None)
+    .await
+  {
     Ok(s) => s,
     Err(_) => {
       state.end_suggest(&project_id, &token);
@@ -214,7 +229,10 @@ pub async fn chat_suggest(
 
   // Subscribe before sending so no events are missed.
   let mut sub = session.subscribe();
-  let send_ok = session.send(MessageOptions::new(SUGGEST_PROMPT)).await.is_ok();
+  let send_ok = session
+    .send(MessageOptions::new(SUGGEST_PROMPT))
+    .await
+    .is_ok();
 
   if send_ok {
     let drain = async {
@@ -277,7 +295,11 @@ pub async fn chat_suggest(
       if suggestions.is_empty() {
         SuggestionSet::default()
       } else {
-        SuggestionSet { ok: true, suggestions, fingerprint: current_fp }
+        SuggestionSet {
+          ok: true,
+          suggestions,
+          fingerprint: current_fp,
+        }
       }
     }
     None => SuggestionSet::default(),

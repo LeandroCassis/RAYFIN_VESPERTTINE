@@ -64,13 +64,19 @@ pub async fn open_in_editor(app: AppHandle, id: String) -> AppResult<OpenInEdito
   let path = project.path.clone();
 
   if launch_vscode(&path) {
-    return Ok(OpenInEditorResult { opened: true, revealed_folder: None });
+    return Ok(OpenInEditorResult {
+      opened: true,
+      revealed_folder: None,
+    });
   }
   app
     .opener()
     .open_path(path.clone(), None::<&str>)
     .map_err(|e| AppError::Msg(e.to_string()))?;
-  Ok(OpenInEditorResult { opened: false, revealed_folder: Some(true) })
+  Ok(OpenInEditorResult {
+    opened: false,
+    revealed_folder: Some(true),
+  })
 }
 
 /// Try to launch VS Code on `dir`, detached. Returns false when `code` isn't on PATH

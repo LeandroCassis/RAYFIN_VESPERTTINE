@@ -708,7 +708,10 @@ fn url_origin(url: &str) -> Option<String> {
 /// parsed into `T` (or `None` when the webview is gone / the value is `null`).
 /// WebView2 serializes the result to JSON for the callback; the whole round-trip
 /// is time-bounded so a stalled dispatch can never wedge the caller.
-async fn design_eval<T: serde::de::DeserializeOwned>(app: &AppHandle, js: &str) -> AppResult<Option<T>> {
+async fn design_eval<T: serde::de::DeserializeOwned>(
+  app: &AppHandle,
+  js: &str,
+) -> AppResult<Option<T>> {
   let Some(wv) = app.get_webview(PREVIEW_LABEL) else {
     return Ok(None);
   };
@@ -801,7 +804,9 @@ pub async fn preview_design_drain_ai(app: AppHandle) -> AppResult<Option<DesignA
 /// it). The renderer forwards `context` to `design_restyle_element` and applies the
 /// resulting patch via [`preview_design_apply_restyle`].
 #[tauri::command]
-pub async fn preview_design_drain_ai_edit(app: AppHandle) -> AppResult<Option<DesignAiEditRequest>> {
+pub async fn preview_design_drain_ai_edit(
+  app: AppHandle,
+) -> AppResult<Option<DesignAiEditRequest>> {
   design_eval(&app, DESIGN_DRAIN_AI_EDIT_JS).await
 }
 
@@ -1002,14 +1007,16 @@ fn capture_png(platform: &tauri::webview::PlatformWebview) -> Result<Vec<u8>, St
   use webview2_com::CapturePreviewCompletedHandler;
   use webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG;
   use windows::Win32::Foundation::HGLOBAL;
-  use windows::Win32::System::Com::StructuredStorage::{CreateStreamOnHGlobal, GetHGlobalFromStream};
+  use windows::Win32::System::Com::StructuredStorage::{
+    CreateStreamOnHGlobal, GetHGlobalFromStream,
+  };
   use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
   use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, PeekMessageW, TranslateMessage, MSG, PM_REMOVE,
   };
 
-  let core = unsafe { platform.controller().CoreWebView2() }
-    .map_err(|e| format!("CoreWebView2(): {e}"))?;
+  let core =
+    unsafe { platform.controller().CoreWebView2() }.map_err(|e| format!("CoreWebView2(): {e}"))?;
 
   // An auto-growing in-memory stream; its HGLOBAL is freed when the last
   // reference (`stream`) drops, after we have copied the bytes out below.
@@ -1026,7 +1033,11 @@ fn capture_png(platform: &tauri::webview::PlatformWebview) -> Result<Vec<u8>, St
   }));
   unsafe {
     core
-      .CapturePreview(COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG, &stream, &handler)
+      .CapturePreview(
+        COREWEBVIEW2_CAPTURE_PREVIEW_IMAGE_FORMAT_PNG,
+        &stream,
+        &handler,
+      )
       .map_err(|e| format!("CapturePreview: {e}"))?;
   }
 
@@ -1092,9 +1103,7 @@ fn capture_png(platform: &tauri::webview::PlatformWebview) -> Result<Vec<u8>, St
 
   use block2::RcBlock;
   use objc2_app_kit::NSImage;
-  use objc2_foundation::{
-    MainThreadMarker, NSDate, NSDefaultRunLoopMode, NSError, NSRunLoop,
-  };
+  use objc2_foundation::{MainThreadMarker, NSDate, NSDefaultRunLoopMode, NSError, NSRunLoop};
   use objc2_web_kit::{WKSnapshotConfiguration, WKWebView};
 
   // We are invoked on the UI thread from `with_webview`.
@@ -1154,7 +1163,10 @@ unsafe fn snapshot_image_to_png(
 
   if image.is_null() {
     if let Some(err) = error.as_ref() {
-      return Err(format!("WKWebView snapshot failed: {}", err.localizedDescription()));
+      return Err(format!(
+        "WKWebView snapshot failed: {}",
+        err.localizedDescription()
+      ));
     }
     return Err("WKWebView snapshot returned no image".into());
   }

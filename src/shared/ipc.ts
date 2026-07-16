@@ -624,6 +624,20 @@ export interface OrganizationProfile {
   tenantId: string
   fabricUser?: string
   githubUser?: string
+  /** AI connection used while this Tenant is active. Defaults to GitHub Copilot. */
+  aiProvider?: AiProvider
+  /** Tenant-wide default model. Projects may still choose their own model. */
+  aiModel?: string
+}
+
+/** The AI connection available for an individual Tenant. */
+export type AiProvider = 'github' | 'openrouter'
+
+/** Renderer-safe status for a Tenant's AI connection. The API key is never exposed. */
+export interface AiProviderStatus {
+  provider: AiProvider
+  model?: string
+  openrouterConfigured: boolean
 }
 
 export type ThemePreference = 'dark' | 'light' | 'system'
@@ -1903,6 +1917,11 @@ export interface RayfinStudioApi {
   settings: {
     get: () => Promise<AppSettings>
     set: (patch: Partial<AppSettings>) => Promise<AppSettings>
+    /** Reports provider state without ever returning the OpenRouter secret. */
+    openRouterStatus: (profileId?: string) => Promise<AiProviderStatus>
+    /** Stores an OpenRouter API key in the operating system credential store. */
+    saveOpenRouterKey: (profileId: string, apiKey: string) => Promise<AiProviderStatus>
+    removeOpenRouterKey: (profileId: string) => Promise<AiProviderStatus>
   }
 
   /**

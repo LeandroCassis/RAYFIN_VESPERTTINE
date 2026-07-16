@@ -77,7 +77,12 @@ async fn latest_version(pkg: &str) -> Option<String> {
       return version.clone();
     }
   }
-  let res = exec::run("npm", &["view", pkg, "version"], RunOptions::timeout(20_000)).await;
+  let res = exec::run(
+    "npm",
+    &["view", pkg, "version"],
+    RunOptions::timeout(20_000),
+  )
+  .await;
   let version = if res.ok {
     res.stdout.split_whitespace().last().map(|s| s.to_string())
   } else {
@@ -92,8 +97,7 @@ async fn latest_version(pkg: &str) -> Option<String> {
 
 /// Parse the `x.y.z` core of a semver string (ignoring any prerelease/build).
 fn parse_core(version: Option<&str>) -> Option<(u64, u64, u64)> {
-  static RE: Lazy<regex::Regex> =
-    Lazy::new(|| regex::Regex::new(r"(\d+)\.(\d+)\.(\d+)").unwrap());
+  static RE: Lazy<regex::Regex> = Lazy::new(|| regex::Regex::new(r"(\d+)\.(\d+)\.(\d+)").unwrap());
   let v = version?;
   let m = RE.captures(v)?;
   Some((
@@ -140,7 +144,11 @@ pub async fn rayfin_versions(id: String) -> RayfinVersionInfo {
     let latest = latest_version(&name).await;
     let upgradable = is_newer(latest.as_deref(), installed.as_deref());
     packages.push(RayfinPackageVersion {
-      kind: if name == CLI_PACKAGE { "cli".into() } else { "sdk".into() },
+      kind: if name == CLI_PACKAGE {
+        "cli".into()
+      } else {
+        "sdk".into()
+      },
       name,
       installed,
       latest,
@@ -211,7 +219,10 @@ mod tests {
     )
     .unwrap();
     let names = rayfin_dependencies(dir.to_string_lossy().as_ref());
-    assert_eq!(names, vec!["@microsoft/rayfin-cli", "@microsoft/rayfin-data"]);
+    assert_eq!(
+      names,
+      vec!["@microsoft/rayfin-cli", "@microsoft/rayfin-data"]
+    );
     let _ = std::fs::remove_dir_all(&dir);
   }
 }

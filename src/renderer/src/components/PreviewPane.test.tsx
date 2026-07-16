@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { StudioProject } from '@shared/ipc'
 import { OverlayProvider, SuppressPreview } from '../overlay'
@@ -66,6 +66,15 @@ afterEach(() => {
 })
 
 describe('PreviewPane visibility', () => {
+  it('opens the active preview URL in the external browser from the toolbar', async () => {
+    render(<Harnessed project={makeProject('p1')} suppressed={false} />)
+    await settle(e)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open in external browser' }))
+    const api = window.api as unknown as { openExternal: ReturnType<typeof vi.fn> }
+    expect(api.openExternal).toHaveBeenCalledWith('https://p1.example.app/')
+  })
+
   it('reveals the webview at host bounds on initial deployed mount', async () => {
     render(<Harnessed project={makeProject('p1')} suppressed={false} />)
     await settle(e)
@@ -472,4 +481,3 @@ function lastShowUrl(
   }
   return null
 }
-

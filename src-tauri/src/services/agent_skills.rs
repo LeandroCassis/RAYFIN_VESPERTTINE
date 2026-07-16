@@ -244,8 +244,14 @@ fn write_all(root: &std::path::Path) -> std::io::Result<()> {
 
   let instr_dir = root.join("instructions");
   std::fs::create_dir_all(&instr_dir)?;
-  std::fs::write(instr_dir.join("fabricator-validate.instructions.md"), VALIDATE_INSTRUCTIONS)?;
-  std::fs::write(instr_dir.join("fabricator-stable-only.instructions.md"), STABLE_ONLY_INSTRUCTIONS)?;
+  std::fs::write(
+    instr_dir.join("fabricator-validate.instructions.md"),
+    VALIDATE_INSTRUCTIONS,
+  )?;
+  std::fs::write(
+    instr_dir.join("fabricator-stable-only.instructions.md"),
+    STABLE_ONLY_INSTRUCTIONS,
+  )?;
   Ok(())
 }
 
@@ -267,7 +273,10 @@ mod tests {
       "fabricator_scroll",
       "fabricator_console",
     ] {
-      assert!(!VALIDATE_HEADLESS_SKILL.contains(tool), "skill should not mention {tool}");
+      assert!(
+        !VALIDATE_HEADLESS_SKILL.contains(tool),
+        "skill should not mention {tool}"
+      );
     }
     // The skill must steer away from the shell deploy path Fabricator owns.
     assert!(VALIDATE_HEADLESS_SKILL.contains("rayfin up"));
@@ -276,7 +285,8 @@ mod tests {
     assert!(VALIDATE_HEADLESS_SKILL.contains("Do not run or test the app locally"));
     assert!(VALIDATE_HEADLESS_SKILL.contains("Deploy early and iterate"));
     assert!(VALIDATE_HEADLESS_SKILL.contains("hero visual"));
-    assert!(VALIDATE_HEADLESS_SKILL.contains("Every visual (kpi/table/matrix/slicers/dashboard included)"));
+    assert!(VALIDATE_HEADLESS_SKILL
+      .contains("Every visual (kpi/table/matrix/slicers/dashboard included)"));
     assert!(!VALIDATE_HEADLESS_SKILL.contains("have no headless form"));
   }
 
@@ -285,7 +295,9 @@ mod tests {
     assert!(VALIDATE_INSTRUCTIONS.contains("applyTo: '**'"));
     assert!(VALIDATE_INSTRUCTIONS.contains("npm run preview"));
     assert!(VALIDATE_INSTRUCTIONS.contains("Time-to-wow rhythm"));
-    assert!(VALIDATE_INSTRUCTIONS.contains("Every visual (kpi/table/matrix/slicers/dashboard included)"));
+    assert!(
+      VALIDATE_INSTRUCTIONS.contains("Every visual (kpi/table/matrix/slicers/dashboard included)")
+    );
     assert!(!VALIDATE_INSTRUCTIONS.contains("have no headless form"));
     assert!(!VALIDATE_INSTRUCTIONS.contains("fabricator_screenshot"));
   }
@@ -308,7 +320,11 @@ mod tests {
   fn stable_only_instructions_steer_away_from_experimental() {
     assert!(STABLE_ONLY_INSTRUCTIONS.contains("applyTo: '**'"));
     // Names the concrete experimental surfaces the agent must avoid by default.
-    for marker in ["@microsoft/rayfin-core/experimental", "RAYFIN_FEATURE_FLAGS", "rayfin dev"] {
+    for marker in [
+      "@microsoft/rayfin-core/experimental",
+      "RAYFIN_FEATURE_FLAGS",
+      "rayfin dev",
+    ] {
       assert!(
         STABLE_ONLY_INSTRUCTIONS.contains(marker),
         "stable-only instructions should call out {marker}"
@@ -328,11 +344,18 @@ mod tests {
       "fabricator_locate_semantic_model",
       "fabricator_search_semantic_models",
     ] {
-      assert!(CONNECT_MODEL_SKILL.contains(tool), "skill should mention {tool}");
+      assert!(
+        CONNECT_MODEL_SKILL.contains(tool),
+        "skill should mention {tool}"
+      );
     }
     // The skill must show the exact wiring command and the id-equivalence fact.
-    assert!(CONNECT_MODEL_SKILL.contains("fabric-app-data add <alias> -w <workspaceId> -i <itemId>"));
-    assert!(CONNECT_MODEL_SKILL.contains("dataset id is the same as the Fabric semantic-model item id"));
+    assert!(
+      CONNECT_MODEL_SKILL.contains("fabric-app-data add <alias> -w <workspaceId> -i <itemId>")
+    );
+    assert!(
+      CONNECT_MODEL_SKILL.contains("dataset id is the same as the Fabric semantic-model item id")
+    );
     // ...and point at the fabric-data skill it builds on.
     assert!(CONNECT_MODEL_SKILL.contains("fabric-data"));
   }
@@ -343,17 +366,45 @@ mod tests {
     let _ = std::fs::remove_dir_all(&tmp);
     write_all(&tmp).expect("write_all should succeed");
 
-    let skill = tmp.join("skills").join("validate-headless").join("SKILL.md");
-    let connect = tmp.join("skills").join("connect-semantic-model").join("SKILL.md");
-    let instr = tmp.join("instructions").join("fabricator-validate.instructions.md");
-    let stable = tmp.join("instructions").join("fabricator-stable-only.instructions.md");
+    let skill = tmp
+      .join("skills")
+      .join("validate-headless")
+      .join("SKILL.md");
+    let connect = tmp
+      .join("skills")
+      .join("connect-semantic-model")
+      .join("SKILL.md");
+    let instr = tmp
+      .join("instructions")
+      .join("fabricator-validate.instructions.md");
+    let stable = tmp
+      .join("instructions")
+      .join("fabricator-stable-only.instructions.md");
     assert!(skill.is_file(), "SKILL.md should exist at {skill:?}");
-    assert!(connect.is_file(), "connect SKILL.md should exist at {connect:?}");
-    assert!(instr.is_file(), "instructions file should exist at {instr:?}");
-    assert!(stable.is_file(), "stable-only instructions should exist at {stable:?}");
-    assert_eq!(std::fs::read_to_string(&skill).unwrap(), VALIDATE_HEADLESS_SKILL);
-    assert_eq!(std::fs::read_to_string(&connect).unwrap(), CONNECT_MODEL_SKILL);
-    assert_eq!(std::fs::read_to_string(&stable).unwrap(), STABLE_ONLY_INSTRUCTIONS);
+    assert!(
+      connect.is_file(),
+      "connect SKILL.md should exist at {connect:?}"
+    );
+    assert!(
+      instr.is_file(),
+      "instructions file should exist at {instr:?}"
+    );
+    assert!(
+      stable.is_file(),
+      "stable-only instructions should exist at {stable:?}"
+    );
+    assert_eq!(
+      std::fs::read_to_string(&skill).unwrap(),
+      VALIDATE_HEADLESS_SKILL
+    );
+    assert_eq!(
+      std::fs::read_to_string(&connect).unwrap(),
+      CONNECT_MODEL_SKILL
+    );
+    assert_eq!(
+      std::fs::read_to_string(&stable).unwrap(),
+      STABLE_ONLY_INSTRUCTIONS
+    );
 
     let _ = std::fs::remove_dir_all(&tmp);
   }

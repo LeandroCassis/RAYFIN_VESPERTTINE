@@ -26,9 +26,10 @@ pub async fn diagnostics_export(app: AppHandle) -> AppResult<String> {
 
   // Reveal the logs folder so the freshly written bundle is easy to grab/attach.
   // Failing to open the folder must not fail the export itself.
-  let _ = app
-    .opener()
-    .open_path(paths::logs_dir().to_string_lossy().to_string(), None::<&str>);
+  let _ = app.opener().open_path(
+    paths::logs_dir().to_string_lossy().to_string(),
+    None::<&str>,
+  );
 
   Ok(path.to_string_lossy().to_string())
 }

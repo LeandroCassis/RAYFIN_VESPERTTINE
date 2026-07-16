@@ -80,7 +80,10 @@ pub fn projects_set_active(id: Option<String>) -> ProjectsState {
 }
 
 #[tauri::command]
-pub fn projects_set_organization(id: String, organization_id: Option<String>) -> ProjectActionResult {
+pub fn projects_set_organization(
+  id: String,
+  organization_id: Option<String>,
+) -> ProjectActionResult {
   store::mutate_project(&id, |project| {
     project.organization_id = organization_id.clone();
   });
@@ -102,7 +105,10 @@ pub fn projects_set_workspace(
   workspace: Option<String>,
   workspace_name: Option<String>,
 ) -> ProjectActionResult {
-  let has = workspace.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false);
+  let has = workspace
+    .as_ref()
+    .map(|s| !s.trim().is_empty())
+    .unwrap_or(false);
   store::mutate_project(&id, |p| {
     if has {
       p.workspace = workspace.clone();
@@ -125,7 +131,11 @@ pub fn projects_set_workspace(
 /// user is looking at. `"direct"` is stored as `None` to keep `studio.json` clean.
 #[tauri::command]
 pub fn projects_set_preview_mode(id: String, mode: String) -> ProjectActionResult {
-  let normalized = if mode == "fabric" { Some("fabric".to_string()) } else { None };
+  let normalized = if mode == "fabric" {
+    Some("fabric".to_string())
+  } else {
+    None
+  };
   store::mutate_project(&id, |p| {
     p.preview_mode = normalized.clone();
   });
@@ -144,8 +154,13 @@ pub async fn projects_remove(
   delete_files: Option<bool>,
 ) -> Result<ProjectsState, String> {
   Ok(
-    crate::commands::projects_impl::remove_project(&app, state.inner(), id, delete_files.unwrap_or(false))
-      .await,
+    crate::commands::projects_impl::remove_project(
+      &app,
+      state.inner(),
+      id,
+      delete_files.unwrap_or(false),
+    )
+    .await,
   )
 }
 
@@ -182,7 +197,11 @@ pub async fn projects_git_file_diff(
 }
 
 #[tauri::command]
-pub async fn projects_git_compare_changes(id: String, base: String, target: String) -> Vec<GitChange> {
+pub async fn projects_git_compare_changes(
+  id: String,
+  base: String,
+  target: String,
+) -> Vec<GitChange> {
   crate::commands::git::git_compare_changes(id, base, target).await
 }
 

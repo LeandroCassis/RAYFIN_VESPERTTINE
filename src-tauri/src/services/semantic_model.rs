@@ -291,9 +291,8 @@ async fn invoke_helper(request: &serde_json::Value) -> Result<String, String> {
 /// can render.
 async fn run_helper(request: &serde_json::Value) -> SemanticModelResult {
   match invoke_helper(request).await {
-    Ok(out) => {
-      serde_json::from_str::<SemanticModelResult>(&out).unwrap_or_else(|_| SemanticModelResult::failure(out))
-    }
+    Ok(out) => serde_json::from_str::<SemanticModelResult>(&out)
+      .unwrap_or_else(|_| SemanticModelResult::failure(out)),
     Err(detail) => SemanticModelResult::failure(detail),
   }
 }
@@ -398,7 +397,10 @@ mod tests {
     assert_eq!(parsed.tables[1].name.as_deref(), Some("Date"));
     assert!(parsed.tables[1].is_hidden);
     assert_eq!(parsed.columns[0].data_type.as_deref(), Some("Decimal"));
-    assert_eq!(parsed.measures[0].expression.as_deref(), Some("SUM(Sales[Amount])"));
+    assert_eq!(
+      parsed.measures[0].expression.as_deref(),
+      Some("SUM(Sales[Amount])")
+    );
     let rel = &parsed.relationships[0];
     assert!(rel.is_active);
     assert_eq!(rel.cross_filter.as_deref(), Some("OneDirection"));

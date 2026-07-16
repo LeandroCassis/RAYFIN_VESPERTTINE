@@ -22,8 +22,8 @@ use github_copilot_sdk::handler::{
 };
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::{
-  Client, ClientOptions, Error as SdkError, ExitPlanModeData, Model, ResumeSessionConfig,
-  SessionConfig, SessionId, SetModelOptions, Tool,
+  Client, ClientOptions, Error as SdkError, ExitPlanModeData, Model, ProviderConfig,
+  ResumeSessionConfig, SessionConfig, SessionId, SetModelOptions, Tool,
 };
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -31,7 +31,7 @@ use tauri::AppHandle;
 use tokio::sync::{Mutex, OnceCell};
 
 use crate::services::emit::emit_chat_event;
-use crate::services::{exec, paths};
+use crate::services::{ai_provider, exec, paths};
 use crate::state::PlanGate;
 use crate::types::ChatEvent;
 
@@ -61,6 +61,10 @@ struct Entry {
 pub struct CopilotManager {
   client: Mutex<Option<Client>>,
   sessions: Mutex<HashMap<String, Entry>>,
+  /// The provider selected for the active Tenant. Secrets live only here (in
+  /// memory) after being read from the OS credential store; no session, store,
+  /// or IPC response serializes it.
+  provider: Mutex<Option<ai_provider::ActiveAiProvider>>,
 }
 
 fn cache_key(project_id: &str) -> String {
@@ -95,6 +99,29 @@ fn concrete_model(model: &Option<String>) -> Option<String> {
 /// session keeps its last concrete model otherwise.
 fn set_model_target(model: &Option<String>) -> String {
   concrete_model(model).unwrap_or_else(|| AUTO_MODEL_ID.to_string())
+}
+
+/// Resolve the effective model for a request. The Tenant choice is a default,
+/// while an explicit per-project / per-review model still takes precedence.
+fn effective_model(
+  requested: Option<String>,
+  provider: &ai_provider::ActiveAiProvider,
+) -> Option<String> {
+  concrete_model(&requested).or_else(|| concrete_model(&provider.default_model))
+}
+
+/// Convert the active Tenant's OpenRouter selection to the SDK's OpenAI-compatible
+/// BYOK provider configuration. GitHub Copilot leaves this unset and uses the
+/// signed-in GitHub subscription as before.
+fn session_provider(provider: &ai_provider::ActiveAiProvider) -> Option<ProviderConfig> {
+  match provider.kind {
+    ai_provider::AiProviderKind::Github => None,
+    ai_provider::AiProviderKind::OpenRouter => provider.api_key.as_ref().map(|key| {
+      ProviderConfig::new(ai_provider::openrouter_base_url())
+        .with_provider_type("openai")
+        .with_api_key(key.clone())
+    }),
+  }
 }
 
 /// Whether a cached session can be reused as-is, or needs `set_model` re-applied.
@@ -145,7 +172,9 @@ async fn apply_options(
   if let Some(e) = norm_effort(effort) {
     opts = opts.with_reasoning_effort(e);
   }
-  session.set_model(&set_model_target(model), Some(opts)).await
+  session
+    .set_model(&set_model_target(model), Some(opts))
+    .await
 }
 
 /// Bridges the SDK's `exit_plan_mode` and `ask_user` callbacks to the renderer.
@@ -178,7 +207,9 @@ impl ExitPlanModeHandler for PlanModeHandler {
       return ExitPlanModeResult::default();
     };
     let request_id = uuid::Uuid::new_v4().to_string();
-    let rx = self.gate.register_pending_plan(session_id.as_str(), &request_id);
+    let rx = self
+      .gate
+      .register_pending_plan(session_id.as_str(), &request_id);
     emit_chat_event(
       &self.app,
       &route.project_id,
@@ -222,12 +253,19 @@ impl UserInputHandler for PlanModeHandler {
     // The CLI's `allowFreeform` is optional on the wire; default to allowed.
     let allow_freeform = allow_freeform.unwrap_or(true);
     let request_id = uuid::Uuid::new_v4().to_string();
-    let rx = self.gate.register_pending_question(session_id.as_str(), &request_id, allow_freeform);
+    let rx = self
+      .gate
+      .register_pending_question(session_id.as_str(), &request_id, allow_freeform);
     emit_chat_event(
       &self.app,
       &route.project_id,
       &route.turn_id,
-      ChatEvent::PlanQuestion { request_id, question, choices, allow_freeform },
+      ChatEvent::PlanQuestion {
+        request_id,
+        question,
+        choices,
+        allow_freeform,
+      },
     );
     // Block until the user answers (via `chat_resolve_question`) or the turn
     // ends and the sender is dropped/rejected, which we treat as "no answer".
@@ -249,6 +287,7 @@ async fn open_session(
   session_id: &str,
   model: &Option<String>,
   effort: &Option<String>,
+  provider: Option<ProviderConfig>,
   exit_plan: Option<Arc<dyn ExitPlanModeHandler>>,
   user_input: Option<Arc<dyn UserInputHandler>>,
   tools: Vec<Tool>,
@@ -280,6 +319,9 @@ async fn open_session(
     if let Some(h) = user_input {
       cfg = cfg.with_user_input_handler(h);
     }
+    if let Some(provider) = provider.clone() {
+      cfg = cfg.with_provider(provider);
+    }
     cfg.reasoning_effort = eff;
     let session = client.resume_session(cfg).await?;
     // Resume can't carry a model in its config; reconcile after attaching. A
@@ -309,6 +351,9 @@ async fn open_session(
     if let Some(h) = user_input {
       cfg = cfg.with_user_input_handler(h);
     }
+    if let Some(provider) = provider {
+      cfg = cfg.with_provider(provider);
+    }
     cfg.reasoning_effort = eff;
     if let Some(m) = &model {
       cfg = cfg.with_model(m.clone());
@@ -319,7 +364,10 @@ async fn open_session(
 }
 
 fn session_not_found(error: &SdkError) -> bool {
-  error.to_string().to_ascii_lowercase().contains("session not found")
+  error
+    .to_string()
+    .to_ascii_lowercase()
+    .contains("session not found")
 }
 
 /// Map an SDK [`Model`] to the renderer DTO, dropping models disabled by org
@@ -349,6 +397,22 @@ fn map_model(m: &Model) -> Option<crate::types::CopilotModel> {
 }
 
 impl CopilotManager {
+  /// Read the active Tenant's selected AI connection. Changing Tenant/provider
+  /// discards live sessions, which prevents a GitHub session from leaking into an
+  /// OpenRouter request (or vice versa).
+  async fn configure_active_provider(&self) -> Result<ai_provider::ActiveAiProvider, String> {
+    let next = ai_provider::active_configuration()?;
+    let changed = self.provider.lock().await.as_ref() != Some(&next);
+    if changed {
+      let sessions = std::mem::take(&mut *self.sessions.lock().await);
+      for (_, entry) in sessions {
+        let _ = entry.session.disconnect().await;
+      }
+      *self.provider.lock().await = Some(next.clone());
+    }
+    Ok(next)
+  }
+
   /// Lazily start (or reuse) the shared CLI server connection.
   async fn ensure_client(&self) -> Result<Client, String> {
     let mut guard = self.client.lock().await;
@@ -391,14 +455,20 @@ impl CopilotManager {
     self.reset_client().await;
   }
 
-  /// List the Copilot models available to the signed-in user. The SDK caches the
-  /// underlying `models.list` RPC, so repeated calls are cheap. Models disabled
-  /// by org policy are dropped; ordering (most-preferred first) is preserved.
+  /// List models for the active Tenant. GitHub uses the signed-in Copilot
+  /// subscription; OpenRouter fetches the tenant's enabled model catalog.
   ///
   /// Right after the CLI server starts, auth can momentarily report "not
   /// authenticated" before it resolves; the SDK doesn't cache that failure, so we
   /// give it a couple of brief retries before giving up.
   pub async fn list_models(&self) -> Result<Vec<crate::types::CopilotModel>, String> {
+    let provider = self.configure_active_provider().await?;
+    if provider.kind == ai_provider::AiProviderKind::OpenRouter {
+      let key = provider.api_key.as_deref().ok_or_else(|| {
+        "Add an OpenRouter API key in Settings before using OpenRouter.".to_string()
+      })?;
+      return ai_provider::list_openrouter_models(key).await;
+    }
     let client = self.ensure_client().await?;
     let mut last_err = String::new();
     for attempt in 0..3u8 {
@@ -430,6 +500,9 @@ impl CopilotManager {
     user_input: Option<Arc<dyn UserInputHandler>>,
     tools: Vec<Tool>,
   ) -> Result<Arc<Session>, String> {
+    let provider = self.configure_active_provider().await?;
+    let model = effective_model(model, &provider);
+    let session_provider = session_provider(&provider);
     let key = cache_key(project_id);
 
     let mut sessions = self.sessions.lock().await;
@@ -474,13 +547,16 @@ impl CopilotManager {
     }
 
     let client = self.ensure_client().await?;
-    self.ensure_authenticated(&client).await?;
+    if provider.kind == ai_provider::AiProviderKind::Github {
+      self.ensure_authenticated(&client).await?;
+    }
     let session = match open_session(
       &client,
       cwd,
       session_id,
       &model,
       &effort,
+      session_provider.clone(),
       exit_plan.clone(),
       user_input.clone(),
       tools.clone(),
@@ -492,18 +568,38 @@ impl CopilotManager {
         // The CLI server died — restart it and try once more.
         self.reset_client().await;
         let client = self.ensure_client().await?;
-        open_session(&client, cwd, session_id, &model, &effort, exit_plan, user_input, tools)
-          .await
-          .map_err(|e| e.to_string())?
+        open_session(
+          &client,
+          cwd,
+          session_id,
+          &model,
+          &effort,
+          session_provider.clone(),
+          exit_plan,
+          user_input,
+          tools,
+        )
+        .await
+        .map_err(|e| e.to_string())?
       }
       Err(e) if session_not_found(&e) => {
         // A CLI update or interrupted shutdown can leave an on-disk session
         // record that no longer exists in the server. Recreate it once under
         // the same project id instead of leaving the user stuck on Retry.
         let _ = std::fs::remove_dir_all(session_state_dir(session_id));
-        open_session(&client, cwd, session_id, &model, &effort, exit_plan, user_input, tools)
-          .await
-          .map_err(|retry| retry.to_string())?
+        open_session(
+          &client,
+          cwd,
+          session_id,
+          &model,
+          &effort,
+          session_provider,
+          exit_plan,
+          user_input,
+          tools,
+        )
+        .await
+        .map_err(|retry| retry.to_string())?
       }
       Err(e) => return Err(e.to_string()),
     };
@@ -529,17 +625,44 @@ impl CopilotManager {
     model: Option<String>,
     effort: Option<String>,
   ) -> Result<Arc<Session>, String> {
+    let provider = self.configure_active_provider().await?;
+    let model = effective_model(model, &provider);
+    let session_provider = session_provider(&provider);
     let client = self.ensure_client().await?;
-    self.ensure_authenticated(&client).await?;
+    if provider.kind == ai_provider::AiProviderKind::Github {
+      self.ensure_authenticated(&client).await?;
+    }
     let id = uuid::Uuid::new_v4().to_string();
-    let session = match open_session(&client, cwd, &id, &model, &effort, None, None, Vec::new()).await {
+    let session = match open_session(
+      &client,
+      cwd,
+      &id,
+      &model,
+      &effort,
+      session_provider.clone(),
+      None,
+      None,
+      Vec::new(),
+    )
+    .await
+    {
       Ok(s) => s,
       Err(e) if e.is_transport_failure() => {
         self.reset_client().await;
         let client = self.ensure_client().await?;
-        open_session(&client, cwd, &id, &model, &effort, None, None, Vec::new())
-          .await
-          .map_err(|e| e.to_string())?
+        open_session(
+          &client,
+          cwd,
+          &id,
+          &model,
+          &effort,
+          session_provider,
+          None,
+          None,
+          Vec::new(),
+        )
+        .await
+        .map_err(|e| e.to_string())?
       }
       Err(e) => return Err(e.to_string()),
     };
@@ -551,7 +674,12 @@ impl CopilotManager {
   /// must interject into the exact session a turn is already running on.
   pub async fn peek_session(&self, project_id: &str) -> Option<Arc<Session>> {
     let key = cache_key(project_id);
-    self.sessions.lock().await.get(&key).map(|e| e.session.clone())
+    self
+      .sessions
+      .lock()
+      .await
+      .get(&key)
+      .map(|e| e.session.clone())
   }
 
   /// Forget (and disconnect) the cached session for a project. Used by
@@ -615,7 +743,10 @@ mod tests {
 
   #[test]
   fn parses_plain_semver() {
-    assert_eq!(parse_cli_version("copilot version 2.10.0").as_deref(), Some("2.10.0"));
+    assert_eq!(
+      parse_cli_version("copilot version 2.10.0").as_deref(),
+      Some("2.10.0")
+    );
   }
 
   #[test]
@@ -638,14 +769,23 @@ mod tests {
   fn switching_to_auto_from_a_named_model_re_applies() {
     // The bug: a session on a concrete model, switched back to Auto, must
     // re-apply (set_model "auto") — not silently reuse the old model.
-    assert_eq!(session_sync(&m("gpt-5.4-mini"), &None, &None, &None), Sync::Apply);
-    assert_eq!(session_sync(&m("gpt-5.4-mini"), &None, &m("auto"), &None), Sync::Apply);
+    assert_eq!(
+      session_sync(&m("gpt-5.4-mini"), &None, &None, &None),
+      Sync::Apply
+    );
+    assert_eq!(
+      session_sync(&m("gpt-5.4-mini"), &None, &m("auto"), &None),
+      Sync::Apply
+    );
   }
 
   #[test]
   fn unchanged_model_and_effort_reuses() {
     assert_eq!(session_sync(&None, &None, &None, &None), Sync::Reuse);
-    assert_eq!(session_sync(&m("x"), &m("high"), &m("x"), &m("high")), Sync::Reuse);
+    assert_eq!(
+      session_sync(&m("x"), &m("high"), &m("x"), &m("high")),
+      Sync::Reuse
+    );
     // None and "auto" (and blank) are equivalent, so auto→auto reuses.
     assert_eq!(session_sync(&None, &None, &m("auto"), &None), Sync::Reuse);
     assert_eq!(session_sync(&m("auto"), &None, &None, &None), Sync::Reuse);
@@ -654,7 +794,10 @@ mod tests {
   #[test]
   fn model_or_effort_change_applies() {
     assert_eq!(session_sync(&m("a"), &None, &m("b"), &None), Sync::Apply);
-    assert_eq!(session_sync(&None, &m("low"), &None, &m("high")), Sync::Apply);
+    assert_eq!(
+      session_sync(&None, &m("low"), &None, &m("high")),
+      Sync::Apply
+    );
     // Auto → a concrete model also needs applying.
     assert_eq!(session_sync(&None, &None, &m("gpt"), &None), Sync::Apply);
   }

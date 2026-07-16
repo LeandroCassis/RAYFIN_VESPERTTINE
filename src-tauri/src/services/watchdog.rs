@@ -150,17 +150,28 @@ fn stall_context() -> String {
   let act = Activity::from_u8(CURRENT_ACTIVITY.load(Ordering::Relaxed));
   let act_ms = {
     let since = ACTIVITY_SINCE_MS.load(Ordering::Relaxed);
-    if since > 0 { (now_ms() - since).max(0) } else { 0 }
+    if since > 0 {
+      (now_ms() - since).max(0)
+    } else {
+      0
+    }
   };
   let uptime_s = {
     let start = STARTED_AT_MS.load(Ordering::Relaxed);
-    if start > 0 { (now_ms() - start).max(0) / 1000 } else { 0 }
+    if start > 0 {
+      (now_ms() - start).max(0) / 1000
+    } else {
+      0
+    }
   };
   let mem = match current_rss_mb() {
     Some(mb) => format!(", rss={mb}MB"),
     None => String::new(),
   };
-  format!(" [doing={} for ~{act_ms}ms{mem}, uptime={uptime_s}s]", act.label())
+  format!(
+    " [doing={} for ~{act_ms}ms{mem}, uptime={uptime_s}s]",
+    act.label()
+  )
 }
 
 /// Current process working-set size in MiB, if cheaply available. Windows-only
@@ -172,7 +183,8 @@ fn current_rss_mb() -> Option<u64> {
   let mut counters = PROCESS_MEMORY_COUNTERS::default();
   let cb = std::mem::size_of::<PROCESS_MEMORY_COUNTERS>() as u32;
   let ok = unsafe { K32GetProcessMemoryInfo(GetCurrentProcess(), &mut counters, cb) };
-  ok.as_bool().then(|| counters.WorkingSetSize as u64 / (1024 * 1024))
+  ok.as_bool()
+    .then(|| counters.WorkingSetSize as u64 / (1024 * 1024))
 }
 
 #[cfg(not(windows))]

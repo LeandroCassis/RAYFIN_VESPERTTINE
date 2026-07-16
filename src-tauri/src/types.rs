@@ -485,6 +485,22 @@ pub struct OrganizationProfile {
   pub fabric_user: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub github_user: Option<String>,
+  /// Per-Tenant AI connection: `github` (the default) or `openrouter`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_provider: Option<String>,
+  /// Default AI model for this Tenant. Individual projects can override it.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_model: Option<String>,
+}
+
+/// Renderer-safe AI connection state. Deliberately contains no credential value.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProviderStatus {
+  pub provider: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub model: Option<String>,
+  pub openrouter_configured: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -763,11 +779,17 @@ pub struct ChatToolCall {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ChatSegment {
-  Text { text: String },
-  Tool { id: String },
+  Text {
+    text: String,
+  },
+  Tool {
+    id: String,
+  },
   /// A message the user injected mid-turn (conversation steering), shown inline
   /// in the assistant feed as a small "you interjected" bubble.
-  Interjection { text: String },
+  Interjection {
+    text: String,
+  },
 }
 
 /// One structured todo item from the session's SQL `todos` table (via
@@ -1286,7 +1308,10 @@ mod tests {
 
   #[test]
   fn plan_content_event_serializes_camelcase_with_type_tag() {
-    let event = ChatEvent::PlanContent { content: "# Plan".into(), operation: "update".into() };
+    let event = ChatEvent::PlanContent {
+      content: "# Plan".into(),
+      operation: "update".into(),
+    };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "plan-content");
     assert_eq!(json["content"], "# Plan");
@@ -1302,7 +1327,10 @@ mod tests {
         description: None,
         status: "pending".into(),
       }],
-      dependencies: vec![ChatPlanDependency { todo_id: "t2".into(), depends_on: "t1".into() }],
+      dependencies: vec![ChatPlanDependency {
+        todo_id: "t2".into(),
+        depends_on: "t1".into(),
+      }],
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "plan-todos");
@@ -1315,7 +1343,9 @@ mod tests {
 
   #[test]
   fn mode_changed_event_serializes() {
-    let event = ChatEvent::ModeChanged { mode: "plan".into() };
+    let event = ChatEvent::ModeChanged {
+      mode: "plan".into(),
+    };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "mode-changed");
     assert_eq!(json["mode"], "plan");
@@ -1338,7 +1368,10 @@ mod tests {
 
   #[test]
   fn plan_question_resolved_omits_absent_answer() {
-    let event = ChatEvent::PlanQuestionResolved { request_id: "req-1".into(), answer: None };
+    let event = ChatEvent::PlanQuestionResolved {
+      request_id: "req-1".into(),
+      answer: None,
+    };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "plan-question-resolved");
     assert!(json.get("answer").is_none());

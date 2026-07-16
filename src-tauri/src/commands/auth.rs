@@ -122,8 +122,7 @@ pub fn get_copilot_auth() -> CopilotAuthStatus {
   }
 }
 
-static NOT_SIGNED_IN_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)not\s+signed\s+in").unwrap());
+static NOT_SIGNED_IN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)not\s+signed\s+in").unwrap());
 static SIGNED_IN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)signed\s+in").unwrap());
 static USER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)User:\s*(.+)").unwrap());
 static TENANT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)Tenant:\s*(.+)").unwrap());
@@ -216,7 +215,11 @@ pub async fn auth_status() -> AuthStatus {
   if rayfin.signed_in && !STARTUP_SIGNIN_SENT.swap(true, Ordering::SeqCst) {
     telemetry::track_signin(cached_identity().as_ref(), "startup");
   }
-  AuthStatus { copilot, rayfin, az }
+  AuthStatus {
+    copilot,
+    rayfin,
+    az,
+  }
 }
 
 #[tauri::command]
@@ -227,8 +230,14 @@ pub async fn auth_login_copilot(
   let on_data = proc_streamer(&app, "login:copilot");
   on_data(exec::Stream::Stdout, "Starting GitHub Copilot sign-in…\n");
   let Some(cli) = crate::services::copilot::bundled_cli_path() else {
-    on_data(exec::Stream::Stderr, "The bundled Copilot CLI is unavailable on this platform.\n");
-    return Ok(ProcResult { ok: false, exit_code: None });
+    on_data(
+      exec::Stream::Stderr,
+      "The bundled Copilot CLI is unavailable on this platform.\n",
+    );
+    return Ok(ProcResult {
+      ok: false,
+      exit_code: None,
+    });
   };
   let res = exec::run_program(
     cli,

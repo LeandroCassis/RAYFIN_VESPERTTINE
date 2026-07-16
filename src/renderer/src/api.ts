@@ -235,7 +235,13 @@ export const api: RayfinStudioApi = {
 
   settings: {
     get: () => invoke('settings_get'),
-    set: (patch: Partial<AppSettings>) => invoke('settings_set', { patch })
+    set: (patch: Partial<AppSettings>) => invoke('settings_set', { patch }),
+    openRouterStatus: (profileId?: string) =>
+      invoke('settings_openrouter_status', { profileId }),
+    saveOpenRouterKey: (profileId: string, apiKey: string) =>
+      invoke('settings_save_openrouter_key', { profileId, apiKey }),
+    removeOpenRouterKey: (profileId: string) =>
+      invoke('settings_remove_openrouter_key', { profileId })
   },
 
   preview: {

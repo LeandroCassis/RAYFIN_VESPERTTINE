@@ -14,9 +14,9 @@ use tauri::Manager;
 
 use state::AppState;
 
+use services::dev_server::DevServers;
 use services::preview::PreviewState;
 use services::updater::UpdaterState;
-use services::dev_server::DevServers;
 
 /// Read the bundled telemetry connection string (App Insights) if present.
 /// Mirrors the Electron build, which injects `resources/telemetry.json` at
@@ -140,6 +140,9 @@ pub fn run() {
       // settings
       commands::settings::settings_get,
       commands::settings::settings_set,
+      commands::settings::settings_openrouter_status,
+      commands::settings::settings_save_openrouter_key,
+      commands::settings::settings_remove_openrouter_key,
       // doctor
       commands::doctor::doctor_check,
       commands::doctor::doctor_install,
@@ -240,10 +243,9 @@ pub fn run() {
       commands::deploy::deploy_switch,
       commands::deploy::deploy_set_name,
       commands::deploy::deploy_reconcile,
-
-            services::dev_server::dev_start,
-            services::dev_server::dev_stop,
-            services::dev_server::dev_supported_cmd,
+      services::dev_server::dev_start,
+      services::dev_server::dev_stop,
+      services::dev_server::dev_supported_cmd,
       // preview
       services::preview::preview_show_url,
       services::preview::preview_navigate,

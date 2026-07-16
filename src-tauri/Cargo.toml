@@ -55,6 +55,9 @@ once_cell = "1"
 chrono = { version = "0.4", features = ["clock"], default-features = false }
 
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# The OpenRouter key is kept in the operating system's credential store, never
+# in studio.json or any renderer-visible IPC response.
+keyring = "4.1.5"
 
 dirs = "5"
 which = "7"

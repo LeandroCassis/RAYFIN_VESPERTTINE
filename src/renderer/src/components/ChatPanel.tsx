@@ -1427,7 +1427,7 @@ export default function ChatPanel({
   const [showMode, setShowMode] = useState(false)
   const [planBusyId, setPlanBusyId] = useState<string | null>(null)
   const [dismissedPlanSuggestion, setDismissedPlanSuggestion] = useState<string | null>(null)
-  const { models, loading: modelsLoading } = useCopilotModels(showModel)
+  const { models, loading: modelsLoading } = useCopilotModels(showModel, project.organizationId)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   // Referentially-stable wrappers for the per-row callbacks so memoized

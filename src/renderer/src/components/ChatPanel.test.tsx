@@ -18,7 +18,7 @@ vi.mock('@monaco-editor/react', () => ({
  * contract through a small parent harness that mirrors Workbench's draft plumbing.
  */
 
-const PLACEHOLDER = /Message Fabricator about/i
+const PLACEHOLDER = /Message VESPERTTINE RAYFIN EDITOR about/i
 
 interface InstalledApi {
   onChatEvent: ReturnType<typeof vi.fn>

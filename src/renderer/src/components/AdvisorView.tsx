@@ -46,6 +46,12 @@ interface FindingGroup {
   findings: AdvisorFinding[]
 }
 
+interface FindingEntry {
+  group: FindingGroup
+  finding: AdvisorFinding
+  index: number
+}
+
 /** One live step shown in the analyzing feed. */
 interface Step {
   id: number
@@ -227,7 +233,7 @@ export default function AdvisorView({
       return null
     }
   })
-  const { models } = useCopilotModels(true)
+  const { models } = useCopilotModels(true, project.organizationId)
   const setModelChoice = useCallback((next: string | null) => {
     setModel(next)
     try {
@@ -425,6 +431,12 @@ export default function AdvisorView({
   const report = snapshot?.report ?? null
   const issueCount = report?.ok ? report.findings.length : 0
   const groups = useMemo(() => (report?.ok ? groupFindings(report.findings) : []), [report])
+  // A single responsive board uses the whole desktop canvas. Category remains
+  // visible on each card, without reserving empty columns for small groups.
+  const findingEntries = useMemo<FindingEntry[]>(
+    () => groups.flatMap((group) => group.findings.map((finding, index) => ({ group, finding, index }))),
+    [groups]
+  )
   const counts = useMemo(() => severityCounts(report?.findings ?? []), [report])
   const clean = report?.ok === true && issueCount === 0
 
@@ -551,6 +563,7 @@ export default function AdvisorView({
                   </div>
                 )}
 
+                <div className="advisor-overview">
                 <div className={`advisor-hero advisor-hero--${clean ? 'ok' : 'warn'}`}>
                   <div className="advisor-hero-icon" aria-hidden="true">
                     {clean ? <CheckIcon /> : <span className="advisor-hero-bang">!</span>}
@@ -602,6 +615,13 @@ export default function AdvisorView({
                     </button>
                   )}
                 </div>
+                {report.summary && (
+                  <aside className="advisor-summary">
+                    <span className="advisor-summary-label">Review summary</span>
+                    <p>{report.summary}</p>
+                  </aside>
+                )}
+                </div>
 
                 {chatBusy && issueCount > 0 && (
                   <div className="advisor-busy">
@@ -613,25 +633,15 @@ export default function AdvisorView({
                   </div>
                 )}
 
-                {report.summary && <p className="advisor-summary">{report.summary}</p>}
-
-                {groups.map((group) => (
-                  <section className="advisor-group" key={group.key}>
-                    <div className="advisor-group-head">
-                      <span className="advisor-group-icon" aria-hidden="true">
-                        <group.Icon />
-                      </span>
-                      <h3 className="advisor-group-title">{group.title}</h3>
-                      <span className="advisor-group-count">{group.findings.length}</span>
-                    </div>
-                    <div className="advisor-grid">
-                      {group.findings.map((finding, i) => {
-                        const key = findingKey(finding, `${group.key}-${i}`)
+                <div className="advisor-board">
+                  {findingEntries.map(({ group, finding, index }) => {
+                        const key = findingKey(finding, `${group.key}-${index}`)
                         const ex = explains[key]
                         const isOpen = openKeys.has(key)
                         const isGenerating = ex?.status === 'loading' || ex?.status === 'streaming'
                         const hasText = Boolean(ex?.text)
                         const explainBlocked = Boolean(explainingKey && explainingKey !== key)
+                        const CategoryIcon = group.Icon
                         return (
                           <div
                             className={`advisor-finding advisor-finding--${sevClass(
@@ -640,6 +650,9 @@ export default function AdvisorView({
                             key={key}
                           >
                             <div className="advisor-finding-head">
+                              <span className="advisor-category" title={group.title}>
+                                <CategoryIcon className="btn-ico" /> {group.title}
+                              </span>
                               <span className={`sev sev--${sevClass(finding.severity)}`}>
                                 <i className="sevdot" /> {sevLabel(finding.severity)}
                               </span>
@@ -760,10 +773,8 @@ export default function AdvisorView({
                             </div>
                           </div>
                         )
-                      })}
-                    </div>
-                  </section>
-                ))}
+                  })}
+                </div>
               </div>
             ) : (
               !error && (

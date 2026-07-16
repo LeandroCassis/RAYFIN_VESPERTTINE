@@ -24,7 +24,7 @@ describe('buildReportIssueUrl', () => {
 
   it('fills in the environment (versions + user agent)', () => {
     const body = bodyOf(buildReportIssueUrl(versions, null, 'UA/1.0'))
-    expect(body).toContain('App: Fabricator 1.2.3')
+    expect(body).toContain('App: VESPERTTINE RAYFIN EDITOR 1.2.3')
     expect(body).toContain('Tauri: 2.0.0')
     expect(body).toContain('WebView2: 120.0.0')
     expect(body).toContain('Copilot CLI: 1.0.0')
@@ -44,7 +44,7 @@ describe('buildReportIssueUrl', () => {
 
   it('degrades to "unknown" when versions are unavailable', () => {
     const body = bodyOf(buildReportIssueUrl(null, null, 'UA/1.0'))
-    expect(body).toContain('App: Fabricator unknown')
+    expect(body).toContain('App: VESPERTTINE RAYFIN EDITOR unknown')
     expect(body).toContain('Copilot CLI: unknown')
   })
 })

@@ -11,8 +11,8 @@ use crate::commands::util::{looks_binary, safe_resolve};
 use crate::services::exec::{run, RunOptions};
 use crate::services::store::find_project;
 use crate::types::{
-  GitChange, GitCommitResult, GitCommitSummary, GitFileDiff, GitHistory, GitRemoteStatus, GitStatus,
-  GitSyncResult, RevertResult,
+  GitChange, GitCommitResult, GitCommitSummary, GitFileDiff, GitHistory, GitRemoteStatus,
+  GitStatus, GitSyncResult, RevertResult,
 };
 
 /// Working-tree sentinel ref (matches `GIT_WORKING_REF` in src/shared/ipc.ts).
@@ -97,14 +97,29 @@ fn parse_git_status(stdout: &str) -> ParsedStatus {
 
 pub async fn git_status(id: String) -> GitStatus {
   let Some(project) = find_project(&id) else {
-    return GitStatus { is_repo: false, branch: None, changed_count: 0, no_commits: None };
+    return GitStatus {
+      is_repo: false,
+      branch: None,
+      changed_count: 0,
+      no_commits: None,
+    };
   };
   if !Path::new(&project.path).exists() {
-    return GitStatus { is_repo: false, branch: None, changed_count: 0, no_commits: None };
+    return GitStatus {
+      is_repo: false,
+      branch: None,
+      changed_count: 0,
+      no_commits: None,
+    };
   }
   let res = git(&project.path, &["status", "--porcelain=v1", "--branch"]).await;
   if !res.ok {
-    return GitStatus { is_repo: false, branch: None, changed_count: 0, no_commits: None };
+    return GitStatus {
+      is_repo: false,
+      branch: None,
+      changed_count: 0,
+      no_commits: None,
+    };
   }
   let parsed = parse_git_status(&res.stdout);
   GitStatus {
@@ -116,16 +131,33 @@ pub async fn git_status(id: String) -> GitStatus {
 }
 
 pub async fn git_commit(id: String, message: String) -> GitCommitResult {
-  let no_repo = || GitStatus { is_repo: false, branch: None, changed_count: 0, no_commits: None };
+  let no_repo = || GitStatus {
+    is_repo: false,
+    branch: None,
+    changed_count: 0,
+    no_commits: None,
+  };
   let Some(project) = find_project(&id) else {
-    return GitCommitResult { ok: false, error: Some("Project folder not found.".into()), status: no_repo() };
+    return GitCommitResult {
+      ok: false,
+      error: Some("Project folder not found.".into()),
+      status: no_repo(),
+    };
   };
   if !Path::new(&project.path).exists() {
-    return GitCommitResult { ok: false, error: Some("Project folder not found.".into()), status: no_repo() };
+    return GitCommitResult {
+      ok: false,
+      error: Some("Project folder not found.".into()),
+      status: no_repo(),
+    };
   }
   let msg = message.trim().to_string();
   if msg.is_empty() {
-    return GitCommitResult { ok: false, error: Some("Enter a commit message.".into()), status: git_status(id).await };
+    return GitCommitResult {
+      ok: false,
+      error: Some("Enter a commit message.".into()),
+      status: git_status(id).await,
+    };
   }
   let dir = project.path.clone();
 
@@ -140,7 +172,11 @@ pub async fn git_commit(id: String, message: String) -> GitCommitResult {
     let e = add.stderr.trim().to_string();
     return GitCommitResult {
       ok: false,
-      error: Some(if e.is_empty() { "git add failed.".into() } else { e }),
+      error: Some(if e.is_empty() {
+        "git add failed.".into()
+      } else {
+        e
+      }),
       status: git_status(id).await,
     };
   }
@@ -148,7 +184,9 @@ pub async fn git_commit(id: String, message: String) -> GitCommitResult {
   let commit = git(&dir, &["commit", "-m", &msg]).await;
   if !commit.ok {
     let combined = format!("{}\n{}", commit.stdout, commit.stderr);
-    let nothing = Regex::new(r"(?i)nothing to commit|no changes added").unwrap().is_match(&combined);
+    let nothing = Regex::new(r"(?i)nothing to commit|no changes added")
+      .unwrap()
+      .is_match(&combined);
     let err = combined.trim().to_string();
     return GitCommitResult {
       ok: false,
@@ -162,7 +200,11 @@ pub async fn git_commit(id: String, message: String) -> GitCommitResult {
       status: git_status(id).await,
     };
   }
-  GitCommitResult { ok: true, error: None, status: git_status(id).await }
+  GitCommitResult {
+    ok: true,
+    error: None,
+    status: git_status(id).await,
+  }
 }
 
 /* ---------------------------------- log ----------------------------------- */
@@ -187,7 +229,11 @@ struct Stat {
 }
 
 fn parse_shortstat(lines: &[&str]) -> Stat {
-  let mut stat = Stat { files_changed: 0, insertions: 0, deletions: 0 };
+  let mut stat = Stat {
+    files_changed: 0,
+    insertions: 0,
+    deletions: 0,
+  };
   for line in lines {
     if RE_FILES.is_match(line) {
       stat.files_changed = num(&RE_FILES, line);
@@ -211,7 +257,11 @@ fn parse_log(stdout: &str) -> Vec<GitCommitSummary> {
       continue;
     }
     let stat = parse_shortstat(&lines[1..]);
-    let short_hash = head.get(1).copied().filter(|s| !s.is_empty()).unwrap_or(&hash[..hash.len().min(7)]);
+    let short_hash = head
+      .get(1)
+      .copied()
+      .filter(|s| !s.is_empty())
+      .unwrap_or(&hash[..hash.len().min(7)]);
     let subject = head.get(5).copied().unwrap_or("").trim();
     commits.push(GitCommitSummary {
       hash: hash.to_string(),
@@ -219,7 +269,11 @@ fn parse_log(stdout: &str) -> Vec<GitCommitSummary> {
       author: head.get(2).copied().unwrap_or("").to_string(),
       relative_date: head.get(3).copied().unwrap_or("").to_string(),
       iso_date: head.get(4).copied().unwrap_or("").to_string(),
-      subject: if subject.is_empty() { "(no message)".to_string() } else { subject.to_string() },
+      subject: if subject.is_empty() {
+        "(no message)".to_string()
+      } else {
+        subject.to_string()
+      },
       files_changed: stat.files_changed,
       insertions: stat.insertions,
       deletions: stat.deletions,
@@ -229,7 +283,13 @@ fn parse_log(stdout: &str) -> Vec<GitCommitSummary> {
 }
 
 pub async fn git_log(id: String) -> GitHistory {
-  let none = || GitHistory { is_repo: false, no_commits: None, commits: vec![], working_changes: 0, head: None };
+  let none = || GitHistory {
+    is_repo: false,
+    no_commits: None,
+    commits: vec![],
+    working_changes: 0,
+    head: None,
+  };
   let Some(project) = find_project(&id) else {
     return none();
   };
@@ -242,7 +302,11 @@ pub async fn git_log(id: String) -> GitHistory {
 
   let status = git(&cwd, &["status", "--porcelain=v1", "--untracked-files=all"]).await;
   let working_changes = if status.ok {
-    status.stdout.split('\n').filter(|l| !l.trim().is_empty()).count() as u32
+    status
+      .stdout
+      .split('\n')
+      .filter(|l| !l.trim().is_empty())
+      .count() as u32
   } else {
     0
   };
@@ -250,18 +314,44 @@ pub async fn git_log(id: String) -> GitHistory {
   let head_res = git(&cwd, &["rev-parse", "HEAD"]).await;
   let head = if head_res.ok {
     let h = head_res.stdout.trim().to_string();
-    if h.is_empty() { None } else { Some(h) }
+    if h.is_empty() {
+      None
+    } else {
+      Some(h)
+    }
   } else {
     None
   };
 
   let fmt = format!("{RECORD}%H{FIELD}%h{FIELD}%an{FIELD}%ar{FIELD}%aI{FIELD}%s");
   let n = MAX_COMMITS.to_string();
-  let log = git(&cwd, &["log", "-n", &n, "--shortstat", &format!("--pretty=format:{fmt}")]).await;
+  let log = git(
+    &cwd,
+    &[
+      "log",
+      "-n",
+      &n,
+      "--shortstat",
+      &format!("--pretty=format:{fmt}"),
+    ],
+  )
+  .await;
   if !log.ok {
-    return GitHistory { is_repo: true, no_commits: Some(true), commits: vec![], working_changes, head };
+    return GitHistory {
+      is_repo: true,
+      no_commits: Some(true),
+      commits: vec![],
+      working_changes,
+      head,
+    };
   }
-  GitHistory { is_repo: true, no_commits: None, commits: parse_log(&log.stdout), working_changes, head }
+  GitHistory {
+    is_repo: true,
+    no_commits: None,
+    commits: parse_log(&log.stdout),
+    working_changes,
+    head,
+  }
 }
 
 /* -------------------------------- changes --------------------------------- */
@@ -320,7 +410,10 @@ fn parse_numstat(stdout: &str) -> std::collections::HashMap<String, Count> {
   map
 }
 
-fn parse_name_status(name_status_stdout: &str, counts: &std::collections::HashMap<String, Count>) -> Vec<GitChange> {
+fn parse_name_status(
+  name_status_stdout: &str,
+  counts: &std::collections::HashMap<String, Count>,
+) -> Vec<GitChange> {
   let mut changes = Vec::new();
   for line in name_status_stdout.split('\n') {
     if line.trim().is_empty() {
@@ -329,11 +422,17 @@ fn parse_name_status(name_status_stdout: &str, counts: &std::collections::HashMa
     let parts: Vec<&str> = line.split('\t').collect();
     let status = status_from_code(parts[0]);
     let renamed = status == "renamed";
-    let path = if renamed { parts.get(2) } else { parts.get(1) }.map(|s| s.trim()).unwrap_or("");
+    let path = if renamed { parts.get(2) } else { parts.get(1) }
+      .map(|s| s.trim())
+      .unwrap_or("");
     if path.is_empty() {
       continue;
     }
-    let old_path = if renamed { parts.get(1).map(|s| s.trim().to_string()) } else { None };
+    let old_path = if renamed {
+      parts.get(1).map(|s| s.trim().to_string())
+    } else {
+      None
+    };
     let c = counts.get(path);
     changes.push(GitChange {
       path: path.to_string(),
@@ -385,7 +484,11 @@ async fn working_change_list(cwd: &str) -> Vec<GitChange> {
     if path.is_empty() {
       continue;
     }
-    let status2 = if code == "??" { "added" } else { status_from_code(code.trim()) };
+    let status2 = if code == "??" {
+      "added"
+    } else {
+      status_from_code(code.trim())
+    };
     let c = counts.get(&path);
     changes.push(GitChange {
       path,
@@ -432,8 +535,22 @@ pub async fn git_compare_changes(id: String, base: String, target: String) -> Ve
 /* --------------------------------- diff ----------------------------------- */
 
 async fn show_at(cwd: &str, rev: &str, path: &str) -> String {
-  let res = run("git", &["-c", "core.quotepath=false", "show", &format!("{rev}:{path}")], opts(cwd)).await;
-  if res.ok { res.stdout } else { String::new() }
+  let res = run(
+    "git",
+    &[
+      "-c",
+      "core.quotepath=false",
+      "show",
+      &format!("{rev}:{path}"),
+    ],
+    opts(cwd),
+  )
+  .await;
+  if res.ok {
+    res.stdout
+  } else {
+    String::new()
+  }
 }
 
 fn read_working(root: &str, rel_path: &str) -> String {
@@ -446,7 +563,12 @@ fn read_working(root: &str, rel_path: &str) -> String {
   }
 }
 
-pub async fn git_file_diff(id: String, reference: String, path: String, old_path: Option<String>) -> GitFileDiff {
+pub async fn git_file_diff(
+  id: String,
+  reference: String,
+  path: String,
+  old_path: Option<String>,
+) -> GitFileDiff {
   let Some(project) = find_project(&id) else {
     return GitFileDiff {
       path,
@@ -463,7 +585,10 @@ pub async fn git_file_diff(id: String, reference: String, path: String, old_path
   let source = old_path.as_deref().unwrap_or(&path);
 
   let (before, after) = if reference == GIT_WORKING_REF {
-    (show_at(&cwd, "HEAD", source).await, read_working(&cwd, &path))
+    (
+      show_at(&cwd, "HEAD", source).await,
+      read_working(&cwd, &path),
+    )
   } else {
     (
       show_at(&cwd, &format!("{reference}^"), source).await,
@@ -609,7 +734,11 @@ pub async fn git_file_log(id: String, path: String) -> Vec<GitCommitSummary> {
     ],
   )
   .await;
-  if log.ok { parse_log(&log.stdout) } else { vec![] }
+  if log.ok {
+    parse_log(&log.stdout)
+  } else {
+    vec![]
+  }
 }
 
 #[cfg(test)]
@@ -699,7 +828,12 @@ mod tests {
 }
 
 fn revert_err(message: &str) -> RevertResult {
-  RevertResult { ok: false, head: None, no_changes: None, error: Some(message.to_string()) }
+  RevertResult {
+    ok: false,
+    head: None,
+    no_changes: None,
+    error: Some(message.to_string()),
+  }
 }
 
 pub async fn git_revert(id: String, reference: String) -> RevertResult {
@@ -717,7 +851,11 @@ pub async fn git_revert(id: String, reference: String) -> RevertResult {
     return revert_err("This project isn’t tracked by git, so there’s nothing to restore.");
   }
 
-  let target = git(&cwd, &["rev-parse", "--verify", &format!("{reference}^{{commit}}")]).await;
+  let target = git(
+    &cwd,
+    &["rev-parse", "--verify", &format!("{reference}^{{commit}}")],
+  )
+  .await;
   if !target.ok || target.stdout.trim().is_empty() {
     return revert_err("That version no longer exists.");
   }
@@ -747,26 +885,44 @@ pub async fn git_revert(id: String, reference: String) -> RevertResult {
   }
   let orig = orig_res.stdout.trim().to_string();
   if orig == target_sha {
-    return RevertResult { ok: true, head: Some(orig), no_changes: Some(true), error: None };
+    return RevertResult {
+      ok: true,
+      head: Some(orig),
+      no_changes: Some(true),
+      error: None,
+    };
   }
 
   // 2) Make the working tree + index exactly match the target tree…
   let hard = git(&cwd, &["reset", "--hard", &target_sha]).await;
   if !hard.ok {
     let e = hard.stderr.trim();
-    return revert_err(if e.is_empty() { "Could not restore that version." } else { e });
+    return revert_err(if e.is_empty() {
+      "Could not restore that version."
+    } else {
+      e
+    });
   }
   // 3) …then move the branch pointer back so the change becomes a new commit.
   let soft = git(&cwd, &["reset", "--soft", &orig]).await;
   if !soft.ok {
     git(&cwd, &["reset", "--hard", &orig]).await;
     let e = soft.stderr.trim();
-    return revert_err(if e.is_empty() { "Could not restore that version." } else { e });
+    return revert_err(if e.is_empty() {
+      "Could not restore that version."
+    } else {
+      e
+    });
   }
 
   let staged = git(&cwd, &["diff", "--cached", "--quiet"]).await;
   if staged.ok {
-    return RevertResult { ok: true, head: Some(orig), no_changes: Some(true), error: None };
+    return RevertResult {
+      ok: true,
+      head: Some(orig),
+      no_changes: Some(true),
+      error: None,
+    };
   }
 
   let restore_msg = format!("Restore earlier version — {subject}");
@@ -776,14 +932,22 @@ pub async fn git_revert(id: String, reference: String) -> RevertResult {
   if !commit.ok {
     git(&cwd, &["reset", "--hard", &orig]).await;
     let e = commit.stderr.trim();
-    return revert_err(if e.is_empty() { "Could not save the restored version." } else { e });
+    return revert_err(if e.is_empty() {
+      "Could not save the restored version."
+    } else {
+      e
+    });
   }
   let new_head = git(&cwd, &["rev-parse", "HEAD"]).await;
   RevertResult {
     ok: true,
     head: if new_head.ok {
       let h = new_head.stdout.trim().to_string();
-      if h.is_empty() { None } else { Some(h) }
+      if h.is_empty() {
+        None
+      } else {
+        Some(h)
+      }
     } else {
       None
     },
@@ -815,7 +979,11 @@ async fn git_net(cwd: &str, args: &[&str]) -> Git {
   let mut full: Vec<&str> = vec!["-c", "core.quotepath=false"];
   full.extend_from_slice(args);
   let res = run("git", &full, net_opts(cwd)).await;
-  Git { ok: res.ok, stdout: res.stdout, stderr: res.stderr }
+  Git {
+    ok: res.ok,
+    stdout: res.stdout,
+    stderr: res.stderr,
+  }
 }
 
 /// Parse `git rev-list --left-right --count @{u}...HEAD` into `(behind, ahead)`.
@@ -841,7 +1009,11 @@ async fn current_branch(cwd: &str) -> Option<String> {
 
 /// True when the current branch has an upstream/tracking branch configured.
 async fn has_upstream(cwd: &str) -> bool {
-  let u = git(cwd, &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"]).await;
+  let u = git(
+    cwd,
+    &["rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}"],
+  )
+  .await;
   u.ok && !u.stdout.trim().is_empty()
 }
 
@@ -868,8 +1040,11 @@ async fn compute_remote_status(cwd: &str, do_fetch: bool) -> GitRemoteStatus {
     let fetched = git_net(cwd, &["fetch", "--no-tags", "--quiet"]).await;
     if !fetched.ok {
       let e = fetched.stderr.trim();
-      out.fetch_error =
-        Some(if e.is_empty() { "Could not reach the remote.".to_string() } else { e.to_string() });
+      out.fetch_error = Some(if e.is_empty() {
+        "Could not reach the remote.".to_string()
+      } else {
+        e.to_string()
+      });
     }
   }
 
@@ -908,25 +1083,48 @@ pub async fn git_divergence(id: String) -> GitRemoteStatus {
 }
 
 fn no_repo_status() -> GitStatus {
-  GitStatus { is_repo: false, branch: None, changed_count: 0, no_commits: None }
+  GitStatus {
+    is_repo: false,
+    branch: None,
+    changed_count: 0,
+    no_commits: None,
+  }
 }
 
 fn sync_err(message: &str, status: GitStatus, remote: GitRemoteStatus) -> GitSyncResult {
-  GitSyncResult { ok: false, error: Some(message.to_string()), conflict: None, status, remote }
+  GitSyncResult {
+    ok: false,
+    error: Some(message.to_string()),
+    conflict: None,
+    status,
+    remote,
+  }
 }
 
 pub async fn git_pull(id: String) -> GitSyncResult {
   let Some(project) = find_project(&id) else {
-    return sync_err("Project folder not found.", no_repo_status(), GitRemoteStatus::default());
+    return sync_err(
+      "Project folder not found.",
+      no_repo_status(),
+      GitRemoteStatus::default(),
+    );
   };
   if !Path::new(&project.path).exists() {
-    return sync_err("Project folder not found.", no_repo_status(), GitRemoteStatus::default());
+    return sync_err(
+      "Project folder not found.",
+      no_repo_status(),
+      GitRemoteStatus::default(),
+    );
   }
   let cwd = project.path.clone();
 
   let inside = git(&cwd, &["rev-parse", "--is-inside-work-tree"]).await;
   if !inside.ok || inside.stdout.trim() != "true" {
-    return sync_err("This project isn’t tracked by git.", git_status(id.clone()).await, GitRemoteStatus::default());
+    return sync_err(
+      "This project isn’t tracked by git.",
+      git_status(id.clone()).await,
+      GitRemoteStatus::default(),
+    );
   }
   if !has_upstream(&cwd).await {
     return sync_err(
@@ -957,7 +1155,11 @@ pub async fn git_pull(id: String) -> GitSyncResult {
   if !fetched.ok {
     let e = fetched.stderr.trim();
     return sync_err(
-      if e.is_empty() { "Could not reach the remote." } else { e },
+      if e.is_empty() {
+        "Could not reach the remote."
+      } else {
+        e
+      },
       git_status(id.clone()).await,
       compute_remote_status(&cwd, false).await,
     );
@@ -978,7 +1180,8 @@ pub async fn git_pull(id: String) -> GitSyncResult {
       return GitSyncResult {
         ok: false,
         error: Some(
-          "Your changes and the latest changes overlap and couldn’t be combined automatically.".to_string(),
+          "Your changes and the latest changes overlap and couldn’t be combined automatically."
+            .to_string(),
         ),
         conflict: Some(true),
         status: git_status(id.clone()).await,
@@ -998,16 +1201,28 @@ pub async fn git_pull(id: String) -> GitSyncResult {
 
 pub async fn git_push(id: String) -> GitSyncResult {
   let Some(project) = find_project(&id) else {
-    return sync_err("Project folder not found.", no_repo_status(), GitRemoteStatus::default());
+    return sync_err(
+      "Project folder not found.",
+      no_repo_status(),
+      GitRemoteStatus::default(),
+    );
   };
   if !Path::new(&project.path).exists() {
-    return sync_err("Project folder not found.", no_repo_status(), GitRemoteStatus::default());
+    return sync_err(
+      "Project folder not found.",
+      no_repo_status(),
+      GitRemoteStatus::default(),
+    );
   }
   let cwd = project.path.clone();
 
   let inside = git(&cwd, &["rev-parse", "--is-inside-work-tree"]).await;
   if !inside.ok || inside.stdout.trim() != "true" {
-    return sync_err("This project isn’t tracked by git.", git_status(id.clone()).await, GitRemoteStatus::default());
+    return sync_err(
+      "This project isn’t tracked by git.",
+      git_status(id.clone()).await,
+      GitRemoteStatus::default(),
+    );
   }
   // Per product decision: only push when an upstream already exists.
   if !has_upstream(&cwd).await {
@@ -1021,12 +1236,15 @@ pub async fn git_push(id: String) -> GitSyncResult {
   let pushed = git_net(&cwd, &["push"]).await;
   if !pushed.ok {
     let combined = format!("{}\n{}", pushed.stdout, pushed.stderr);
-    let rejected = Regex::new(r"(?i)rejected|non-fast-forward|fetch first").unwrap().is_match(&combined);
+    let rejected = Regex::new(r"(?i)rejected|non-fast-forward|fetch first")
+      .unwrap()
+      .is_match(&combined);
     let e = combined.trim().to_string();
     return GitSyncResult {
       ok: false,
       error: Some(if rejected {
-        "The remote has changes you don’t have yet. Get the latest changes first, then push again.".to_string()
+        "The remote has changes you don’t have yet. Get the latest changes first, then push again."
+          .to_string()
       } else if e.is_empty() {
         "Could not push your changes.".to_string()
       } else {

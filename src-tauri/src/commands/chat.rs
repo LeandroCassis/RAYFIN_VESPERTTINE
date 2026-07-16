@@ -14,8 +14,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use github_copilot_sdk::handler::{ExitPlanModeHandler, ExitPlanModeResult, UserInputHandler, UserInputResponse};
-use github_copilot_sdk::rpc::{ModeSetRequest, PlanSqlTodoDependency, PlanSqlTodosRow, PlanUpdateRequest};
+use github_copilot_sdk::handler::{
+  ExitPlanModeHandler, ExitPlanModeResult, UserInputHandler, UserInputResponse,
+};
+use github_copilot_sdk::rpc::{
+  ModeSetRequest, PlanSqlTodoDependency, PlanSqlTodosRow, PlanUpdateRequest,
+};
 use github_copilot_sdk::session::Session;
 use github_copilot_sdk::session_events::SessionMode;
 use github_copilot_sdk::subscription::RecvErrorKind;
@@ -35,8 +39,8 @@ use crate::services::history;
 use crate::services::store;
 use crate::state::{AppState, TurnRoute};
 use crate::types::{
-  ChatEvent, ChatMessage, ChatOptions, ChatPlanDependency, ChatPlanTodo, ChatToolCall, ChatToolState, ChatTurnResult,
-  CopilotModel, SteerResult,
+  ChatEvent, ChatMessage, ChatOptions, ChatPlanDependency, ChatPlanTodo, ChatToolCall,
+  ChatToolState, ChatTurnResult, CopilotModel, SteerResult,
 };
 
 const MAX_TOOL_OUTPUT: usize = 4000;
@@ -101,7 +105,12 @@ fn normalize_todos(
   let todos = rows
     .into_iter()
     .filter_map(|row| {
-      let id = row.id.as_deref().map(str::trim).filter(|s| !s.is_empty())?.to_string();
+      let id = row
+        .id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())?
+        .to_string();
       let description = row
         .description
         .as_deref()
@@ -117,12 +126,20 @@ fn normalize_todos(
         .or_else(|| description.clone())
         .unwrap_or_else(|| id.clone());
       let status = normalize_status(row.status.as_deref());
-      Some(ChatPlanTodo { id, title, description, status })
+      Some(ChatPlanTodo {
+        id,
+        title,
+        description,
+        status,
+      })
     })
     .collect();
   let dependencies = deps
     .into_iter()
-    .map(|d| ChatPlanDependency { todo_id: d.todo_id, depends_on: d.depends_on })
+    .map(|d| ChatPlanDependency {
+      todo_id: d.todo_id,
+      depends_on: d.depends_on,
+    })
     .collect();
   (todos, dependencies)
 }
@@ -156,10 +173,23 @@ fn classify_plan_event(event_type: &str, plan_context: bool) -> PlanStructuralEv
 /// snapshot as a `plan-todos` chat event. Best-effort: a read failure is logged
 /// and swallowed rather than ending the turn — the next `todos_changed` retries.
 async fn emit_plan_todos(session: &Session, app: &AppHandle, project_id: &str, turn_id: &str) {
-  match session.rpc().plan().read_sql_todos_with_dependencies().await {
+  match session
+    .rpc()
+    .plan()
+    .read_sql_todos_with_dependencies()
+    .await
+  {
     Ok(result) => {
       let (todos, dependencies) = normalize_todos(result.rows, result.dependencies);
-      emit_chat_event(app, project_id, turn_id, ChatEvent::PlanTodos { todos, dependencies });
+      emit_chat_event(
+        app,
+        project_id,
+        turn_id,
+        ChatEvent::PlanTodos {
+          todos,
+          dependencies,
+        },
+      );
     }
     Err(e) => log::warn!("failed to read session plan todos: {e}"),
   }
@@ -168,20 +198,37 @@ async fn emit_plan_todos(session: &Session, app: &AppHandle, project_id: &str, t
 /// Read (or, for a delete, skip reading) the session plan file and emit its
 /// content as a `plan-content` chat event. Best-effort: a read failure is
 /// logged and swallowed rather than ending the turn.
-async fn emit_plan_content(session: &Session, app: &AppHandle, project_id: &str, turn_id: &str, operation: &str) {
+async fn emit_plan_content(
+  session: &Session,
+  app: &AppHandle,
+  project_id: &str,
+  turn_id: &str,
+  operation: &str,
+) {
   if operation == "delete" {
     emit_chat_event(
       app,
       project_id,
       turn_id,
-      ChatEvent::PlanContent { content: String::new(), operation: operation.to_string() },
+      ChatEvent::PlanContent {
+        content: String::new(),
+        operation: operation.to_string(),
+      },
     );
     return;
   }
   match session.rpc().plan().read().await {
     Ok(result) => {
       let content = result.content.unwrap_or_default();
-      emit_chat_event(app, project_id, turn_id, ChatEvent::PlanContent { content, operation: operation.to_string() });
+      emit_chat_event(
+        app,
+        project_id,
+        turn_id,
+        ChatEvent::PlanContent {
+          content,
+          operation: operation.to_string(),
+        },
+      );
     }
     Err(e) => log::warn!("failed to read session plan file: {e}"),
   }
@@ -317,7 +364,9 @@ fn ensure_separator(id: &str, sink: &mut dyn FnMut(ChatEvent), ctx: &mut TurnCtx
     return;
   }
   if ctx.cur_msg.is_some() {
-    sink(ChatEvent::Delta { text: "\n\n".to_string() });
+    sink(ChatEvent::Delta {
+      text: "\n\n".to_string(),
+    });
   }
   ctx.cur_msg = Some(id.to_string());
 }
@@ -326,22 +375,40 @@ fn ensure_separator(id: &str, sink: &mut dyn FnMut(ChatEvent), ctx: &mut TurnCtx
 /// ChatEvents pushed into `sink`, updating the turn accumulator. Unlike the old
 /// one-shot `-p` JSONL, server events carry `data` as the inner object directly
 /// (no `{type,data}` wrapper) and end the turn with `session.idle`.
-fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ctx: &mut TurnCtx) -> Flow {
+fn map_event(
+  event_type: &str,
+  data: &Value,
+  sink: &mut dyn FnMut(ChatEvent),
+  ctx: &mut TurnCtx,
+) -> Flow {
   match event_type {
     "assistant.message_delta" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-      let text = data.get("deltaContent").and_then(|v| v.as_str()).unwrap_or("");
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      let text = data
+        .get("deltaContent")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
       if text.is_empty() {
         return Flow::Continue;
       }
       ctx.saw_activity = true;
       ensure_separator(&id, sink, ctx);
       *ctx.streamed.entry(id).or_insert(0) += text.chars().count();
-      sink(ChatEvent::Delta { text: text.to_string() });
+      sink(ChatEvent::Delta {
+        text: text.to_string(),
+      });
       ctx.push_response(text);
     }
     "assistant.message" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
       let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
       let total = content.chars().count();
       let have = *ctx.streamed.get(&id).unwrap_or(&0);
@@ -354,10 +421,17 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
       }
     }
     "tool.execution_start" => {
-      let tool_name = data.get("toolName").and_then(|v| v.as_str()).unwrap_or("tool").to_string();
+      let tool_name = data
+        .get("toolName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("tool")
+        .to_string();
       let args = data.get("arguments");
       let title = tool_title(&tool_name, args);
-      let command = args.and_then(|a| a.get("command")).and_then(|v| v.as_str()).unwrap_or("");
+      let command = args
+        .and_then(|a| a.get("command"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
       if RAYFIN_UP_RE.is_match(command) {
         ctx.ran_deploy = true;
       }
@@ -379,19 +453,35 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
       });
     }
     "tool.execution_complete" => {
-      let id = data.get("toolCallId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-      let success = data.get("success").and_then(|v| v.as_bool()).unwrap_or(false);
+      let id = data
+        .get("toolCallId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      let success = data
+        .get("success")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
       // Success carries `result.content`; failure carries `error.message`.
       let output = data
         .get("result")
         .and_then(|r| r.get("content"))
         .and_then(|v| v.as_str())
-        .or_else(|| data.get("error").and_then(|e| e.get("message")).and_then(|v| v.as_str()))
+        .or_else(|| {
+          data
+            .get("error")
+            .and_then(|e| e.get("message"))
+            .and_then(|v| v.as_str())
+        })
         .map(|c| truncate(c, MAX_TOOL_OUTPUT));
       ctx.tool_end(&id, success, output.as_deref());
       sink(ChatEvent::ToolEnd {
         id,
-        state: if success { ChatToolState::Success } else { ChatToolState::Error },
+        state: if success {
+          ChatToolState::Success
+        } else {
+          ChatToolState::Error
+        },
         output,
       });
     }
@@ -411,13 +501,19 @@ fn map_event(event_type: &str, data: &Value, sink: &mut dyn FnMut(ChatEvent), ct
       // The plan prompt was answered (here or by another client) — let the
       // renderer dismiss its approval card.
       if let Some(request_id) = data.get("requestId").and_then(|v| v.as_str()) {
-        sink(ChatEvent::PlanResolved { request_id: request_id.to_string() });
+        sink(ChatEvent::PlanResolved {
+          request_id: request_id.to_string(),
+        });
       }
     }
     "session.mode_changed" => {
       // Purely a data-mapping event (no RPC needed), so it's handled inline
       // here rather than in the drain loop's async plan_changed/todos_changed path.
-      if let Some(mode) = data.get("newMode").and_then(|v| v.as_str()).and_then(map_sdk_mode) {
+      if let Some(mode) = data
+        .get("newMode")
+        .and_then(|v| v.as_str())
+        .and_then(map_sdk_mode)
+      {
         sink(ChatEvent::ModeChanged { mode });
       }
     }
@@ -460,7 +556,10 @@ fn resolve_context(project_id: &str) -> Option<ProjectContext> {
       sid
     }
   };
-  Some(ProjectContext { cwd: project.path, session_id })
+  Some(ProjectContext {
+    cwd: project.path,
+    session_id,
+  })
 }
 
 /// Build and persist a diagnostics record for one completed turn. Best-effort;
@@ -513,7 +612,11 @@ fn record_turn_diagnostics(
         output: t.output.clone(),
       })
       .collect(),
-    prompt: if full { Some(diagnostics::clip(prompt)) } else { None },
+    prompt: if full {
+      Some(diagnostics::clip(prompt))
+    } else {
+      None
+    },
     response: if full {
       ctx.response.as_deref().map(diagnostics::clip)
     } else {
@@ -533,7 +636,16 @@ pub async fn chat_send(
   attachments: Option<Vec<String>>,
   mode: Option<String>,
 ) -> Result<ChatTurnResult, String> {
-  run_turn(app, state.inner(), project_id, turn_id, text, attachments, mode).await
+  run_turn(
+    app,
+    state.inner(),
+    project_id,
+    turn_id,
+    text,
+    attachments,
+    mode,
+  )
+  .await
 }
 
 /// The turn engine behind `chat_send`. Drives one Copilot invocation and streams
@@ -551,7 +663,14 @@ pub(crate) async fn run_turn(
   let attachments = attachments.unwrap_or_default();
 
   let Some(project) = store::find_project(&project_id) else {
-    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: "Project not found.".into() });
+    emit_chat_event(
+      &app,
+      &project_id,
+      &turn_id,
+      ChatEvent::Error {
+        text: "Project not found.".into(),
+      },
+    );
     screenshot::cleanup(&attachments);
     return Ok(ChatTurnResult {
       ok: false,
@@ -562,7 +681,14 @@ pub(crate) async fn run_turn(
   };
 
   let Some(ctx_info) = resolve_context(&project_id) else {
-    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: "Project not found.".into() });
+    emit_chat_event(
+      &app,
+      &project_id,
+      &turn_id,
+      ChatEvent::Error {
+        text: "Project not found.".into(),
+      },
+    );
     screenshot::cleanup(&attachments);
     return Ok(ChatTurnResult {
       ok: false,
@@ -578,7 +704,9 @@ pub(crate) async fn run_turn(
       &app,
       &project_id,
       &turn_id,
-      ChatEvent::Error { text: "A message is already being processed for this project.".into() },
+      ChatEvent::Error {
+        text: "A message is already being processed for this project.".into(),
+      },
     );
     return Ok(ChatTurnResult {
       ok: false,
@@ -626,7 +754,12 @@ pub(crate) async fn run_turn(
   {
     Ok(s) => s,
     Err(e) => {
-      emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: e.clone() });
+      emit_chat_event(
+        &app,
+        &project_id,
+        &turn_id,
+        ChatEvent::Error { text: e.clone() },
+      );
       screenshot::cleanup(&attachments);
       state.end_chat(&project_id);
       let empty = TurnCtx::new(full);
@@ -647,7 +780,12 @@ pub(crate) async fn run_turn(
         Some(e.clone()),
         &empty,
       );
-      return Ok(ChatTurnResult { ok: false, error: Some(e), files_modified: vec![], ran_deploy: false });
+      return Ok(ChatTurnResult {
+        ok: false,
+        error: Some(e),
+        files_modified: vec![],
+        ran_deploy: false,
+      });
     }
   };
 
@@ -655,7 +793,14 @@ pub(crate) async fn run_turn(
   // sending. Mode is sticky on the session, so this also handles switching modes
   // between turns. A failure here is non-fatal — fall back to the prior mode.
   let session_mode = session_mode(&mode);
-  if let Err(e) = session.rpc().mode().set(ModeSetRequest { mode: session_mode.clone() }).await {
+  if let Err(e) = session
+    .rpc()
+    .mode()
+    .set(ModeSetRequest {
+      mode: session_mode.clone(),
+    })
+    .await
+  {
     log::warn!("failed to set session mode {session_mode:?}: {e}");
   }
 
@@ -670,13 +815,21 @@ pub(crate) async fn run_turn(
   let plan_context = mode.as_deref() == Some("plan");
   state.plan.set_route(
     &session_key,
-    TurnRoute { project_id: project_id.clone(), turn_id: turn_id.clone(), plan_context },
+    TurnRoute {
+      project_id: project_id.clone(),
+      turn_id: turn_id.clone(),
+      plan_context,
+    },
   );
 
   // File attachments → typed SDK attachments (built once, cloned per attempt).
   let attach: Vec<Attachment> = attachments
     .iter()
-    .map(|a| Attachment::File { path: PathBuf::from(a), display_name: None, line_range: None })
+    .map(|a| Attachment::File {
+      path: PathBuf::from(a),
+      display_name: None,
+      line_range: None,
+    })
     .collect();
 
   enum DrainEnd {
@@ -795,7 +948,11 @@ pub(crate) async fn run_turn(
       && !timed_out
       && !ctx.saw_activity
       && attempt < MAX_ATTEMPTS
-      && ctx.errored.as_deref().map(|m| TRANSIENT_RE.is_match(m)).unwrap_or(false);
+      && ctx
+        .errored
+        .as_deref()
+        .map(|m| TRANSIENT_RE.is_match(m))
+        .unwrap_or(false);
     if !transient {
       break;
     }
@@ -803,7 +960,13 @@ pub(crate) async fn run_turn(
       &app,
       &project_id,
       &turn_id,
-      ChatEvent::Notice { text: format!("Copilot hiccup — retrying ({}/{})…", attempt, MAX_ATTEMPTS - 1) },
+      ChatEvent::Notice {
+        text: format!(
+          "Copilot hiccup — retrying ({}/{})…",
+          attempt,
+          MAX_ATTEMPTS - 1
+        ),
+      },
     );
     tokio::time::sleep(Duration::from_millis(attempt as u64 * 1000)).await;
     attempt += 1;
@@ -851,14 +1014,28 @@ pub(crate) async fn run_turn(
   );
 
   if let Some(e) = send_error {
-    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: e.clone() });
     emit_chat_event(
       &app,
       &project_id,
       &turn_id,
-      ChatEvent::Result { ok: false, files_modified: vec![], ran_deploy: ctx.ran_deploy },
+      ChatEvent::Error { text: e.clone() },
     );
-    return Ok(ChatTurnResult { ok: false, error: Some(e), files_modified: vec![], ran_deploy: ctx.ran_deploy });
+    emit_chat_event(
+      &app,
+      &project_id,
+      &turn_id,
+      ChatEvent::Result {
+        ok: false,
+        files_modified: vec![],
+        ran_deploy: ctx.ran_deploy,
+      },
+    );
+    return Ok(ChatTurnResult {
+      ok: false,
+      error: Some(e),
+      files_modified: vec![],
+      ran_deploy: ctx.ran_deploy,
+    });
   }
 
   let ok = ctx.saw_result && ctx.errored.is_none() && !cancelled && !timed_out;
@@ -869,18 +1046,31 @@ pub(crate) async fn run_turn(
     } else {
       "Copilot ended unexpectedly.".to_string()
     };
-    emit_chat_event(&app, &project_id, &turn_id, ChatEvent::Error { text: detail });
+    emit_chat_event(
+      &app,
+      &project_id,
+      &turn_id,
+      ChatEvent::Error { text: detail },
+    );
   }
 
   emit_chat_event(
     &app,
     &project_id,
     &turn_id,
-    ChatEvent::Result { ok, files_modified: ctx.files_modified.clone(), ran_deploy: ctx.ran_deploy },
+    ChatEvent::Result {
+      ok,
+      files_modified: ctx.files_modified.clone(),
+      ran_deploy: ctx.ran_deploy,
+    },
   );
   Ok(ChatTurnResult {
     ok,
-    error: if ok { None } else { Some("Turn failed.".into()) },
+    error: if ok {
+      None
+    } else {
+      Some("Turn failed.".into())
+    },
     files_modified: ctx.files_modified,
     ran_deploy: ctx.ran_deploy,
   })
@@ -924,11 +1114,22 @@ pub async fn chat_steer(
   // feedback that asks it to revise the plan instead of an immediate interjection.
   if let Some(request_id) = state.plan.pending_plan_request(&ctx_info.session_id) {
     if let Some(turn) = &active_turn {
-      emit_chat_event(&app, &project_id, turn, ChatEvent::PlanResolved { request_id: request_id.clone() });
+      emit_chat_event(
+        &app,
+        &project_id,
+        turn,
+        ChatEvent::PlanResolved {
+          request_id: request_id.clone(),
+        },
+      );
     }
     state.plan.resolve_plan(
       &request_id,
-      ExitPlanModeResult { approved: false, selected_action: None, feedback: Some(text) },
+      ExitPlanModeResult {
+        approved: false,
+        selected_action: None,
+        feedback: Some(text),
+      },
     );
     screenshot::cleanup(&attachments);
     return Ok(SteerResult { steered: true });
@@ -943,16 +1144,23 @@ pub async fn chat_steer(
       // Mirror `chat_resolve_question`: only emit `plan-question-resolved` once
       // the pending oneshot has actually resolved, so a dropped receiver (the
       // turn ending in the same race) can't render an answered card.
-      let resolved = state
-        .plan
-        .resolve_question(&request_id, Some(UserInputResponse { answer: text.clone(), was_freeform: true }));
+      let resolved = state.plan.resolve_question(
+        &request_id,
+        Some(UserInputResponse {
+          answer: text.clone(),
+          was_freeform: true,
+        }),
+      );
       if resolved {
         if let Some(turn) = &active_turn {
           emit_chat_event(
             &app,
             &project_id,
             turn,
-            ChatEvent::PlanQuestionResolved { request_id: request_id.clone(), answer: Some(text.clone()) },
+            ChatEvent::PlanQuestionResolved {
+              request_id: request_id.clone(),
+              answer: Some(text.clone()),
+            },
           );
         }
       }
@@ -973,7 +1181,11 @@ pub async fn chat_steer(
 
   let attach: Vec<Attachment> = attachments
     .iter()
-    .map(|a| Attachment::File { path: PathBuf::from(a), display_name: None, line_range: None })
+    .map(|a| Attachment::File {
+      path: PathBuf::from(a),
+      display_name: None,
+      line_range: None,
+    })
     .collect();
   let mut opts = MessageOptions::new(text).with_mode(DeliveryMode::Immediate);
   if !attach.is_empty() {
@@ -981,7 +1193,14 @@ pub async fn chat_steer(
   }
   if let Err(e) = session.send(opts).await {
     if let Some(turn) = &active_turn {
-      emit_chat_event(&app, &project_id, turn, ChatEvent::Error { text: format!("Couldn't interject: {e}") });
+      emit_chat_event(
+        &app,
+        &project_id,
+        turn,
+        ChatEvent::Error {
+          text: format!("Couldn't interject: {e}"),
+        },
+      );
     }
     screenshot::cleanup(&attachments);
     // Handled (with an error shown) — don't start a competing turn.
@@ -1021,7 +1240,13 @@ pub fn chat_history(project_id: String) -> Vec<ChatMessage> {
 fn sanitize_export_name(input: &str) -> String {
   let mapped: String = input
     .chars()
-    .map(|c| if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ' { c } else { '-' })
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == ' ' {
+        c
+      } else {
+        '-'
+      }
+    })
     .collect();
   let trimmed = mapped.trim().trim_matches('-').trim();
   if trimmed.is_empty() {
@@ -1050,7 +1275,10 @@ pub async fn chat_resolve_plan(
   plan_content: String,
   feedback: Option<String>,
 ) -> Result<(), String> {
-  let owner = state.plan.plan_owner(&request_id).ok_or_else(|| "No pending plan to resolve.".to_string())?;
+  let owner = state
+    .plan
+    .plan_owner(&request_id)
+    .ok_or_else(|| "No pending plan to resolve.".to_string())?;
   if owner.project_id != project_id {
     return Err("That plan request doesn't belong to this project.".into());
   }
@@ -1062,15 +1290,23 @@ pub async fn chat_resolve_plan(
   session
     .rpc()
     .plan()
-    .update(PlanUpdateRequest { content: plan_content })
+    .update(PlanUpdateRequest {
+      content: plan_content,
+    })
     .await
     .map_err(|e| format!("Failed to update the plan: {e}"))?;
 
   let result = match action.as_str() {
-    "interactive" | "autopilot" | "autopilot_fleet" | "exit_only" => {
-      ExitPlanModeResult { approved: true, selected_action: Some(action), feedback }
-    }
-    _ => ExitPlanModeResult { approved: false, selected_action: None, feedback },
+    "interactive" | "autopilot" | "autopilot_fleet" | "exit_only" => ExitPlanModeResult {
+      approved: true,
+      selected_action: Some(action),
+      feedback,
+    },
+    _ => ExitPlanModeResult {
+      approved: false,
+      selected_action: None,
+      feedback,
+    },
   };
   if state.plan.resolve_plan(&request_id, result) {
     Ok(())
@@ -1104,17 +1340,23 @@ pub fn chat_resolve_question(
   if was_freeform && !owner.allow_freeform {
     return Err("This question doesn't accept a free-form answer.".into());
   }
-  if !state
-    .plan
-    .resolve_question(&request_id, Some(UserInputResponse { answer: trimmed.to_string(), was_freeform }))
-  {
+  if !state.plan.resolve_question(
+    &request_id,
+    Some(UserInputResponse {
+      answer: trimmed.to_string(),
+      was_freeform,
+    }),
+  ) {
     return Err("No pending question to resolve.".into());
   }
   emit_chat_event(
     &app,
     &owner.project_id,
     &owner.turn_id,
-    ChatEvent::PlanQuestionResolved { request_id: request_id.clone(), answer: Some(trimmed.to_string()) },
+    ChatEvent::PlanQuestionResolved {
+      request_id: request_id.clone(),
+      answer: Some(trimmed.to_string()),
+    },
   );
   Ok(())
 }
@@ -1128,7 +1370,11 @@ pub fn chat_save_history(project_id: String, messages: Vec<ChatMessage>) {
 /// Returns `Ok(None)` when the user cancels; writes UTF-8 to disk only after a
 /// destination is chosen — the project tree is never touched automatically.
 #[tauri::command]
-pub async fn chat_export_plan(app: AppHandle, suggested_name: String, content: String) -> Result<Option<String>, String> {
+pub async fn chat_export_plan(
+  app: AppHandle,
+  suggested_name: String,
+  content: String,
+) -> Result<Option<String>, String> {
   let file_name = format!("{}.md", sanitize_export_name(&suggested_name));
   let (tx, rx) = tokio::sync::oneshot::channel();
   app
@@ -1151,7 +1397,12 @@ pub async fn chat_export_plan(app: AppHandle, suggested_name: String, content: S
 
 #[tauri::command]
 pub fn chat_set_options(project_id: String, options: ChatOptions) {
-  let model = options.model.as_deref().map(str::trim).filter(|m| !m.is_empty()).map(|m| m.to_string());
+  let model = options
+    .model
+    .as_deref()
+    .map(str::trim)
+    .filter(|m| !m.is_empty())
+    .map(|m| m.to_string());
   store::mutate_project(&project_id, |p| {
     p.model = model;
     p.effort = options.effort.clone();
@@ -1185,18 +1436,36 @@ mod tests {
     let mut ctx = TurnCtx::new(false);
     let events = collect(
       &[
-        ("assistant.message_delta", json!({"messageId":"m1","deltaContent":"Hello"})),
-        ("session.info", json!({"infoType":"file_created","message":"a.ts"})),
-        ("session.info", json!({"infoType":"file_edited","message":"b.ts"})),
+        (
+          "assistant.message_delta",
+          json!({"messageId":"m1","deltaContent":"Hello"}),
+        ),
+        (
+          "session.info",
+          json!({"infoType":"file_created","message":"a.ts"}),
+        ),
+        (
+          "session.info",
+          json!({"infoType":"file_edited","message":"b.ts"}),
+        ),
         // Duplicate path is ignored.
-        ("session.info", json!({"infoType":"file_created","message":"a.ts"})),
+        (
+          "session.info",
+          json!({"infoType":"file_created","message":"a.ts"}),
+        ),
         // Non-file info is ignored.
-        ("session.info", json!({"infoType":"thinking","message":"hmm"})),
+        (
+          "session.info",
+          json!({"infoType":"thinking","message":"hmm"}),
+        ),
       ],
       &mut ctx,
     );
     assert!(ctx.saw_activity);
-    assert_eq!(ctx.files_modified, vec!["a.ts".to_string(), "b.ts".to_string()]);
+    assert_eq!(
+      ctx.files_modified,
+      vec!["a.ts".to_string(), "b.ts".to_string()]
+    );
     assert_eq!(events.len(), 1);
     match &events[0] {
       ChatEvent::Delta { text } => assert_eq!(text, "Hello"),
@@ -1207,7 +1476,12 @@ mod tests {
   #[test]
   fn session_idle_marks_result_and_stops() {
     let mut ctx = TurnCtx::new(false);
-    let flow = map_event("session.idle", &json!({}), &mut |_e: ChatEvent| {}, &mut ctx);
+    let flow = map_event(
+      "session.idle",
+      &json!({}),
+      &mut |_e: ChatEvent| {},
+      &mut ctx,
+    );
     assert!(matches!(flow, Flow::Stop));
     assert!(ctx.saw_result);
   }
@@ -1218,7 +1492,12 @@ mod tests {
     let mut events = vec![];
     let flow = {
       let mut sink = |e: ChatEvent| events.push(e);
-      map_event("session.error", &json!({"message":"rate limit exceeded"}), &mut sink, &mut ctx)
+      map_event(
+        "session.error",
+        &json!({"message":"rate limit exceeded"}),
+        &mut sink,
+        &mut ctx,
+      )
     };
     assert!(matches!(flow, Flow::Stop));
     assert_eq!(ctx.errored.as_deref(), Some("rate limit exceeded"));
@@ -1235,8 +1514,14 @@ mod tests {
     // 5 chars already streamed as a delta; the full message adds " world".
     let events = collect(
       &[
-        ("assistant.message_delta", json!({"messageId":"m1","deltaContent":"Hello"})),
-        ("assistant.message", json!({"messageId":"m1","content":"Hello world"})),
+        (
+          "assistant.message_delta",
+          json!({"messageId":"m1","deltaContent":"Hello"}),
+        ),
+        (
+          "assistant.message",
+          json!({"messageId":"m1","content":"Hello world"}),
+        ),
       ],
       &mut ctx,
     );
@@ -1254,8 +1539,14 @@ mod tests {
     // paragraphs, not concatenated ("First thought.Second thought.").
     let events = collect(
       &[
-        ("assistant.message", json!({"messageId":"m1","content":"First thought."})),
-        ("assistant.message", json!({"messageId":"m2","content":"Second thought."})),
+        (
+          "assistant.message",
+          json!({"messageId":"m1","content":"First thought."}),
+        ),
+        (
+          "assistant.message",
+          json!({"messageId":"m2","content":"Second thought."}),
+        ),
       ],
       &mut ctx,
     );
@@ -1275,8 +1566,14 @@ mod tests {
     // Multiple deltas for the same messageId stream as one continuous paragraph.
     let events = collect(
       &[
-        ("assistant.message_delta", json!({"messageId":"m1","deltaContent":"Hel"})),
-        ("assistant.message_delta", json!({"messageId":"m1","deltaContent":"lo"})),
+        (
+          "assistant.message_delta",
+          json!({"messageId":"m1","deltaContent":"Hel"}),
+        ),
+        (
+          "assistant.message_delta",
+          json!({"messageId":"m1","deltaContent":"lo"}),
+        ),
       ],
       &mut ctx,
     );
@@ -1373,23 +1670,47 @@ mod tests {
   #[test]
   fn classify_plan_event_bridges_structural_events_only_in_plan_context() {
     // In a Plan-mode turn, both structural events are bridged.
-    assert_eq!(classify_plan_event("session.todos_changed", true), PlanStructuralEvent::TodosChanged);
-    assert_eq!(classify_plan_event("session.plan_changed", true), PlanStructuralEvent::PlanChanged);
+    assert_eq!(
+      classify_plan_event("session.todos_changed", true),
+      PlanStructuralEvent::TodosChanged
+    );
+    assert_eq!(
+      classify_plan_event("session.plan_changed", true),
+      PlanStructuralEvent::PlanChanged
+    );
     // In an ordinary Agent/Autopilot turn, the same events are general SDK
     // signals (not exclusive to Plan mode) and must NOT trigger an RPC
     // read/emit — they fall through to `Other` (→ `map_event`, which ignores
     // them) instead.
-    assert_eq!(classify_plan_event("session.todos_changed", false), PlanStructuralEvent::Other);
-    assert_eq!(classify_plan_event("session.plan_changed", false), PlanStructuralEvent::Other);
+    assert_eq!(
+      classify_plan_event("session.todos_changed", false),
+      PlanStructuralEvent::Other
+    );
+    assert_eq!(
+      classify_plan_event("session.plan_changed", false),
+      PlanStructuralEvent::Other
+    );
     // Unrelated event types are always `Other`, regardless of plan_context.
-    assert_eq!(classify_plan_event("session.idle", true), PlanStructuralEvent::Other);
-    assert_eq!(classify_plan_event("session.idle", false), PlanStructuralEvent::Other);
+    assert_eq!(
+      classify_plan_event("session.idle", true),
+      PlanStructuralEvent::Other
+    );
+    assert_eq!(
+      classify_plan_event("session.idle", false),
+      PlanStructuralEvent::Other
+    );
   }
 
   #[test]
   fn mode_changed_event_maps_new_mode_to_chat_event() {
     let mut ctx = TurnCtx::new(false);
-    let events = collect(&[("session.mode_changed", json!({"newMode":"plan","previousMode":"interactive"}))], &mut ctx);
+    let events = collect(
+      &[(
+        "session.mode_changed",
+        json!({"newMode":"plan","previousMode":"interactive"}),
+      )],
+      &mut ctx,
+    );
     assert_eq!(events.len(), 1);
     match &events[0] {
       ChatEvent::ModeChanged { mode } => assert_eq!(mode, "plan"),
@@ -1400,7 +1721,10 @@ mod tests {
   #[test]
   fn mode_changed_event_drops_unknown_mode() {
     let mut ctx = TurnCtx::new(false);
-    let events = collect(&[("session.mode_changed", json!({"newMode":"mystery"}))], &mut ctx);
+    let events = collect(
+      &[("session.mode_changed", json!({"newMode":"mystery"}))],
+      &mut ctx,
+    );
     assert!(events.is_empty());
   }
 
@@ -1427,8 +1751,18 @@ mod tests {
         description: None,
         status: Some("done".into()),
       },
-      PlanSqlTodosRow { id: None, title: Some("orphaned".into()), description: None, status: None },
-      PlanSqlTodosRow { id: Some("  ".into()), title: Some("blank id".into()), description: None, status: None },
+      PlanSqlTodosRow {
+        id: None,
+        title: Some("orphaned".into()),
+        description: None,
+        status: None,
+      },
+      PlanSqlTodosRow {
+        id: Some("  ".into()),
+        title: Some("blank id".into()),
+        description: None,
+        status: None,
+      },
     ];
     let (todos, deps) = normalize_todos(rows, vec![]);
     assert_eq!(todos.len(), 1);
@@ -1441,8 +1775,18 @@ mod tests {
   #[test]
   fn normalize_todos_title_falls_back_to_description_then_id() {
     let rows = vec![
-      PlanSqlTodosRow { id: Some("t1".into()), title: None, description: Some("desc only".into()), status: None },
-      PlanSqlTodosRow { id: Some("t2".into()), title: Some("   ".into()), description: None, status: None },
+      PlanSqlTodosRow {
+        id: Some("t1".into()),
+        title: None,
+        description: Some("desc only".into()),
+        status: None,
+      },
+      PlanSqlTodosRow {
+        id: Some("t2".into()),
+        title: Some("   ".into()),
+        description: None,
+        status: None,
+      },
       PlanSqlTodosRow {
         id: Some("t3".into()),
         title: Some("   ".into()),
@@ -1462,7 +1806,10 @@ mod tests {
 
   #[test]
   fn normalize_todos_maps_dependencies() {
-    let deps = vec![PlanSqlTodoDependency { todo_id: "t2".into(), depends_on: "t1".into() }];
+    let deps = vec![PlanSqlTodoDependency {
+      todo_id: "t2".into(),
+      depends_on: "t1".into(),
+    }];
     let (_todos, mapped) = normalize_todos(vec![], deps);
     assert_eq!(mapped.len(), 1);
     assert_eq!(mapped[0].todo_id, "t2");
@@ -1477,4 +1824,3 @@ mod tests {
     assert_eq!(sanitize_export_name("normal-name_1"), "normal-name_1");
   }
 }
-
