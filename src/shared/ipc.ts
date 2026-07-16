@@ -714,6 +714,18 @@ export interface CreateProjectInput {
   templateName?: string
 }
 
+export type MigrationSourceKind = 'github' | 'folder'
+
+/** Input for a protected non-Rayfin source snapshot and its new migration workspace. */
+export interface MigrationPrepareInput {
+  /** Clone a repository with `gh`, or copy an existing local folder. */
+  sourceKind: MigrationSourceKind
+  /** GitHub owner/repo or URL, or an absolute local folder path. */
+  source: string
+  /** Optional display name for the new Rayfin migration workspace. */
+  name?: string
+}
+
 export interface ProjectActionResult {
   ok: boolean
   error?: string
@@ -1585,6 +1597,11 @@ export interface RayfinStudioApi {
      * register + open it. Fails if the clone isn't a Rayfin project.
      */
     clone: (repo: string) => Promise<ProjectActionResult>
+  }
+
+  migrations: {
+    /** Create an isolated Rayfin workspace containing a protected copy of a legacy app. */
+    prepare: (input: MigrationPrepareInput) => Promise<ProjectActionResult>
   }
 
   fabric: {

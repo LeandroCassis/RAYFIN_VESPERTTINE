@@ -77,6 +77,8 @@ export interface OutboundPrompt {
   id: string
   display: string
   prompt: string
+  /** Force this one-shot handoff into Plan mode even when the selector is hidden. */
+  mode?: ChatMode
   /**
    * When true the prompt is dropped into the composer (and focused) instead of
    * being sent immediately — used to "stage" context (e.g. a slice of history)
@@ -2439,7 +2441,7 @@ export default function ChatPanel({
       setInput(outbound.prompt)
       taRef.current?.focus()
     } else {
-      void dispatch(outbound.display, outbound.prompt, [])
+      void dispatch(outbound.display, outbound.prompt, [], outbound.mode)
     }
     onOutboundConsumed?.()
   }, [outbound?.id])

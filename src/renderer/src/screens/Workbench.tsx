@@ -25,6 +25,7 @@ import {
 } from '@shared/ipc'
 import CreateProjectScreen from '../components/CreateProjectScreen'
 import CloneFromGitHubScreen from '../components/CloneFromGitHubScreen'
+import MigrateProjectScreen from '../components/MigrateProjectScreen'
 import HomeView from '../components/HomeView'
 import ManageProjectModal from '../components/ManageProjectModal'
 import DeleteProjectModal from '../components/DeleteProjectModal'
@@ -108,6 +109,26 @@ function toStored(messages: UIChatMessage[]): ChatMessage[] {
   )
 }
 
+function migrationAssessmentPrompt(): string {
+  return [
+    'Use the migrate-to-rayfin skill for this workspace.',
+    '',
+    'The original application is preserved as a read-only snapshot in `legacy-source/`.',
+    'Read `.vesperttine/migration.json` and assess the complete source application.',
+    '',
+    'First perform read-only discovery and produce a concrete migration task list in Plan mode.',
+    'Cover the framework and UI, routes, database schema, exact physical table names, auth and',
+    'authorization, server functions, storage/realtime, environment variables, integrations,',
+    'data migration, unsupported Rayfin/Fabric capabilities, risks, and local test strategy.',
+    'Do not implement the migration until I approve the plan.',
+    '',
+    'After approval, migrate into the workspace root, keep `legacy-source/` unchanged, preserve',
+    'database names exactly, use stable Fabric-supported Rayfin features, and test locally.',
+    'Do not deploy. Once tests pass, ask for the Microsoft Tenant/account, Fabric workspace,',
+    'and desired application name.'
+  ].join('\n')
+}
+
 interface Props {
   auth: AuthStatus
   onSignOut: () => Promise<void> | void
@@ -142,6 +163,7 @@ export default function Workbench({
   const [createMode, setCreateMode] = useState<'create' | 'deploy' | null>(null)
   /** Fullscreen "Open existing… → Clone from GitHub" flow. */
   const [showClone, setShowClone] = useState(false)
+  const [showMigration, setShowMigration] = useState(false)
   const [opening, setOpening] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   /** Lazy-mount the Advisor view on first visit, then keep it mounted (hidden when
@@ -262,7 +284,7 @@ export default function Workbench({
     organizationProjects.find((project) => project.id === projects?.activeProjectId) ?? null
   /** An open project gets one compact workspace bar instead of the old stacked
    * product + project headers. Launchers and full-screen flows keep the product bar. */
-  const workspaceActive = Boolean(active && !showHome && !showClone && !createMode)
+  const workspaceActive = Boolean(active && !showHome && !showClone && !showMigration && !createMode)
 
   /** Projects with a deploy queued behind the running one (coalesced). */
   const pendingDeployRef = useRef<Set<string>>(new Set())
@@ -527,6 +549,11 @@ export default function Workbench({
       // The agent may have changed the Rayfin deps (e.g. an upgrade) — re-check.
       void refreshRayfinVer(projectId)
       if (!result.ok) return
+      const latest = await window.api.projects.state()
+      const project = latest.projects.find((item) => item.id === projectId)
+      // A migration stays local through assessment, approval, implementation and
+      // validation. Deployment is a separate user action after its target is known.
+      if (project?.template === 'migration') return
       const changed = await window.api.deploy.hasChanges(projectId)
       if (changed) void runDeploy(projectId)
     },
@@ -1106,7 +1133,25 @@ export default function Workbench({
         </header>
       )}
 
-      {showClone ? (
+      {showMigration ? (
+        <MigrateProjectScreen
+          onCancel={() => setShowMigration(false)}
+          onPrepared={(project) => {
+            setShowMigration(false)
+            setShowHome(false)
+            setViewMode('build')
+            setFocusPane('chat')
+            setChatOutbound({
+              id: `migration-assessment-${Date.now()}`,
+              projectId: project.id,
+              display: 'Assess this application for Rayfin migration',
+              prompt: migrationAssessmentPrompt(),
+              mode: 'plan'
+            })
+            void refreshProjects()
+          }}
+        />
+      ) : showClone ? (
         <CloneFromGitHubScreen
           onCancel={() => setShowClone(false)}
           onCloned={() => {
@@ -1418,6 +1463,13 @@ export default function Workbench({
                     if (activeOrganization) setShowClone(true)
                     else {
                       setNotice('Select or add a tenant before cloning a project.')
+                      setShowOrganizations(true)
+                    }
+                  }}
+                  onMigrateToRayfin={() => {
+                    if (activeOrganization) setShowMigration(true)
+                    else {
+                      setNotice('Select or add a tenant before preparing a migration.')
                       setShowOrganizations(true)
                     }
                   }}

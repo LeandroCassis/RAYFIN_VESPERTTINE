@@ -159,6 +159,8 @@ pub fn run() {
       commands::github::github_switch_account,
       commands::github::github_list_repos,
       commands::github::github_clone,
+      // migration of non-Rayfin applications into isolated workspaces
+      commands::migrations::migration_prepare,
       // fabric
       commands::fabric::fabric_workspaces,
       commands::fabric::fabric_capacities,

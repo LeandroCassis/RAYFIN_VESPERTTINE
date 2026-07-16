@@ -540,6 +540,17 @@ pub struct CreateProjectInput {
   pub template_name: Option<String>,
 }
 
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationPrepareInput {
+  /// `github` clones through the authenticated GitHub CLI; `folder` copies locally.
+  pub source_kind: String,
+  /// GitHub owner/repo or URL, or an absolute local folder path.
+  pub source: String,
+  #[serde(default)]
+  pub name: Option<String>,
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectActionResult {

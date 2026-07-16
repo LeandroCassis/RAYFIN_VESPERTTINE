@@ -15,6 +15,7 @@ pub mod files;
 pub mod git;
 pub mod github;
 pub mod misc;
+pub mod migrations;
 pub mod projects;
 pub mod projects_impl;
 pub mod rayfin_version;

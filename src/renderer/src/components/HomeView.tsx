@@ -1,6 +1,6 @@
 import type { StudioProject } from '@shared/ipc'
 import { FabricatorMark } from './FabricatorMark'
-import { AddIcon, BranchIcon, FolderIcon, GearIcon } from './icons'
+import { AddIcon, BranchIcon, Codicon, FolderIcon, GearIcon } from './icons'
 
 interface Props {
   /** All known projects, most-recently-used first. */
@@ -19,6 +19,8 @@ interface Props {
   onOpenExisting: () => void
   /** Start the sign-in/browse/clone flow. */
   onCloneFromGitHub: () => void
+  /** Prepare a protected copy of a non-Rayfin app for guided migration. */
+  onMigrateToRayfin: () => void
   onChangeWorkspaceRoot: () => void
 }
 
@@ -33,6 +35,7 @@ export default function HomeView({
   onNewProject,
   onOpenExisting,
   onCloneFromGitHub,
+  onMigrateToRayfin,
   onChangeWorkspaceRoot
 }: Props): JSX.Element {
   const projectCount = `${projects.length} project${projects.length === 1 ? '' : 's'}`
@@ -88,6 +91,15 @@ export default function HomeView({
               <span className="home-action-text">
                 <span className="home-action-label">Clone from GitHub</span>
                 <span className="home-action-hint">Bring a repository into your editor</span>
+              </span>
+            </button>
+            <button type="button" className="home-action" onClick={onMigrateToRayfin}>
+              <span className="home-action-icon" aria-hidden="true">
+                <Codicon name="wand" className="home-action-svg" />
+              </span>
+              <span className="home-action-text">
+                <span className="home-action-label">Migrate to Rayfin</span>
+                <span className="home-action-hint">Assess a Lovable or existing web app</span>
               </span>
             </button>
           </div>

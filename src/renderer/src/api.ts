@@ -20,6 +20,7 @@ import {
   type ChatMode,
   type ChatOptions,
   type CreateProjectInput,
+  type MigrationPrepareInput,
   type CustomSkillSaveInput,
   type PreviewBounds,
   type PreviewNavState,
@@ -88,6 +89,10 @@ export const api: RayfinStudioApi = {
     switchAccount: (user: string) => invoke('github_switch_account', { user }),
     listRepos: () => invoke('github_list_repos'),
     clone: (repo: string) => invoke('github_clone', { input: repo })
+  },
+
+  migrations: {
+    prepare: (input: MigrationPrepareInput) => invoke('migration_prepare', { input })
   },
 
   fabric: {

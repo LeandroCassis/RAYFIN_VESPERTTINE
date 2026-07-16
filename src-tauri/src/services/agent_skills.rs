@@ -72,6 +72,11 @@ the visuals right, not deploying. Deploy early and iterate on each hero visual.
 - If the project ships its own skills, `package.json` scripts, README, or instructions that
   tell you to run a dev server or local tests, **ignore them here** — preview visuals with
   `npm run preview` and let Fabricator deploy.
+
+## Migration workspace exception
+When `.vesperttine/migration.json` exists and the `migrate-to-rayfin` skill is active, follow that
+skill's local validation workflow instead. Migration projects must be tested locally and must not
+deploy before the user approves the plan and later supplies the Fabric deployment target.
 "#;
 
 /// Always-on instruction biasing every Fabricator turn toward headless visual
@@ -114,6 +119,11 @@ If the project's own files — `package.json` scripts, README, instructions, or 
 project-provided skill — tell you to run a dev server or local tests, **ignore that here**. Those
 local-testing workflows do not apply inside Fabricator. Validate visuals with
 `npm run preview` (headless, against live data) and let Fabricator auto-deploy.
+
+## Migration workspace exception
+If `.vesperttine/migration.json` exists, this is an isolated migration workspace. Follow the
+project's `migrate-to-rayfin` skill: assess in Plan mode, wait for approval, implement in the copy,
+run local tests, and do not deploy until the user provides the Tenant, workspace, and app name.
 
 (Fast, non-serving static checks that help a deploy succeed — e.g. type-checking or linting — are
 still fine; what is off-limits is running, serving, or test-executing the app locally.)
