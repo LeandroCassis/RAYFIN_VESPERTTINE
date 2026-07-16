@@ -5,7 +5,7 @@ import Workbench from './screens/Workbench'
 import UpdateBanner from './components/UpdateBanner'
 import ForcedUpdateScreen from './components/ForcedUpdateScreen'
 import SplashScreen from './components/SplashScreen'
-import { applyUiScale, watchTheme } from './theme'
+import { applyUiScale, applyVisualSettings, watchTheme } from './theme'
 import { useUpdates } from './update'
 
 type Phase = 'loading' | 'setup' | 'ready'
@@ -75,6 +75,7 @@ function App(): JSX.Element {
   useEffect(() => {
     if (!settings) return
     applyUiScale(settings.uiScale)
+    applyVisualSettings(settings.visual)
     return watchTheme(settings.theme)
   }, [settings])
 
@@ -115,7 +116,15 @@ function App(): JSX.Element {
   return (
     <>
       <UpdateBanner />
-      <SetupScreen doctor={doctor} auth={auth} refreshing={refreshing} onRefresh={refresh} onEnter={enter} />
+      <SetupScreen
+        doctor={doctor}
+        auth={auth}
+        refreshing={refreshing}
+        onRefresh={refresh}
+        onEnter={enter}
+        settings={settings}
+        onSettingsChange={updateSettings}
+      />
     </>
   )
 }

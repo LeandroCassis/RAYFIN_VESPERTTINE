@@ -1254,7 +1254,7 @@ const MessageRow = memo(function MessageRow({
         <div className={`turn-avatar${m.pending ? ' turn-avatar--pending' : ''}`}>
           {m.role === 'user' ? <UserIcon /> : <FabricatorMark />}
         </div>
-        <div className="turn-role">{m.role === 'user' ? 'You' : 'Fabricator'}</div>
+        <div className="turn-role">{m.role === 'user' ? 'You' : 'VESPERTTINE RAYFIN EDITOR'}</div>
         {m.role === 'assistant' && !m.pending && m.elapsedMs != null && (
           <span className="turn-time" title="Time this turn took">
             <ClockIcon className="turn-time-ico" />
@@ -2734,7 +2734,7 @@ export default function ChatPanel({
               placeholder={
                 deployLock
                   ? 'Deploy your app to start chatting…'
-                  : `Message Fabricator about ${project.name}…`
+                  : `Message VESPERTTINE RAYFIN EDITOR about ${project.name}…`
               }
               value={input}
               rows={1}

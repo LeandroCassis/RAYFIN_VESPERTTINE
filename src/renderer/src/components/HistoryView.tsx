@@ -489,7 +489,7 @@ export default function HistoryView({
       <div className="hist-empty">
         <div className="hist-empty-title">No history yet</div>
         <div className="hist-empty-sub">
-          Every time you deploy or save, Fabricator records a snapshot here so you can see
+          Every time you deploy or save, the editor records a snapshot here so you can see
           exactly what changed.
         </div>
       </div>
@@ -887,7 +887,7 @@ export default function HistoryView({
               </p>
               <p>
                 Your current version stays saved in this timeline, so you can switch back anytime.
-                Fabricator will then redeploy so your live app matches.
+                The editor will then redeploy so your live app matches.
               </p>
               {revertError && <p className="confirm-error">{revertError}</p>}
             </>

@@ -153,6 +153,7 @@ pub fn run() {
       // github (optional gh CLI: clone-from-GitHub)
       commands::github::github_status,
       commands::github::github_login,
+      commands::github::github_switch_account,
       commands::github::github_list_repos,
       commands::github::github_clone,
       // fabric
@@ -172,6 +173,7 @@ pub fn run() {
       commands::projects::projects_open,
       commands::projects::projects_prepare_dependencies,
       commands::projects::projects_set_active,
+      commands::projects::projects_set_organization,
       commands::projects::projects_rename,
       commands::projects::projects_set_workspace,
       commands::projects::projects_set_preview_mode,

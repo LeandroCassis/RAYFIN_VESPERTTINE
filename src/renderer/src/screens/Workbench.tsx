@@ -13,11 +13,13 @@ import {
   type AppSettings,
   type AppVersions,
   type AuthStatus,
+  type GithubStatus,
   type ChatMessage,
   type ChatTurnResult,
   type DeployResult,
   type DevServerResult,
   type ProjectsState,
+  type OrganizationProfile,
   type RayfinVersionInfo,
   type StudioProject
 } from '@shared/ipc'
@@ -111,7 +113,7 @@ interface Props {
   onSignOut: () => Promise<void> | void
   onAuthChanged: () => Promise<void> | void
   settings: AppSettings | null
-  onSettingsChange: (patch: Partial<AppSettings>) => void
+  onSettingsChange: (patch: Partial<AppSettings>) => Promise<void>
 }
 
 export default function Workbench({
@@ -126,7 +128,15 @@ export default function Workbench({
   const [signingOut, setSigningOut] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [showOrganizations, setShowOrganizations] = useState(false)
+  const [organizationBusy, setOrganizationBusy] = useState(false)
+  const [showOrganizationForm, setShowOrganizationForm] = useState(false)
+  const [organizationName, setOrganizationName] = useState('')
+  const [organizationTenant, setOrganizationTenant] = useState('')
+  const [organizationGithub, setOrganizationGithub] = useState('')
+  const [githubStatus, setGithubStatus] = useState<GithubStatus | null>(null)
   const [projects, setProjects] = useState<ProjectsState | null>(null)
+  const claimingLegacyProjectsRef = useRef<string | null>(null)
   /** Fullscreen create/deploy flow: 'create' = new-project wizard, 'deploy' = first-deploy gate CTA. */
   const [createMode, setCreateMode] = useState<'create' | 'deploy' | null>(null)
   /** Fullscreen "Open existing… → Clone from GitHub" flow. */
@@ -237,8 +247,18 @@ export default function Workbench({
   /** Latest projects snapshot, for reading inside async callbacks. */
   const projectsRef = useRef(projects)
   projectsRef.current = projects
+  const organizationProfiles = settings?.organizationProfiles ?? []
+  const activeOrganization = organizationProfiles.find(
+    (profile) => profile.id === settings?.activeOrganizationId
+  )
+  const organizationProjects = activeOrganization
+    ? (projects?.projects ?? []).filter(
+        (project) => project.organizationId === activeOrganization.id
+      )
+    : []
   /** The currently active project (or null). Declared early — effects depend on it. */
-  const active = projects?.projects.find((p) => p.id === projects.activeProjectId) ?? null
+  const active =
+    organizationProjects.find((project) => project.id === projects?.activeProjectId) ?? null
 
   /** Projects with a deploy queued behind the running one (coalesced). */
   const pendingDeployRef = useRef<Set<string>>(new Set())
@@ -276,6 +296,35 @@ export default function Workbench({
   const refreshProjects = useCallback(async (): Promise<void> => {
     setProjects(await window.api.projects.state())
   }, [])
+
+  // Projects created before organizations were introduced have no owner. Claim
+  // them once for the organization that was active during the upgrade; the
+  // strict list above keeps them hidden until that migration is persisted.
+  useEffect(() => {
+    if (!activeOrganization || !projects) return
+    const legacy = projects.projects.filter((project) => !project.organizationId)
+    if (legacy.length === 0) return
+    const claimKey = `${activeOrganization.id}:${legacy.map((project) => project.id).sort().join(',')}`
+    if (claimingLegacyProjectsRef.current === claimKey) return
+    claimingLegacyProjectsRef.current = claimKey
+    void Promise.all(
+      legacy.map((project) => window.api.projects.setOrganization(project.id, activeOrganization.id))
+    )
+      .then(refreshProjects)
+      .finally(() => {
+        claimingLegacyProjectsRef.current = null
+      })
+  }, [activeOrganization?.id, projects, refreshProjects])
+
+  // Never retain a project from another organization as the active project.
+  // Pick the most recent project belonging to the newly selected organization.
+  useEffect(() => {
+    if (!activeOrganization || !projects) return
+    const current = projects.projects.find((project) => project.id === projects.activeProjectId)
+    if (current?.organizationId === activeOrganization.id) return
+    const nextId = organizationProjects[0]?.id ?? null
+    void window.api.projects.setActive(nextId).then(setProjects)
+  }, [activeOrganization?.id, organizationProjects, projects])
 
   /** Re-read the active project's local Rayfin versions (after deploys / chat turns). */
   const refreshRayfinVer = useCallback(async (projectId: string): Promise<void> => {
@@ -513,7 +562,7 @@ export default function Workbench({
       `${lines}\n\n` +
       'After installing, check for any breaking changes between these versions and update ' +
       'the app code so it still builds and runs. Do not run `rayfin up` or deploy — Rayfin ' +
-      'Fabricator redeploys automatically.'
+      'VESPERTTINE RAYFIN EDITOR redeploys automatically.'
     setViewMode('build')
     setFocusPane(null)
     setChatOutbound({
@@ -538,7 +587,7 @@ export default function Workbench({
       `Details: ${finding.detail}\n\n` +
       `Suggested fix: ${finding.recommendation}\n\n` +
       'Apply the fix in the code, keeping the app building and following Rayfin conventions. ' +
-      'Do not run `rayfin up` or deploy — Fabricator redeploys automatically.'
+      'Do not run `rayfin up` or deploy — VESPERTTINE RAYFIN EDITOR redeploys automatically.'
     setViewMode('build')
     setFocusPane(null)
     setChatOutbound({
@@ -567,7 +616,7 @@ export default function Workbench({
     const prompt =
       `The Advisor review found ${findings.length} issues in this app. Please fix all of ` +
       'them, most severe first. Keep the app building and follow Rayfin conventions. ' +
-      'Do not run `rayfin up` or deploy — Fabricator redeploys automatically.\n\n' +
+      'Do not run `rayfin up` or deploy — VESPERTTINE RAYFIN EDITOR redeploys automatically.\n\n' +
       `${lines}`
     setViewMode('build')
     setFocusPane(null)
@@ -644,7 +693,7 @@ export default function Workbench({
   // instance per project can tell them apart in the taskbar / Alt-Tab. The
   // project name leads so it stays visible when the title is truncated.
   useEffect(() => {
-    const base = 'Fabricator'
+    const base = 'VESPERTTINE RAYFIN EDITOR'
     const title = active?.name ? `${active.name} — ${base}` : base
     void getCurrentWindow().setTitle(title)
   }, [active?.name])
@@ -712,7 +761,72 @@ export default function Workbench({
       setShowHome(false)
       return
     }
+    if (activeOrganization && !p.organizationId) {
+      await window.api.projects.setOrganization(p.id, activeOrganization.id)
+    }
     setProjects(await window.api.projects.setActive(p.id))
+  }
+
+  async function switchOrganization(profile: OrganizationProfile): Promise<void> {
+    if (organizationBusy) return
+    setOrganizationBusy(true)
+    try {
+      await onSettingsChange({ activeOrganizationId: profile.id })
+      if (auth.rayfin.tenant?.toLowerCase() !== profile.tenantId.toLowerCase()) {
+        await window.api.auth.loginRayfin(profile.tenantId)
+      }
+
+      let gh = await window.api.github.status()
+      if (profile.githubUser && gh.user?.toLowerCase() !== profile.githubUser.toLowerCase()) {
+        const switched = await window.api.github.switchAccount(profile.githubUser)
+        if (!switched.ok) await window.api.github.login()
+        gh = await window.api.github.status()
+      }
+
+      const refreshed = await window.api.auth.status()
+      const profilesForUpdate = organizationProfiles.some((item) => item.id === profile.id)
+        ? organizationProfiles
+        : [...organizationProfiles, profile]
+      const updatedProfiles = profilesForUpdate.map((item) =>
+        item.id === profile.id
+          ? {
+              ...item,
+              fabricUser: refreshed.rayfin.user ?? item.fabricUser,
+              githubUser: gh.user ?? item.githubUser
+            }
+          : item
+      )
+      await onSettingsChange({
+        activeOrganizationId: profile.id,
+        organizationProfiles: updatedProfiles
+      })
+      setGithubStatus(gh)
+      const nextProject = (projects?.projects ?? []).find(
+        (project) => project.organizationId === profile.id
+      )
+      setProjects(await window.api.projects.setActive(nextProject?.id ?? null))
+      await onAuthChanged()
+      setShowOrganizations(false)
+    } finally {
+      setOrganizationBusy(false)
+    }
+  }
+
+  async function addOrganization(): Promise<void> {
+    const name = organizationName.trim()
+    const tenantId = organizationTenant.trim()
+    if (!name || !tenantId) return
+    const profile: OrganizationProfile = {
+      id: crypto.randomUUID(),
+      name,
+      tenantId,
+      githubUser: organizationGithub.trim() || githubStatus?.user
+    }
+    setOrganizationName('')
+    setOrganizationTenant('')
+    setOrganizationGithub('')
+    setShowOrganizationForm(false)
+    await switchOrganization(profile)
   }
 
   // Show the projects launcher over the current project WITHOUT closing it, so any
@@ -805,9 +919,112 @@ export default function Workbench({
       <header className="titlebar">
         <div className="brand">
           <FabricatorMark className="brand-mark" />
-          <span className="brand-name">Fabricator</span>
+          <span className="brand-copy">
+            <span className="brand-kicker">VESPERTTINE</span>
+            <span className="brand-name">RAYFIN EDITOR</span>
+          </span>
         </div>
         <div className="titlebar-status">
+          <div className="organization-switcher">
+            <button
+              type="button"
+              className="organization-trigger"
+              aria-expanded={showOrganizations}
+              onClick={() => {
+                setShowOrganizations((open) => !open)
+                void window.api.github.status().then((status) => {
+                  setGithubStatus(status)
+                  if (!organizationGithub) setOrganizationGithub(status.user ?? '')
+                })
+              }}
+            >
+              <span className="organization-trigger-mark">
+                {(activeOrganization?.name ?? 'Organization').slice(0, 1).toUpperCase()}
+              </span>
+              <span className="organization-trigger-copy">
+                <strong>{activeOrganization?.name ?? 'Select organization'}</strong>
+                <small>
+                  {activeOrganization?.tenantId ?? auth.rayfin.tenant ?? 'No tenant selected'}
+                </small>
+              </span>
+              <span className="codicon codicon-chevron-down" aria-hidden="true" />
+            </button>
+            {showOrganizations && (
+              <>
+                <SuppressPreview />
+                <div className="organization-popover">
+                <div className="organization-popover-head">
+                  <strong>Organizations</strong>
+                  <small>Tenant-specific Fabric and GitHub accounts</small>
+                </div>
+                <div className="organization-list">
+                  {organizationProfiles.map((profile) => (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      className={`organization-option${profile.id === activeOrganization?.id ? ' organization-option--active' : ''}`}
+                      disabled={organizationBusy}
+                      onClick={() => void switchOrganization(profile)}
+                    >
+                      <span className="organization-option-mark">
+                        {profile.name.slice(0, 1).toUpperCase()}
+                      </span>
+                      <span>
+                        <strong>{profile.name}</strong>
+                        <small>{profile.fabricUser ?? profile.tenantId}</small>
+                      </span>
+                      {profile.id === activeOrganization?.id && (
+                        <span className="codicon codicon-check" aria-hidden="true" />
+                      )}
+                    </button>
+                  ))}
+                </div>
+                {showOrganizationForm ? (
+                  <div className="organization-form">
+                    <input
+                      value={organizationName}
+                      onChange={(e) => setOrganizationName(e.target.value)}
+                      placeholder="Organization name"
+                    />
+                    <input
+                      value={organizationTenant}
+                      onChange={(e) => setOrganizationTenant(e.target.value)}
+                      placeholder="Microsoft tenant ID or domain"
+                    />
+                    <input
+                      value={organizationGithub}
+                      onChange={(e) => setOrganizationGithub(e.target.value)}
+                      placeholder="GitHub username"
+                    />
+                    <div className="organization-form-actions">
+                      <button
+                        className="btn btn--sm btn--ghost"
+                        onClick={() => setShowOrganizationForm(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="btn btn--sm btn--primary"
+                        disabled={!organizationName.trim() || !organizationTenant.trim() || organizationBusy}
+                        onClick={() => void addOrganization()}
+                      >
+                        {organizationBusy ? 'Connecting…' : 'Add and connect'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="organization-add"
+                    onClick={() => setShowOrganizationForm(true)}
+                  >
+                    <span className="codicon codicon-add" aria-hidden="true" /> Add organization
+                  </button>
+                )}
+                </div>
+              </>
+            )}
+          </div>
           {auth.rayfin.signedIn && (
             <div
               className="who-avatar"
@@ -1108,15 +1325,33 @@ export default function Workbench({
                   above all HTML) while the launcher covers it. */}
                 {active && <SuppressPreview />}
                 <HomeView
-                  projects={projects?.projects ?? []}
+                  projects={organizationProjects}
                   activeId={active?.id}
                   workspaceRoot={projects?.workspaceRoot ?? ''}
                   opening={opening}
                   onSelect={(p) => void selectProject(p)}
                   onManageProject={setManagingProject}
-                  onNewProject={() => setCreateMode('create')}
-                  onOpenExisting={openExisting}
-                  onCloneFromGitHub={() => setShowClone(true)}
+                  onNewProject={() => {
+                    if (activeOrganization) setCreateMode('create')
+                    else {
+                      setNotice('Select or add an organization before creating a project.')
+                      setShowOrganizations(true)
+                    }
+                  }}
+                  onOpenExisting={() => {
+                    if (activeOrganization) void openExisting()
+                    else {
+                      setNotice('Select or add an organization before opening a project.')
+                      setShowOrganizations(true)
+                    }
+                  }}
+                  onCloneFromGitHub={() => {
+                    if (activeOrganization) setShowClone(true)
+                    else {
+                      setNotice('Select or add an organization before cloning a project.')
+                      setShowOrganizations(true)
+                    }
+                  }}
                   onChangeWorkspaceRoot={changeWorkspaceRoot}
                 />
               </>
@@ -1162,7 +1397,7 @@ export default function Workbench({
           ))}
         </select>
         <span className="statusbar-sep">·</span>
-        <span className="statusbar-item" title="Rayfin Fabricator version">
+        <span className="statusbar-item" title="VESPERTTINE RAYFIN EDITOR version">
           v{versions?.app ?? '—'}
         </span>
         <span className="statusbar-sep">·</span>
@@ -1180,6 +1415,8 @@ export default function Workbench({
         <SettingsModal
           settings={settings}
           versions={versions}
+          auth={auth}
+          onAuthChanged={onAuthChanged}
           onChange={onSettingsChange}
           onClose={() => setShowSettings(false)}
         />

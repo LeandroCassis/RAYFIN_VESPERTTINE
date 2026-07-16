@@ -256,7 +256,7 @@ export default function DeploymentsControl({
               ) : !deployments || deployments.length === 0 ? (
                 <div className="dep-empty">
                   No deployments yet. Create one to publish your app to a Fabric workspace — Rayfin
-                  Fabricator records every id and url for you.
+                  The editor records every id and URL for you.
                 </div>
               ) : (
                 <ul className="dep-list">

@@ -160,7 +160,7 @@ export default function ManageProjectModal({
                 Recent projects
               </span>
               <span className="project-manage-hint">
-                Remove this entry from Fabricator without changing the local folder or any Fabric
+                Remove this entry from the editor without changing the local folder or any Fabric
                 app.
               </span>
             </div>

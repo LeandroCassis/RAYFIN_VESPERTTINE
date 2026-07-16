@@ -79,7 +79,7 @@ export default function SplashScreen(): JSX.Element {
           <BuildingLogo />
         </div>
         <div className="splash-wordmark">
-          <span className="splash-word">Fabricator</span>
+          <span className="splash-word">VESPERTTINE RAYFIN EDITOR</span>
           <span className="splash-sub">Setting up your workspace…</span>
         </div>
       </div>

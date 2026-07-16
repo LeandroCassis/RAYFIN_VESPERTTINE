@@ -85,6 +85,7 @@ export const api: RayfinStudioApi = {
   github: {
     status: () => invoke('github_status'),
     login: () => invoke('github_login'),
+    switchAccount: (user: string) => invoke('github_switch_account', { user }),
     listRepos: () => invoke('github_list_repos'),
     clone: (repo: string) => invoke('github_clone', { input: repo })
   },
@@ -110,6 +111,8 @@ export const api: RayfinStudioApi = {
     open: (path: string) => invoke('projects_open', { path }),
     ensureDependencies: (id: string) => invoke('projects_prepare_dependencies', { id }),
     setActive: (id: string | null) => invoke('projects_set_active', { id }),
+    setOrganization: (id: string, organizationId?: string) =>
+      invoke('projects_set_organization', { id, organizationId }),
     rename: (id: string, name: string) => invoke('projects_rename', { id, name }),
     setWorkspace: (id: string, workspace?: string, workspaceName?: string) =>
       invoke('projects_set_workspace', { id, workspace, workspaceName }),

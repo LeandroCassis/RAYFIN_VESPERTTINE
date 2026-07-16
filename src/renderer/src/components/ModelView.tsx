@@ -94,7 +94,7 @@ interface ViewT {
   ty: number
 }
 
-const CARD_WIDTH = 264
+const CARD_WIDTH = 248
 const MIN_SCALE = 0.3
 const MAX_SCALE = 2.2
 const DRAG_THRESHOLD = 4
@@ -596,7 +596,7 @@ export default function ModelView({
         '`@role`/`@authenticated` decorator with a row-level `policy` that scopes rows to their ' +
         'owner (typically by matching a `*_id` field against `claims.sub`), or keep `@anonymous` ' +
         'only if the data is genuinely public. Explain the change you make. Keep the app building ' +
-        'and do not run `rayfin up` or deploy — Fabricator redeploys automatically.'
+        'and do not run `rayfin up` or deploy — VESPERTTINE RAYFIN EDITOR redeploys automatically.'
       onSendToChat(`Harden access on ${entity.name}`, prompt)
     },
     [onSendToChat]
@@ -673,29 +673,26 @@ export default function ModelView({
 
   return (
     <div className="model-view">
-      <div className="model-head">
-        <div className="model-head-titles">
-          <h2 className="model-title">Data model</h2>
-          <span className="model-subtitle">
-            {entityCount} {entityCount === 1 ? 'entity' : 'entities'}
-            {relCount > 0 && ` · ${relCount} ${relCount === 1 ? 'relationship' : 'relationships'}`}
-          </span>
-        </div>
-        <div className="model-legend" aria-hidden="true">
-          <span className="model-legend-label">Access</span>
-          <span className="model-legend-item">
-            <span className="model-legend-dot model-legend-dot--ok" /> Row‑scoped
-          </span>
-          <span className="model-legend-item">
-            <span className="model-legend-dot model-legend-dot--warn" /> Any signed‑in
-          </span>
-          <span className="model-legend-item">
-            <span className="model-legend-dot model-legend-dot--danger" /> Public
-          </span>
-        </div>
+      <div className="model-visually-hidden">
+        <h2>Data model</h2>
+        <span className="model-subtitle">
+          {entityCount} {entityCount === 1 ? 'entity' : 'entities'}
+          {relCount > 0 && ` · ${relCount} ${relCount === 1 ? 'relationship' : 'relationships'}`}
+        </span>
       </div>
-
-      <div className="model-toolbar">
+      <div className="model-toolbar model-toolbar--schema">
+        <button
+          className="model-schema-selector"
+          title="Open rayfin/data/schema.ts"
+          onClick={() => onOpenFile('rayfin/data/schema.ts')}
+        >
+          <Codicon name="database" />
+          <span>
+            <small>Schema</small>
+            <strong>rayfin</strong>
+          </span>
+          <Codicon name="chevron-down" />
+        </button>
         <div className="model-search">
           <Codicon name="search" className="model-search-ico" />
           <input
@@ -723,33 +720,20 @@ export default function ModelView({
           </button>
         )}
 
+        <div className="model-toolbar-spacer" />
+        <span className="model-schema-summary">
+          {entityCount} {entityCount === 1 ? 'table' : 'tables'}
+          {relCount > 0 && ` · ${relCount} ${relCount === 1 ? 'relation' : 'relations'}`}
+        </span>
         <button
           className="model-tool-btn"
           onClick={toggleCollapseAll}
-          title={collapsedAll ? 'Expand all entities' : 'Collapse all entities'}
+          title={collapsedAll ? 'Expand all tables' : 'Collapse all tables'}
         >
-          <Codicon name={collapsedAll ? 'expand-all' : 'collapse-all'} />
           {collapsedAll ? 'Expand' : 'Collapse'}
         </button>
-
-        <div className="model-toolbar-spacer" />
-
-        <div className="model-zoom" role="group" aria-label="Zoom">
-          <button className="model-zoom-btn" onClick={() => zoomBy(0.8)} aria-label="Zoom out">
-            <Codicon name="zoom-out" />
-          </button>
-          <button className="model-zoom-label" onClick={() => fitTo(fitTarget)} title="Fit to view">
-            {Math.round(view.scale * 100)}%
-          </button>
-          <button className="model-zoom-btn" onClick={() => zoomBy(1.25)} aria-label="Zoom in">
-            <Codicon name="zoom-in" />
-          </button>
-        </div>
-        <button className="model-tool-btn" onClick={() => fitTo(fitTarget)} title="Fit to view">
-          <Codicon name="screen-full" />
-        </button>
-        <button className="model-tool-btn" onClick={resetLayout} title="Reset layout">
-          <Codicon name="refresh" />
+        <button className="model-tool-btn" onClick={resetLayout} title="Automatically arrange tables">
+          Auto layout
         </button>
       </div>
 
@@ -829,6 +813,7 @@ export default function ModelView({
                     >
                       <Codicon name={collapsedCard ? 'chevron-right' : 'chevron-down'} />
                     </button>
+                    <Codicon name="table" className="model-card-table-icon" />
                     <button
                       className="model-card-name"
                       title={`${entity.access.detail} · Open ${entity.file}`}
@@ -952,6 +937,48 @@ export default function ModelView({
                 </div>
               )
             })}
+        </div>
+
+        <div className="model-minimap" aria-hidden="true">
+          {model.entities
+            .filter((entity) => isRendered(entity.name))
+            .map((entity) => {
+              const pos = positions.get(entity.name) ?? { x: 0, y: 0 }
+              return (
+                <span
+                  key={entity.name}
+                  className={`model-minimap-node${highlight === entity.name ? ' model-minimap-node--active' : ''}`}
+                  style={{
+                    left: `${canvas.w ? (pos.x / canvas.w) * 100 : 0}%`,
+                    top: `${canvas.h ? (pos.y / canvas.h) * 100 : 0}%`
+                  }}
+                />
+              )
+            })}
+        </div>
+
+        <div className="model-canvas-controls" role="group" aria-label="Diagram zoom">
+          <button onClick={() => zoomBy(0.8)} aria-label="Zoom out">
+            <Codicon name="remove" />
+          </button>
+          <button onClick={() => fitTo(fitTarget)} title="Fit to view">
+            {Math.round(view.scale * 100)}%
+          </button>
+          <button onClick={() => zoomBy(1.25)} aria-label="Zoom in">
+            <Codicon name="add" />
+          </button>
+          <button onClick={() => fitTo(fitTarget)} aria-label="Fit to view">
+            <Codicon name="screen-full" />
+          </button>
+        </div>
+
+        <div className="model-legend model-legend--canvas" aria-label="Diagram legend">
+          <span className="model-legend-item"><Codicon name="key" /> Primary key</span>
+          <span className="model-legend-item"><span className="model-field-req" /> Required</span>
+          <span className="model-legend-item"><span className="model-field-req model-field-req--opt" /> Optional</span>
+          <span className="model-legend-item"><span className="model-legend-dot model-legend-dot--ok" /> Row-scoped</span>
+          <span className="model-legend-item"><span className="model-legend-dot model-legend-dot--warn" /> Signed-in</span>
+          <span className="model-legend-item"><span className="model-legend-dot model-legend-dot--danger" /> Public</span>
         </div>
       </div>
 

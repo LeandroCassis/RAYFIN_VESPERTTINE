@@ -268,6 +268,7 @@ fn register_project(dir: &Path, display_name: Option<&str>) -> StudioProject {
     effort: None,
     preview_mode: None,
     missing: None,
+    organization_id: store::get_settings().active_organization_id,
   };
   store::upsert_project(project.clone());
   project

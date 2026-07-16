@@ -413,7 +413,7 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
               <div className="clone-state-copy">
                 <h2>Install the GitHub CLI</h2>
                 <p>
-                  Fabricator uses <code>gh</code> to sign in and clone repositories from GitHub.
+                  VESPERTTINE RAYFIN EDITOR uses <code>gh</code> to sign in and clone repositories from GitHub.
                 </p>
                 <div className="clone-state-actions">
                   <button
@@ -473,7 +473,7 @@ export default function CloneFromGitHubScreen({ onCancel, onCloned }: Props): JS
                     <h2>Waiting for GitHub sign-in</h2>
                     <p>
                       A terminal window opened. Complete the browser prompts, then return here and
-                      Fabricator will detect your sign-in.
+                      VESPERTTINE RAYFIN EDITOR will detect your sign-in.
                     </p>
                     <div className="clone-state-actions">
                       <button type="button" className="btn btn--sm" onClick={() => void recheck()}>

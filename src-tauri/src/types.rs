@@ -428,6 +428,8 @@ pub struct StudioProject {
   pub preview_mode: Option<String>,
   #[serde(skip_serializing_if = "Option::is_none")]
   pub missing: Option<bool>,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub organization_id: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -462,6 +464,31 @@ pub struct ExperimentFlags {
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct VisualSettings {
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub accent_color: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub surface_color: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub border_radius: Option<f64>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub app_icon: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OrganizationProfile {
+  pub id: String,
+  pub name: String,
+  pub tenant_id: String,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub fabric_user: Option<String>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub github_user: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct AppSettings {
   #[serde(default = "default_theme")]
   pub theme: String,
@@ -471,6 +498,12 @@ pub struct AppSettings {
   pub ui_scale: Option<f64>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub experiments: Option<ExperimentFlags>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub visual: Option<VisualSettings>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub organization_profiles: Option<Vec<OrganizationProfile>>,
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub active_organization_id: Option<String>,
   /// Capture full chat diagnostics (prompt/response text + tool I/O) for bug
   /// reports. Off by default — only lightweight metadata is captured. Opt-in via
   /// Settings → Diagnostics.
@@ -479,7 +512,7 @@ pub struct AppSettings {
 }
 
 fn default_theme() -> String {
-  "system".to_string()
+  "dark".to_string()
 }
 
 #[derive(Deserialize, Clone)]

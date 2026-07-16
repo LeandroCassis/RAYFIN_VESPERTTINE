@@ -22,7 +22,7 @@ export function buildReportIssueUrl(
     '1. ',
     '',
     '### Environment',
-    `- App: Fabricator ${versions?.app ?? 'unknown'}`,
+    `- App: VESPERTTINE RAYFIN EDITOR ${versions?.app ?? 'unknown'}`,
     `- Tauri: ${versions?.tauri ?? 'unknown'}`,
     `- WebView2: ${versions?.webview2 ?? 'unknown'}`,
     `- Copilot CLI: ${versions?.copilot ?? 'unknown'}`,

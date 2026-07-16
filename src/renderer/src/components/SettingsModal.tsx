@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from 'react'
-import type { AppSettings, AppVersions, ThemePreference } from '@shared/ipc'
-import { applyTheme, applyUiScale, UI_SCALES } from '../theme'
+import type { AppSettings, AppVersions, AuthStatus, ThemePreference, VisualSettings } from '@shared/ipc'
+import { applyTheme, applyUiScale, applyVisualSettings, UI_SCALES } from '../theme'
 import { useSuppressPreview } from '../overlay'
 import { useModalFocus } from '../modalFocus'
 import { useUpdates } from '../update'
@@ -9,16 +9,21 @@ import ConfirmModal from './ConfirmModal'
 interface Props {
   settings: AppSettings
   versions: AppVersions | null
+  auth?: AuthStatus
+  onAuthChanged?: () => Promise<void> | void
   /** Persist a settings patch; the parent re-applies theme + stores it. */
   onChange: (patch: Partial<AppSettings>) => void
   onClose: () => void
 }
 
 const THEMES: Array<{ value: ThemePreference; label: string }> = [
-  { value: 'system', label: 'System' },
   { value: 'dark', label: 'Dark' },
+  { value: 'system', label: 'System' },
   { value: 'light', label: 'Light' }
 ]
+
+const DEFAULT_ACCENT = '#3ecf8e'
+const DEFAULT_SURFACE = '#181818'
 
 function ToggleRow({
   label,
@@ -48,12 +53,17 @@ function ToggleRow({
 export default function SettingsModal({
   settings,
   versions,
+  auth,
+  onAuthChanged,
   onChange,
   onClose
 }: Props): JSX.Element {
   useSuppressPreview()
   const { status: updateStatus, info: updateInfo, checkNow } = useUpdates()
   const [checkedUpdates, setCheckedUpdates] = useState(false)
+  const [tab, setTab] = useState<'general' | 'appearance' | 'accounts'>('general')
+  const [accountBusy, setAccountBusy] = useState<'copilot' | 'github' | null>(null)
+  const [accountMessage, setAccountMessage] = useState<string | null>(null)
   const [showExperiments, setShowExperiments] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
@@ -97,9 +107,44 @@ export default function SettingsModal({
     onChange({ uiScale })
   }
 
+  function pickVisual(patch: Partial<VisualSettings>): void {
+    const visual = { ...settings.visual, ...patch }
+    applyVisualSettings(visual)
+    onChange({ visual })
+  }
+
   async function changeRoot(): Promise<void> {
     const next = await window.api.projects.pickWorkspaceRoot()
     setWorkspaceRoot(next.workspaceRoot)
+  }
+
+  async function reauthenticateCopilot(): Promise<void> {
+    setAccountBusy('copilot')
+    setAccountMessage(null)
+    try {
+      const result = await window.api.auth.loginCopilot()
+      await onAuthChanged?.()
+      setAccountMessage(result.ok ? 'GitHub Copilot reauthenticated.' : 'Copilot sign-in did not complete.')
+    } catch (error) {
+      setAccountMessage(`Could not reauthenticate Copilot: ${String(error)}`)
+    } finally {
+      setAccountBusy(null)
+    }
+  }
+
+  async function reconnectGithub(): Promise<void> {
+    setAccountBusy('github')
+    setAccountMessage(null)
+    try {
+      const result = await window.api.github.login()
+      setAccountMessage(
+        result.ok
+          ? 'GitHub sign-in opened in a terminal. Complete it there, then return to the editor.'
+          : 'GitHub CLI is not installed or the sign-in window could not be opened.'
+      )
+    } finally {
+      setAccountBusy(null)
+    }
   }
 
   // Build and reveal a shareable diagnostics bundle. Best-effort: the backend
@@ -153,23 +198,153 @@ export default function SettingsModal({
             </button>
           </div>
 
-          <div className="modal-body">
-            <div className="field">
-              <span className="field-label">Theme</span>
-              <div className="seg">
-                {THEMES.map((t) => (
-                  <button
-                    key={t.value}
-                    type="button"
-                    className={`seg-btn${settings.theme === t.value ? ' seg-btn--active' : ''}`}
-                    onClick={() => pickTheme(t.value)}
-                  >
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-            </div>
+          <div className="settings-tabs" role="tablist" aria-label="Settings sections">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'general'}
+              className={`settings-tab${tab === 'general' ? ' settings-tab--active' : ''}`}
+              onClick={() => setTab('general')}
+            >
+              General
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'appearance'}
+              className={`settings-tab${tab === 'appearance' ? ' settings-tab--active' : ''}`}
+              onClick={() => setTab('appearance')}
+            >
+              Appearance
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={tab === 'accounts'}
+              className={`settings-tab${tab === 'accounts' ? ' settings-tab--active' : ''}`}
+              onClick={() => setTab('accounts')}
+            >
+              Accounts
+            </button>
+          </div>
 
+          <div className="modal-body">
+            {tab === 'accounts' ? (
+              <div className="settings-accounts" role="tabpanel">
+                <div className="settings-account-card">
+                  <div>
+                    <span className="field-label">GitHub Copilot</span>
+                    <strong>{auth?.copilot.user ?? 'Not connected'}</strong>
+                    <span className="field-hint">
+                      Reauthenticate the AI engine and discard its stale local connection.
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn--primary btn--sm"
+                    disabled={accountBusy !== null}
+                    onClick={() => void reauthenticateCopilot()}
+                  >
+                    {accountBusy === 'copilot' ? 'Reauthenticating…' : 'Reauthenticate Copilot'}
+                  </button>
+                </div>
+                <div className="settings-account-card">
+                  <div>
+                    <span className="field-label">GitHub CLI</span>
+                    <strong>Repository account</strong>
+                    <span className="field-hint">
+                      Used to clone repositories and switch organization accounts.
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn--sm btn--ghost"
+                    disabled={accountBusy !== null}
+                    onClick={() => void reconnectGithub()}
+                  >
+                    {accountBusy === 'github' ? 'Opening…' : 'Connect another GitHub account'}
+                  </button>
+                </div>
+                {accountMessage && <div className="settings-account-message">{accountMessage}</div>}
+              </div>
+            ) : tab === 'appearance' ? (
+              <div className="settings-appearance" role="tabpanel">
+                <div className="field">
+                  <span className="field-label">Theme</span>
+                  <div className="seg">
+                    {THEMES.map((t) => (
+                      <button
+                        key={t.value}
+                        type="button"
+                        className={`seg-btn${settings.theme === t.value ? ' seg-btn--active' : ''}`}
+                        onClick={() => pickTheme(t.value)}
+                      >
+                        {t.label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="field-hint">Dark is the default product theme.</span>
+                </div>
+                <div className="appearance-grid">
+                  <label className="field appearance-color">
+                    <span className="field-label">Accent colour</span>
+                    <span className="appearance-colour-control">
+                      <input
+                        type="color"
+                        value={settings.visual?.accentColor ?? DEFAULT_ACCENT}
+                        onChange={(e) => pickVisual({ accentColor: e.target.value })}
+                        aria-label="Accent colour"
+                      />
+                      <code>{settings.visual?.accentColor ?? DEFAULT_ACCENT}</code>
+                    </span>
+                  </label>
+                  <label className="field appearance-color">
+                    <span className="field-label">Surface colour</span>
+                    <span className="appearance-colour-control">
+                      <input
+                        type="color"
+                        value={settings.visual?.surfaceColor ?? DEFAULT_SURFACE}
+                        onChange={(e) => pickVisual({ surfaceColor: e.target.value })}
+                        aria-label="Surface colour"
+                      />
+                      <code>{settings.visual?.surfaceColor ?? DEFAULT_SURFACE}</code>
+                    </span>
+                  </label>
+                </div>
+                <label className="field">
+                  <span className="field-label">Corner rounding</span>
+                  <span className="appearance-range">
+                    <input
+                      type="range"
+                      min="0"
+                      max="28"
+                      value={settings.visual?.borderRadius ?? 10}
+                      onChange={(e) => pickVisual({ borderRadius: Number(e.target.value) })}
+                    />
+                    <output>{settings.visual?.borderRadius ?? 10}px</output>
+                  </span>
+                  <span className="field-hint">Adjusts the rounding of panels, fields, and controls.</span>
+                </label>
+                <div className="field">
+                  <span className="field-label">Application icon</span>
+                  <div className="appearance-icon-grid">
+                    {([
+                      ['mark', 'Rayfin mark', 'The tiled product mark.'],
+                      ['monogram', 'V monogram', 'A compact VESPERTTINE monogram.']
+                    ] as const).map(([value, label, hint]) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className={`appearance-icon-option${(settings.visual?.appIcon ?? 'mark') === value ? ' appearance-icon-option--active' : ''}`}
+                        onClick={() => pickVisual({ appIcon: value })}
+                      >
+                        <span className={`appearance-icon-preview appearance-icon-preview--${value}`}>V</span>
+                        <span><strong>{label}</strong><small>{hint}</small></span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <>
             <div className="field">
               <span className="field-label">Text size</span>
               <div className="seg">
@@ -307,12 +482,14 @@ export default function SettingsModal({
                 </div>
               )}
             </div>
+              </>
+            )}
           </div>
 
           <div className="modal-footer settings-footer">
             <span className="settings-version">
               {versions
-                ? `Fabricator ${versions.app} · Tauri ${versions.tauri} · WebView2 ${versions.webview2} · Copilot CLI ${versions.copilot ?? 'unknown'}`
+                ? `VESPERTTINE RAYFIN EDITOR ${versions.app} · Tauri ${versions.tauri} · WebView2 ${versions.webview2} · Copilot CLI ${versions.copilot ?? 'unknown'}`
                 : ''}
             </span>
             <button className="btn btn--primary" onClick={onClose}>
@@ -325,7 +502,7 @@ export default function SettingsModal({
       {restartPrompt && (
         <ConfirmModal
           title="Restart required"
-          message="Compatibility rendering only changes after a restart. Fabricator will restart now to apply it."
+          message="Compatibility rendering only changes after a restart. VESPERTTINE RAYFIN EDITOR will restart now to apply it."
           confirmLabel="Restart now"
           cancelLabel="Cancel"
           onConfirm={() => void window.api.relaunch()}
