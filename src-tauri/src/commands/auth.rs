@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use tauri::AppHandle;
@@ -220,6 +221,66 @@ pub async fn auth_status() -> AuthStatus {
     rayfin,
     az,
   }
+}
+
+/// Get the signed-in Microsoft 365 profile image for the desktop account.
+///
+/// This stays entirely local: Azure CLI obtains the existing Microsoft Graph
+/// token and the image is returned to the renderer as a data URL. Some tenants
+/// disable profile photos or Graph access; those cases intentionally return
+/// `None` so the UI can use initials instead.
+#[tauri::command]
+pub async fn auth_profile_photo() -> Result<Option<String>, String> {
+    let token = exec::run(
+        "az",
+        &[
+            "account",
+            "get-access-token",
+            "--resource-type",
+            "ms-graph",
+            "--query",
+            "accessToken",
+            "--output",
+            "tsv",
+        ],
+        RunOptions::timeout(30_000),
+    )
+    .await;
+
+    if !token.ok || token.stdout.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let response = reqwest::Client::new()
+        .get("https://graph.microsoft.com/v1.0/me/photo/$value")
+        .bearer_auth(token.stdout.trim())
+        .send()
+        .await
+        .map_err(|err| format!("Could not request the Microsoft 365 profile image: {err}"))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let mime = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| value.starts_with("image/"))
+        .unwrap_or("image/jpeg")
+        .to_string();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| format!("Could not read the Microsoft 365 profile image: {err}"))?;
+
+    // Graph profile photos are small. Keep malformed or unexpected payloads out
+    // of the renderer and leave the initials fallback in place.
+    if bytes.is_empty() || bytes.len() > 1_500_000 {
+        return Ok(None);
+    }
+
+    Ok(Some(format!("data:{mime};base64,{}", BASE64.encode(bytes))))
 }
 
 #[tauri::command]

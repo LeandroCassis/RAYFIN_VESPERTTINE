@@ -216,18 +216,13 @@ export default function SetupScreen({
 
   return (
     <div className="setup setup-launch">
-      <header className="setup-launch-header">
-        <div className="setup-launch-brand">
-          <FabricatorMark />
-          <span>VESPERTTINE RAYFIN EDITOR</span>
-        </div>
-        <span className={`setup-launch-health${allReady ? ' setup-launch-health--ready' : ''}`}>
-          <span /> {allReady ? 'Environment ready' : 'Setup required'}
-        </span>
-      </header>
-
       <div className="setup-scroll">
         <main className="setup-launch-main">
+          <div className="setup-brand-hero" aria-label="VESPERTTINE">
+            <FabricatorMark />
+            <strong>VESPERTTINE</strong>
+            <span>Rayfin workspace</span>
+          </div>
           <div className="setup-launch-intro">
             <span className="setup-eyebrow">Workspace</span>
             <h1>{tab === 'organizations' ? 'Choose a tenant' : 'Environment status'}</h1>
@@ -449,11 +444,6 @@ export default function SetupScreen({
       <footer className="setup-actionbar setup-launch-footer">
         <div className="setup-actionbar-inner">
           <button className="btn btn--ghost btn--sm" onClick={() => setShowLog((value) => !value)}>{showLog ? 'Hide log' : 'Show log'}</button>
-          <div className="setup-actionbar-right">
-            <span className="setup-actionbar-status">
-              {activeOrganization ? `${activeOrganization.name} selected` : 'Choose a tenant'}
-            </span>
-          </div>
         </div>
       </footer>
 

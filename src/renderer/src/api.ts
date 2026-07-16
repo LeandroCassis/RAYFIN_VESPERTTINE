@@ -77,6 +77,7 @@ export const api: RayfinStudioApi = {
 
   auth: {
     status: () => invoke('auth_status'),
+    profilePhoto: () => invoke('auth_profile_photo'),
     loginCopilot: () => invoke('auth_login_copilot'),
     loginRayfin: (tenant?: string) => invoke('auth_login_rayfin', { tenant }),
     loginAz: () => invoke('auth_login_az'),
@@ -97,6 +98,10 @@ export const api: RayfinStudioApi = {
 
   fabric: {
     listWorkspaces: () => invoke('fabric_workspaces'),
+    listItems: (workspaceId: string) => invoke('fabric_workspace_items', { workspaceId }),
+    pickBackupFolder: () => invoke('fabric_backup_pick_folder'),
+    backup: (input) => invoke('fabric_backup_run', { input }),
+    importApp: (input) => invoke('fabric_import_app', { input }),
     listCapacities: () => invoke('fabric_capacities'),
     createWorkspace: (name: string, capacityId: string) =>
       invoke('fabric_create_workspace', { name, capacityId }),

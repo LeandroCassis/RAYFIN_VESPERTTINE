@@ -290,7 +290,7 @@ struct DeleteItem {
 }
 
 /// Write a helper script to the app data dir and return its path.
-fn write_helper(name: &str, source: &str) -> std::io::Result<PathBuf> {
+pub(crate) fn write_helper(name: &str, source: &str) -> std::io::Result<PathBuf> {
   let dir = paths::ensure_data_dir()?;
   let path = dir.join(name);
   std::fs::write(&path, source)?;
@@ -317,7 +317,7 @@ fn failure_error(res: &exec::RunResult, out: &str) -> (bool, String) {
 
 /// Resolve the active project's local CLI auth module, restoring dependencies
 /// first when a clone or manually opened project has no node_modules yet.
-async fn project_auth_module(project_dir: Option<&Path>) -> Result<PathBuf, String> {
+pub(crate) async fn project_auth_module(project_dir: Option<&Path>) -> Result<PathBuf, String> {
   if let Some(dir) = project_dir {
     exec::ensure_project_dependencies(dir, None)
       .await
@@ -779,9 +779,8 @@ mod tests {
   fn helper_sources_have_clean_stdout_contract() {
     assert!(HELPER_SOURCE.contains("getRayfinAuth"));
     assert!(HELPER_SOURCE.contains("silentOnly: true"));
-    assert!(
-      HELPER_SOURCE.contains("process.stdout.write(JSON.stringify({ ok: true, workspaces }))")
-    );
+        assert!(HELPER_SOURCE
+            .contains("process.stdout.write(JSON.stringify({ ok: true, workspaces }))"));
     // The helper must follow Fabric's 100/page pagination for both lists.
     assert!(HELPER_SOURCE.contains("fetchAllPages"));
     assert!(HELPER_SOURCE.contains("continuationUri"));

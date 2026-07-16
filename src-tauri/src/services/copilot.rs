@@ -253,8 +253,8 @@ impl UserInputHandler for PlanModeHandler {
     // The CLI's `allowFreeform` is optional on the wire; default to allowed.
     let allow_freeform = allow_freeform.unwrap_or(true);
     let request_id = uuid::Uuid::new_v4().to_string();
-    let rx = self
-      .gate
+        let rx =
+            self.gate
       .register_pending_question(session_id.as_str(), &request_id, allow_freeform);
     emit_chat_event(
       &self.app,
@@ -396,6 +396,29 @@ fn map_model(m: &Model) -> Option<crate::types::CopilotModel> {
   })
 }
 
+/// A usable model picker should not collapse to Auto just because a Copilot CLI
+/// build returns only its synthetic `auto` entry. The CLI accepts `--model` and
+/// GitHub publishes these stable selectable model ids; organization policy is
+/// still enforced by Copilot when a session starts.
+fn selectable_model_fallbacks() -> Vec<crate::types::CopilotModel> {
+    [
+        ("gpt-5.4", "GPT-5.4"),
+        ("gpt-5.3-codex", "GPT-5.3-Codex"),
+        ("claude-sonnet-4.6", "Claude Sonnet 4.6"),
+        ("gemini-2.5-pro", "Gemini 2.5 Pro"),
+        ("claude-haiku-4.5", "Claude Haiku 4.5"),
+        ("gpt-5-mini", "GPT-5 mini"),
+    ]
+    .into_iter()
+    .map(|(id, name)| crate::types::CopilotModel {
+        id: id.to_string(),
+        name: name.to_string(),
+        supported_reasoning_efforts: Vec::new(),
+        default_reasoning_effort: None,
+    })
+    .collect()
+}
+
 impl CopilotManager {
   /// Read the active Tenant's selected AI connection. Changing Tenant/provider
   /// discards live sessions, which prevents a GitHub session from leaking into an
@@ -476,14 +499,24 @@ impl CopilotManager {
         tokio::time::sleep(std::time::Duration::from_millis(600)).await;
       }
       match client.list_models().await {
-        Ok(models) => return Ok(models.iter().filter_map(map_model).collect()),
+                Ok(models) => {
+                    let selectable = models.iter().filter_map(map_model).collect::<Vec<_>>();
+                    return Ok(if selectable.is_empty() {
+                        selectable_model_fallbacks()
+                    } else {
+                        selectable
+                    });
+                }
         Err(e) => last_err = e.to_string(),
       }
     }
     // Persisting failure: drop the client so a later call restarts a fresh
     // server, and let the renderer fall back to its static model list.
     self.reset_client().await;
-    Err(format!("Failed to list Copilot models: {last_err}"))
+        log::warn!(
+            "Copilot did not return a model catalog; using selectable fallback models: {last_err}"
+        );
+        Ok(selectable_model_fallbacks())
   }
 
   /// Get the persistent, cached session for a project turn, creating or
@@ -674,8 +707,7 @@ impl CopilotManager {
   /// must interject into the exact session a turn is already running on.
   pub async fn peek_session(&self, project_id: &str) -> Option<Arc<Session>> {
     let key = cache_key(project_id);
-    self
-      .sessions
+        self.sessions
       .lock()
       .await
       .get(&key)

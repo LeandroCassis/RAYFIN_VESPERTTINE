@@ -174,6 +174,73 @@ export interface FabricWorkspacesResult {
   error?: string
 }
 
+export interface FabricItem {
+  id: string
+  displayName: string
+  type: string
+  workspaceId?: string
+  description?: string
+  folderId?: string
+}
+
+export interface FabricItemsResult {
+  ok: boolean
+  items?: FabricItem[]
+  needsLogin?: boolean
+  error?: string
+}
+
+export interface FabricBackupWorkspaceSelection {
+  id: string
+  displayName: string
+}
+
+export interface FabricBackupInput {
+  outputRoot: string
+  workspaces: FabricBackupWorkspaceSelection[]
+}
+
+export interface FabricBackupItemResult {
+  workspaceId: string
+  itemId: string
+  displayName: string
+  type: string
+  status: 'definition' | 'metadata-only' | 'failed'
+  path?: string
+  error?: string
+}
+
+export interface FabricBackupResult {
+  ok: boolean
+  path?: string
+  workspaceCount: number
+  itemCount: number
+  definitionCount: number
+  metadataOnlyCount: number
+  failedCount: number
+  items: FabricBackupItemResult[]
+  needsLogin?: boolean
+  error?: string
+}
+
+export interface FabricImportAppInput {
+  workspaceId: string
+  workspaceName: string
+  itemId: string
+  displayName: string
+  itemType: string
+  organizationId?: string
+}
+
+export interface FabricImportAppResult {
+  ok: boolean
+  path?: string
+  recoverable: boolean
+  project?: StudioProject
+  needsLogin?: boolean
+  error?: string
+}
+
 /** A dedicated capacity the user can create a workspace on. */
 export interface FabricCapacity {
   id: string
@@ -307,6 +374,7 @@ export type ProcStreamId =
   | 'clone:project'
   | 'deploy:run'
   | 'dev:run'
+  | 'backup:run'
 
 export interface ProcLogEvent {
   channel: ProcStreamId
@@ -1576,6 +1644,8 @@ export interface RayfinStudioApi {
 
   auth: {
     status: () => Promise<AuthStatus>
+    /** Microsoft 365 profile image for the signed-in desktop account, if available. */
+    profilePhoto: () => Promise<string | null>
     loginCopilot: () => Promise<ProcResult>
     loginRayfin: (tenant?: string) => Promise<ProcResult>
     loginAz: () => Promise<ProcResult>
@@ -1607,6 +1677,14 @@ export interface RayfinStudioApi {
   fabric: {
     /** List the signed-in user's Fabric workspaces (with capacity / F-SKU info). */
     listWorkspaces: () => Promise<FabricWorkspacesResult>
+    /** List every item in a Fabric workspace, following all continuation pages. */
+    listItems: (workspaceId: string) => Promise<FabricItemsResult>
+    /** Pick the parent folder in which timestamped Fabric backups are created. */
+    pickBackupFolder: () => Promise<string | null>
+    /** Back up selected workspaces using definitions where supported and metadata otherwise. */
+    backup: (input: FabricBackupInput) => Promise<FabricBackupResult>
+    /** Recover an AppBackend/Rayfin definition into an isolated local project when source is exposed. */
+    importApp: (input: FabricImportAppInput) => Promise<FabricImportAppResult>
     /** List eligible (F-SKU / P-SKU) capacities the user can create a workspace on. */
     listCapacities: () => Promise<FabricCapacitiesResult>
     /** Create + assign a new workspace to `capacityId`; region follows the capacity. */

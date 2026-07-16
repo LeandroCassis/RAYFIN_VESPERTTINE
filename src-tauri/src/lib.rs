@@ -149,6 +149,7 @@ pub fn run() {
       commands::doctor::doctor_install_all,
       // auth
       commands::auth::auth_status,
+            commands::auth::auth_profile_photo,
       commands::auth::auth_login_copilot,
       commands::auth::auth_login_rayfin,
       commands::auth::auth_login_az,
@@ -167,6 +168,10 @@ pub fn run() {
       commands::fabric::fabric_create_workspace,
       commands::fabric::fabric_delete_apps,
       commands::fabric::fabric_semantic_model_schema,
+            commands::backup::fabric_workspace_items,
+            commands::backup::fabric_backup_pick_folder,
+            commands::backup::fabric_backup_run,
+            commands::backup::fabric_import_app,
       // projects
       commands::projects::projects_state,
       commands::projects::projects_templates,

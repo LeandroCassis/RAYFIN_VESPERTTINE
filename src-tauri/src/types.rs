@@ -147,6 +147,112 @@ pub struct FabricWorkspacesResult {
   pub error: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricItem {
+    pub id: String,
+    pub display_name: String,
+    pub r#type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricItemsResult {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<Vec<FabricItem>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_login: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupWorkspaceSelection {
+    pub id: String,
+    pub display_name: String,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupInput {
+    pub output_root: String,
+    pub workspaces: Vec<FabricBackupWorkspaceSelection>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupItemResult {
+    pub workspace_id: String,
+    pub item_id: String,
+    pub display_name: String,
+    pub r#type: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupResult {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub workspace_count: u32,
+    #[serde(default)]
+    pub item_count: u32,
+    #[serde(default)]
+    pub definition_count: u32,
+    #[serde(default)]
+    pub metadata_only_count: u32,
+    #[serde(default)]
+    pub failed_count: u32,
+    #[serde(default)]
+    pub items: Vec<FabricBackupItemResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_login: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricImportAppInput {
+    pub workspace_id: String,
+    pub workspace_name: String,
+    pub item_id: String,
+    pub display_name: String,
+    pub item_type: String,
+    #[serde(default)]
+    pub organization_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricImportAppResult {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub recoverable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<StudioProject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_login: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// A dedicated capacity the signed-in user can create a workspace on.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]

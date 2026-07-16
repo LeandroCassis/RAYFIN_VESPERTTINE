@@ -43,6 +43,7 @@ import WorkspaceStatus from '../components/WorkspaceStatus'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
 import AdvisorView, { categoryMeta } from '../components/AdvisorView'
+import BackupView from '../components/BackupView'
 import ModelTab from '../components/ModelTab'
 import { useToast } from '../toast'
 import { reportIssue as runReportIssue } from './reportIssue'
@@ -148,6 +149,7 @@ export default function Workbench({
   const [versions, setVersions] = useState<AppVersions | null>(null)
   const [signingOut, setSigningOut] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showOrganizations, setShowOrganizations] = useState(false)
   const [showAccountMenu, setShowAccountMenu] = useState(false)
@@ -197,7 +199,7 @@ export default function Workbench({
     null
   )
   /** Project content view: the build loop (chat + preview) or the code browser. */
-  const [viewMode, setViewMode] = useState<'build' | 'code' | 'model' | 'advisor'>('build')
+  const [viewMode, setViewMode] = useState<'build' | 'code' | 'model' | 'advisor' | 'backup'>('build')
   /** A pending request to open a specific file in the Code tab (Model → file). */
   const [codeOpen, setCodeOpen] = useState<{ path: string; nonce: number } | null>(null)
   /** Build-view focus: expand a single pane to fill the area (null = split). */
@@ -285,6 +287,29 @@ export default function Workbench({
   /** An open project gets one compact workspace bar instead of the old stacked
    * product + project headers. Launchers and full-screen flows keep the product bar. */
   const workspaceActive = Boolean(active && !showHome && !showClone && !showMigration && !createMode)
+
+  useEffect(() => {
+    let disposed = false
+    if (!auth.rayfin.signedIn && !auth.az.signedIn) {
+      setProfilePhoto(null)
+      return () => {
+        disposed = true
+      }
+    }
+
+    void window.api.auth
+      .profilePhoto()
+      .then((photo) => {
+        if (!disposed) setProfilePhoto(photo)
+      })
+      .catch(() => {
+        if (!disposed) setProfilePhoto(null)
+      })
+
+    return () => {
+      disposed = true
+    }
+  }, [auth.az.signedIn, auth.az.user, auth.rayfin.signedIn, auth.rayfin.user])
 
   /** Projects with a deploy queued behind the running one (coalesced). */
   const pendingDeployRef = useRef<Set<string>>(new Set())
@@ -981,7 +1006,16 @@ export default function Workbench({
             setShowOrganizations(false)
           }}
         >
-          <span className="account-menu-avatar">{avatarInitials(auth.rayfin.user)}</span>
+          {profilePhoto ? (
+            <img
+              className="account-menu-avatar account-menu-avatar--photo"
+              src={profilePhoto}
+              alt="Microsoft 365 profile"
+              onError={() => setProfilePhoto(null)}
+            />
+          ) : (
+            <span className="account-menu-avatar">{avatarInitials(auth.rayfin.user)}</span>
+          )}
         </button>
         {showAccountMenu && (
           <>
@@ -1195,7 +1229,6 @@ export default function Workbench({
                 <div className={`project-pane${showHome ? ' project-pane--hidden' : ''}`}>
                   <div className="project-header">
                     <div className="project-id">
-                      <FabricatorMark className="workspace-mark" />
                       <button
                         className="switch-projects-btn"
                         onClick={goHome}
@@ -1255,6 +1288,17 @@ export default function Workbench({
                         <Codicon name="lightbulb-sparkle" />
                         <span className="sr-only">Advisor</span>
                       </button>
+                      <button
+                        className={`project-tab project-tab--icon${viewMode === 'backup' ? ' project-tab--active' : ''}`}
+                        role="tab"
+                        aria-selected={viewMode === 'backup'}
+                        onClick={() => setViewMode('backup')}
+                        aria-label="Fabric backup"
+                        title="Fabric backup"
+                      >
+                        <Codicon name="cloud-download" />
+                        <span className="sr-only">Fabric backup</span>
+                      </button>
                     </div>
                     <div className="project-meta">
                       <DeploymentsControl
@@ -1284,7 +1328,13 @@ export default function Workbench({
                       {renderAccountMenu()}
                     </div>
                   </div>
-                  {viewMode === 'code' ? (
+                  {viewMode === 'backup' ? (
+                    <BackupView
+                      organizationId={activeOrganization?.id}
+                      tenantId={activeOrganization?.tenantId}
+                      onImported={() => void refreshProjects()}
+                    />
+                  ) : viewMode === 'code' ? (
                     <Suspense fallback={<div className="code-empty">Loading editor…</div>}>
                       <CodeViewer
                         project={active}
