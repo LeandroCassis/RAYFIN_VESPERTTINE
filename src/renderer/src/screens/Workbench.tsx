@@ -134,6 +134,8 @@ interface Props {
   auth: AuthStatus
   onSignOut: () => Promise<void> | void
   onAuthChanged: () => Promise<void> | void
+  /** Leave the editor and return to the startup tenant cards. */
+  onGoToTenants: () => void
   settings: AppSettings | null
   onSettingsChange: (patch: Partial<AppSettings>) => Promise<void>
 }
@@ -142,6 +144,7 @@ export default function Workbench({
   auth,
   onSignOut,
   onAuthChanged,
+  onGoToTenants,
   settings,
   onSettingsChange
 }: Props): JSX.Element {
@@ -1248,12 +1251,12 @@ export default function Workbench({
                         className="project-tab project-tab--icon project-tab--home"
                         role="tab"
                         aria-selected={false}
-                        onClick={goHome}
-                        aria-label="Home"
-                        title="Home"
+                        onClick={onGoToTenants}
+                        aria-label="Choose tenant"
+                        title="Choose tenant"
                       >
                         <Codicon name="home" />
-                        <span className="sr-only">Home</span>
+                        <span className="sr-only">Choose tenant</span>
                       </button>
                       <button
                         className={`project-tab project-tab--icon${viewMode === 'build' ? ' project-tab--active' : ''}`}
