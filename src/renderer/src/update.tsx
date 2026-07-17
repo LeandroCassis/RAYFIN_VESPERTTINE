@@ -48,6 +48,12 @@ export interface UpdateApi {
 
 const UpdateContext = createContext<UpdateApi | null>(null)
 
+// The VESPERTTINE distribution channel does not yet publish signed updater
+// manifests. Keep startup deterministic until that channel is configured: a
+// manual check can still be offered later, but installation must never fetch an
+// artifact from the former Fabricator project.
+const AUTO_UPDATES_ENABLED = false
+
 export function UpdateProvider({ children }: { children: ReactNode }): JSX.Element {
   const [status, setStatus] = useState<UpdateStatus>('idle')
   const [info, setInfo] = useState<AppUpdateInfo | null>(null)
@@ -131,12 +137,11 @@ export function UpdateProvider({ children }: { children: ReactNode }): JSX.Eleme
     setStatus('idle')
   }, [])
 
-  // Automatic background check + download once on startup. Skipped in dev, where
-  // there is no published `latest.json` endpoint to hit. Marked mandatory so a
-  // found update blocks the app and installs itself; up-to-date or offline
-  // launches clear the gate and proceed.
+  // Automatic downloads remain disabled until the VESPERTTINE updater channel
+  // has its own signing key and published manifests. This prevents a branded
+  // installer from ever being replaced by a legacy Fabricator release.
   useEffect(() => {
-    if (import.meta.env.DEV || startedAutoCheck.current) return
+    if (!AUTO_UPDATES_ENABLED || import.meta.env.DEV || startedAutoCheck.current) return
     startedAutoCheck.current = true
     void checkNow({ mandatory: true })
   }, [checkNow])
