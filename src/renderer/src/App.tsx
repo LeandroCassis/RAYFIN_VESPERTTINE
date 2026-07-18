@@ -65,6 +65,11 @@ function App(): JSX.Element {
     setPhase('ready')
   }, [])
 
+  /** Return to the tenant chooser without signing the user out. */
+  const openTenantChooser = useCallback((): void => {
+    setPhase('setup')
+  }, [])
+
   useEffect(() => {
     void refresh()
     void window.api.settings.get().then(setSettings)
@@ -106,6 +111,7 @@ function App(): JSX.Element {
           auth={auth}
           onSignOut={refresh}
           onAuthChanged={refreshAuth}
+          onGoToTenants={openTenantChooser}
           settings={settings}
           onSettingsChange={updateSettings}
         />

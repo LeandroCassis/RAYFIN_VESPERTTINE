@@ -162,7 +162,10 @@ fn build_bundle(dir: &Path, app_version: &str, extra_env: &[(&str, String)]) -> 
   out.push_str("# Fabricator diagnostics\n\n");
   out.push_str("Attach this file to your bug report. It contains no credentials.\n\n");
   out.push_str("## Environment\n\n");
-  out.push_str(&format!("- generated: {}\n", chrono::Utc::now().to_rfc3339()));
+  out.push_str(&format!(
+    "- generated: {}\n",
+    chrono::Utc::now().to_rfc3339()
+  ));
   out.push_str(&format!("- app: {app_version}\n"));
   out.push_str(&format!("- os: {}\n", std::env::consts::OS));
   out.push_str(&format!("- arch: {}\n", std::env::consts::ARCH));
@@ -200,8 +203,7 @@ pub fn prune() {
   let cutoff = (chrono::Utc::now() - chrono::Duration::days(RETENTION_DAYS))
     .format("%Y-%m-%d")
     .to_string();
-  let bundle_max_age =
-    std::time::Duration::from_secs(RETENTION_DAYS.max(0) as u64 * 24 * 60 * 60);
+  let bundle_max_age = std::time::Duration::from_secs(RETENTION_DAYS.max(0) as u64 * 24 * 60 * 60);
   let Ok(rd) = std::fs::read_dir(&dir) else {
     return;
   };
@@ -218,7 +220,11 @@ pub fn prune() {
         let _ = std::fs::remove_file(&path);
       }
     } else if name.starts_with("fabricator-diagnostics-") && name.ends_with(".md") {
-      if let Ok(age) = entry.metadata().and_then(|m| m.modified()).map(|m| m.elapsed()) {
+      if let Ok(age) = entry
+        .metadata()
+        .and_then(|m| m.modified())
+        .map(|m| m.elapsed())
+      {
         if age.map(|a| a > bundle_max_age).unwrap_or(false) {
           let _ = std::fs::remove_file(&path);
         }
@@ -251,17 +257,18 @@ mod tests {
       error: None,
       lagged_events: 0,
       stream_closed: false,
-      tools: vec![ToolDiag { name: "shell".into(), ok: true, output: None }],
+      tools: vec![ToolDiag {
+        name: "shell".into(),
+        ok: true,
+        output: None,
+      }],
       prompt: None,
       response: None,
     }
   }
 
   fn tmp_dir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!(
-      "rayfin-diag-test-{tag}-{}",
-      uuid::Uuid::new_v4()
-    ));
+    let dir = std::env::temp_dir().join(format!("rayfin-diag-test-{tag}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&dir).unwrap();
     dir
   }
@@ -289,9 +296,16 @@ mod tests {
   #[test]
   fn metadata_mode_omits_prompt_and_response() {
     let rec = sample();
-    let json: serde_json::Value = serde_json::from_str(&serde_json::to_string(&rec).unwrap()).unwrap();
-    assert!(json.get("prompt").is_none(), "prompt omitted in metadata mode");
-    assert!(json.get("response").is_none(), "response omitted in metadata mode");
+    let json: serde_json::Value =
+      serde_json::from_str(&serde_json::to_string(&rec).unwrap()).unwrap();
+    assert!(
+      json.get("prompt").is_none(),
+      "prompt omitted in metadata mode"
+    );
+    assert!(
+      json.get("response").is_none(),
+      "response omitted in metadata mode"
+    );
   }
 
   #[test]
@@ -299,7 +313,8 @@ mod tests {
     let mut rec = sample();
     rec.prompt = Some("hello".into());
     rec.response = Some("hi there".into());
-    let json: serde_json::Value = serde_json::from_str(&serde_json::to_string(&rec).unwrap()).unwrap();
+    let json: serde_json::Value =
+      serde_json::from_str(&serde_json::to_string(&rec).unwrap()).unwrap();
     assert_eq!(json["prompt"], "hello");
     assert_eq!(json["response"], "hi there");
   }
@@ -335,7 +350,10 @@ mod tests {
     let body = build_bundle(
       &dir,
       "9.9.9",
-      &[("tauri", "2.0.0".to_string()), ("copilot", "1.0.0".to_string())],
+      &[
+        ("tauri", "2.0.0".to_string()),
+        ("copilot", "1.0.0".to_string()),
+      ],
     );
     assert!(body.contains("# Fabricator diagnostics"));
     assert!(body.contains("- app: 9.9.9"));

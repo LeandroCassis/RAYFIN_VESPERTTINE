@@ -56,7 +56,10 @@ pub fn save_history(project_id: &str, messages: Vec<ChatMessage>) {
     return;
   }
   if let Err(e) = std::fs::create_dir_all(paths::chats_dir()) {
-    log::warn!("failed to create chats dir {}: {e}", paths::chats_dir().display());
+    log::warn!(
+      "failed to create chats dir {}: {e}",
+      paths::chats_dir().display()
+    );
   }
   if let Ok(text) = serde_json::to_string(&clean) {
     if let Err(e) = std::fs::write(&file, text) {

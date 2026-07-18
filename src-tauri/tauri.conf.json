@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "VESPERTTINE RAYFIN EDITOR",
-  "version": "0.93.0",
+  "version": "0.93.1",
   "identifier": "com.vesperttine.rayfineditor",
   "build": {
     "frontendDist": "../dist",
@@ -21,7 +21,8 @@
         "resizable": true,
         "fullscreen": false,
         "center": true,
-        "backgroundColor": "#0b0e14"
+        "backgroundColor": "#0b0e14",
+        "theme": "Dark"
       }
     ],
     "security": {
@@ -30,7 +31,7 @@
   },
   "bundle": {
     "active": true,
-    "createUpdaterArtifacts": true,
+    "createUpdaterArtifacts": false,
     "targets": "all",
     "publisher": "VESPERTTINE RAYFIN EDITOR",
     "category": "DeveloperTool",
@@ -59,7 +60,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDE4NEEyQzBFMTA1MUFCMzAKUldRd3ExRVFEaXhLR09weDZNcGk3VVkwbTI0OS9tU0RqTHd2cU82Zjk4dml5LzZOSTVjeTM5S2cK",
       "endpoints": [
-        "https://github.com/spatney/rayfin-fabricator/releases/latest/download/latest.json"
+        "https://github.com/LeandroCassis/RAYFIN_VESPERTTINE/releases/latest/download/latest.json"
       ]
     }
   }

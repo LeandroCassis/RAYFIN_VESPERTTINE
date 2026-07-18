@@ -25,6 +25,7 @@ import {
 } from '@shared/ipc'
 import CreateProjectScreen from '../components/CreateProjectScreen'
 import CloneFromGitHubScreen from '../components/CloneFromGitHubScreen'
+import MigrateProjectScreen from '../components/MigrateProjectScreen'
 import HomeView from '../components/HomeView'
 import ManageProjectModal from '../components/ManageProjectModal'
 import DeleteProjectModal from '../components/DeleteProjectModal'
@@ -42,10 +43,11 @@ import WorkspaceStatus from '../components/WorkspaceStatus'
 import { SuppressPreview } from '../overlay'
 import RayfinVersionControl from '../components/RayfinVersionControl'
 import AdvisorView, { categoryMeta } from '../components/AdvisorView'
+import BackupView from '../components/BackupView'
 import ModelTab from '../components/ModelTab'
 import { useToast } from '../toast'
 import { reportIssue as runReportIssue } from './reportIssue'
-import { InfoIcon, GearIcon, SignOutIcon, CompareIcon } from '../components/icons'
+import { Codicon, InfoIcon, GearIcon, SignOutIcon, CompareIcon } from '../components/icons'
 import { FabricatorMark } from '../components/FabricatorMark'
 
 // Monaco is heavy (~7 MB); only load the code viewer when the Code tab is opened.
@@ -108,10 +110,32 @@ function toStored(messages: UIChatMessage[]): ChatMessage[] {
   )
 }
 
+function migrationAssessmentPrompt(): string {
+  return [
+    'Use the migrate-to-rayfin skill for this workspace.',
+    '',
+    'The original application is preserved as a read-only snapshot in `legacy-source/`.',
+    'Read `.vesperttine/migration.json` and assess the complete source application.',
+    '',
+    'First perform read-only discovery and produce a concrete migration task list in Plan mode.',
+    'Cover the framework and UI, routes, database schema, exact physical table names, auth and',
+    'authorization, server functions, storage/realtime, environment variables, integrations,',
+    'data migration, unsupported Rayfin/Fabric capabilities, risks, and local test strategy.',
+    'Do not implement the migration until I approve the plan.',
+    '',
+    'After approval, migrate into the workspace root, keep `legacy-source/` unchanged, preserve',
+    'database names exactly, use stable Fabric-supported Rayfin features, and test locally.',
+    'Do not deploy. Once tests pass, ask for the Microsoft Tenant/account, Fabric workspace,',
+    'and desired application name.'
+  ].join('\n')
+}
+
 interface Props {
   auth: AuthStatus
   onSignOut: () => Promise<void> | void
   onAuthChanged: () => Promise<void> | void
+  /** Leave the editor and return to the startup tenant cards. */
+  onGoToTenants: () => void
   settings: AppSettings | null
   onSettingsChange: (patch: Partial<AppSettings>) => Promise<void>
 }
@@ -120,6 +144,7 @@ export default function Workbench({
   auth,
   onSignOut,
   onAuthChanged,
+  onGoToTenants,
   settings,
   onSettingsChange
 }: Props): JSX.Element {
@@ -127,6 +152,7 @@ export default function Workbench({
   const [versions, setVersions] = useState<AppVersions | null>(null)
   const [signingOut, setSigningOut] = useState(false)
   const [signingIn, setSigningIn] = useState(false)
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null)
   const [showSettings, setShowSettings] = useState(false)
   const [showOrganizations, setShowOrganizations] = useState(false)
   const [showAccountMenu, setShowAccountMenu] = useState(false)
@@ -142,6 +168,7 @@ export default function Workbench({
   const [createMode, setCreateMode] = useState<'create' | 'deploy' | null>(null)
   /** Fullscreen "Open existing… → Clone from GitHub" flow. */
   const [showClone, setShowClone] = useState(false)
+  const [showMigration, setShowMigration] = useState(false)
   const [opening, setOpening] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   /** Lazy-mount the Advisor view on first visit, then keep it mounted (hidden when
@@ -175,7 +202,7 @@ export default function Workbench({
     null
   )
   /** Project content view: the build loop (chat + preview) or the code browser. */
-  const [viewMode, setViewMode] = useState<'build' | 'code' | 'model' | 'advisor'>('build')
+  const [viewMode, setViewMode] = useState<'build' | 'code' | 'model' | 'advisor' | 'backup'>('build')
   /** A pending request to open a specific file in the Code tab (Model → file). */
   const [codeOpen, setCodeOpen] = useState<{ path: string; nonce: number } | null>(null)
   /** Build-view focus: expand a single pane to fill the area (null = split). */
@@ -262,7 +289,30 @@ export default function Workbench({
     organizationProjects.find((project) => project.id === projects?.activeProjectId) ?? null
   /** An open project gets one compact workspace bar instead of the old stacked
    * product + project headers. Launchers and full-screen flows keep the product bar. */
-  const workspaceActive = Boolean(active && !showHome && !showClone && !createMode)
+  const workspaceActive = Boolean(active && !showHome && !showClone && !showMigration && !createMode)
+
+  useEffect(() => {
+    let disposed = false
+    if (!auth.rayfin.signedIn && !auth.az.signedIn) {
+      setProfilePhoto(null)
+      return () => {
+        disposed = true
+      }
+    }
+
+    void window.api.auth
+      .profilePhoto()
+      .then((photo) => {
+        if (!disposed) setProfilePhoto(photo)
+      })
+      .catch(() => {
+        if (!disposed) setProfilePhoto(null)
+      })
+
+    return () => {
+      disposed = true
+    }
+  }, [auth.az.signedIn, auth.az.user, auth.rayfin.signedIn, auth.rayfin.user])
 
   /** Projects with a deploy queued behind the running one (coalesced). */
   const pendingDeployRef = useRef<Set<string>>(new Set())
@@ -527,6 +577,11 @@ export default function Workbench({
       // The agent may have changed the Rayfin deps (e.g. an upgrade) — re-check.
       void refreshRayfinVer(projectId)
       if (!result.ok) return
+      const latest = await window.api.projects.state()
+      const project = latest.projects.find((item) => item.id === projectId)
+      // A migration stays local through assessment, approval, implementation and
+      // validation. Deployment is a separate user action after its target is known.
+      if (project?.template === 'migration') return
       const changed = await window.api.deploy.hasChanges(projectId)
       if (changed) void runDeploy(projectId)
     },
@@ -851,10 +906,10 @@ export default function Workbench({
           }}
         >
           <span className="organization-trigger-mark">
-            {(activeOrganization?.name ?? 'Organization').slice(0, 1).toUpperCase()}
+            {(activeOrganization?.name ?? 'Tenant').slice(0, 1).toUpperCase()}
           </span>
           <span className="organization-trigger-copy">
-            <strong>{activeOrganization?.name ?? 'Select organization'}</strong>
+            <strong>{activeOrganization?.name ?? 'Select tenant'}</strong>
             <small>{activeOrganization?.tenantId ?? auth.rayfin.tenant ?? 'No tenant selected'}</small>
           </span>
           <span className="codicon codicon-chevron-down" aria-hidden="true" />
@@ -864,7 +919,7 @@ export default function Workbench({
             <SuppressPreview />
             <div className="organization-popover">
               <div className="organization-popover-head">
-                <strong>Organizations</strong>
+                <strong>Tenants</strong>
                 <small>Tenant-specific Fabric and GitHub accounts</small>
               </div>
               <div className="organization-list">
@@ -894,7 +949,7 @@ export default function Workbench({
                   <input
                     value={organizationName}
                     onChange={(e) => setOrganizationName(e.target.value)}
-                    placeholder="Organization name"
+                    placeholder="Tenant name"
                   />
                   <input
                     value={organizationTenant}
@@ -928,7 +983,7 @@ export default function Workbench({
                   className="organization-add"
                   onClick={() => setShowOrganizationForm(true)}
                 >
-                  <span className="codicon codicon-add" aria-hidden="true" /> Add organization
+                  <span className="codicon codicon-add" aria-hidden="true" /> Add tenant
                 </button>
               )}
             </div>
@@ -954,7 +1009,16 @@ export default function Workbench({
             setShowOrganizations(false)
           }}
         >
-          <span className="account-menu-avatar">{avatarInitials(auth.rayfin.user)}</span>
+          {profilePhoto ? (
+            <img
+              className="account-menu-avatar account-menu-avatar--photo"
+              src={profilePhoto}
+              alt="Microsoft 365 profile"
+              onError={() => setProfilePhoto(null)}
+            />
+          ) : (
+            <span className="account-menu-avatar">{avatarInitials(auth.rayfin.user)}</span>
+          )}
         </button>
         {showAccountMenu && (
           <>
@@ -1106,7 +1170,25 @@ export default function Workbench({
         </header>
       )}
 
-      {showClone ? (
+      {showMigration ? (
+        <MigrateProjectScreen
+          onCancel={() => setShowMigration(false)}
+          onPrepared={(project) => {
+            setShowMigration(false)
+            setShowHome(false)
+            setViewMode('build')
+            setFocusPane('chat')
+            setChatOutbound({
+              id: `migration-assessment-${Date.now()}`,
+              projectId: project.id,
+              display: 'Assess this application for Rayfin migration',
+              prompt: migrationAssessmentPrompt(),
+              mode: 'plan'
+            })
+            void refreshProjects()
+          }}
+        />
+      ) : showClone ? (
         <CloneFromGitHubScreen
           onCancel={() => setShowClone(false)}
           onCloned={() => {
@@ -1150,7 +1232,6 @@ export default function Workbench({
                 <div className={`project-pane${showHome ? ' project-pane--hidden' : ''}`}>
                   <div className="project-header">
                     <div className="project-id">
-                      <FabricatorMark className="workspace-mark" />
                       <button
                         className="switch-projects-btn"
                         onClick={goHome}
@@ -1167,67 +1248,111 @@ export default function Workbench({
                     </div>
                     <div className="project-tabs" role="tablist">
                       <button
-                        className={`project-tab${viewMode === 'build' ? ' project-tab--active' : ''}`}
+                        className="project-tab project-tab--icon project-tab--home"
+                        role="tab"
+                        aria-selected={false}
+                        onClick={onGoToTenants}
+                        aria-label="Choose tenant"
+                        title="Choose tenant"
+                      >
+                        <Codicon name="home" />
+                        <span className="sr-only">Choose tenant</span>
+                      </button>
+                      <button
+                        className={`project-tab project-tab--icon${viewMode === 'build' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'build'}
                         onClick={() => setViewMode('build')}
+                        aria-label="Build"
+                        title="Build"
                       >
-                        Build
+                        <Codicon name="comment-discussion" />
+                        <span className="sr-only">Build</span>
                       </button>
                       <button
-                        className={`project-tab${viewMode === 'code' ? ' project-tab--active' : ''}`}
+                        className={`project-tab project-tab--icon${viewMode === 'code' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'code'}
                         onClick={() => setViewMode('code')}
+                        aria-label="Code"
+                        title="Code"
                       >
-                        Code
+                        <Codicon name="code" />
+                        <span className="sr-only">Code</span>
                       </button>
                       <button
-                        className={`project-tab${viewMode === 'model' ? ' project-tab--active' : ''}`}
+                        className={`project-tab project-tab--icon${viewMode === 'model' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'model'}
                         onClick={() => setViewMode('model')}
+                        aria-label="Model"
+                        title="Model"
                       >
-                        Model
+                        <Codicon name="database" />
+                        <span className="sr-only">Model</span>
                       </button>
                       <button
-                        className={`project-tab${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
+                        className={`project-tab project-tab--icon${viewMode === 'advisor' ? ' project-tab--active' : ''}`}
                         role="tab"
                         aria-selected={viewMode === 'advisor'}
                         onClick={() => setViewMode('advisor')}
+                        aria-label="Advisor"
+                        title="Advisor"
                       >
-                        Advisor
+                        <Codicon name="lightbulb-sparkle" />
+                        <span className="sr-only">Advisor</span>
+                      </button>
+                      <button
+                        className={`project-tab project-tab--icon${viewMode === 'backup' ? ' project-tab--active' : ''}`}
+                        role="tab"
+                        aria-selected={viewMode === 'backup'}
+                        onClick={() => setViewMode('backup')}
+                        aria-label="Fabric backup"
+                        title="Fabric backup"
+                      >
+                        <Codicon name="cloud-download" />
+                        <span className="sr-only">Fabric backup</span>
                       </button>
                     </div>
                     <div className="project-meta">
-                      <DeploymentsControl
-                        project={active}
-                        running={Boolean(deploys[active.id]?.running)}
-                        reconciling={reconciling.has(active.id)}
-                        onCreate={(name, workspaceId) => {
-                          setViewMode('build')
-                          void (async () => {
-                            try {
-                              await window.api.deploy.setName(active.id, workspaceId, name)
-                            } catch {
-                              /* naming is best-effort; deploy anyway */
-                            }
-                            await requestUserDeploy(active.id, workspaceId)
-                          })()
-                        }}
-                        onRedeploy={() => {
-                          setViewMode('build')
-                          void requestUserDeploy(active.id)
-                        }}
-                        onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
-                        onChanged={() => void refreshProjects()}
-                        onSignedIn={() => void onAuthChanged()}
-                      />
-                      {renderOrganizationSwitcher(true)}
-                      {renderAccountMenu()}
+                      <div className="project-meta-group project-meta-group--deploy">
+                        <DeploymentsControl
+                          project={active}
+                          running={Boolean(deploys[active.id]?.running)}
+                          reconciling={reconciling.has(active.id)}
+                          onCreate={(name, workspaceId) => {
+                            setViewMode('build')
+                            void (async () => {
+                              try {
+                                await window.api.deploy.setName(active.id, workspaceId, name)
+                              } catch {
+                                /* naming is best-effort; deploy anyway */
+                              }
+                              await requestUserDeploy(active.id, workspaceId)
+                            })()
+                          }}
+                          onRedeploy={() => {
+                            setViewMode('build')
+                            void requestUserDeploy(active.id)
+                          }}
+                          onSwitch={(workspace, byId) => switchDeployment(active.id, workspace, byId)}
+                          onChanged={() => void refreshProjects()}
+                          onSignedIn={() => void onAuthChanged()}
+                        />
+                      </div>
+                      <div className="project-meta-group project-meta-group--identity">
+                        {renderOrganizationSwitcher(true)}
+                        {renderAccountMenu()}
+                      </div>
                     </div>
                   </div>
-                  {viewMode === 'code' ? (
+                  {viewMode === 'backup' ? (
+                    <BackupView
+                      organizationId={activeOrganization?.id}
+                      tenantId={activeOrganization?.tenantId}
+                      onImported={() => void refreshProjects()}
+                    />
+                  ) : viewMode === 'code' ? (
                     <Suspense fallback={<div className="code-empty">Loading editor…</div>}>
                       <CodeViewer
                         project={active}
@@ -1391,21 +1516,28 @@ export default function Workbench({
                   onNewProject={() => {
                     if (activeOrganization) setCreateMode('create')
                     else {
-                      setNotice('Select or add an organization before creating a project.')
+                      setNotice('Select or add a tenant before creating a project.')
                       setShowOrganizations(true)
                     }
                   }}
                   onOpenExisting={() => {
                     if (activeOrganization) void openExisting()
                     else {
-                      setNotice('Select or add an organization before opening a project.')
+                      setNotice('Select or add a tenant before opening a project.')
                       setShowOrganizations(true)
                     }
                   }}
                   onCloneFromGitHub={() => {
                     if (activeOrganization) setShowClone(true)
                     else {
-                      setNotice('Select or add an organization before cloning a project.')
+                      setNotice('Select or add a tenant before cloning a project.')
+                      setShowOrganizations(true)
+                    }
+                  }}
+                  onMigrateToRayfin={() => {
+                    if (activeOrganization) setShowMigration(true)
+                    else {
+                      setNotice('Select or add a tenant before preparing a migration.')
                       setShowOrganizations(true)
                     }
                   }}

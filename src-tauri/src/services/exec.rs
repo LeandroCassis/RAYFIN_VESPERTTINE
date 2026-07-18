@@ -125,8 +125,7 @@ struct Resolved {
 
 /// Extract the `node` target script from an npm cmd-shim (`*.cmd`). The shim's
 /// final line is `... & "%_prog%"  "%dp0%\node_modules\...\entry.js" %*`.
-static SHIM_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r#""%~?dp0%\\?([^"]+)"\s+%\*"#).unwrap());
+static SHIM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r#""%~?dp0%\\?([^"]+)"\s+%\*"#).unwrap());
 
 fn parse_shim(cmd_path: &Path) -> Option<PathBuf> {
   let content = std::fs::read_to_string(cmd_path).ok()?;
@@ -271,7 +270,10 @@ pub fn project_rayfin_cli_installed(project_dir: &Path) -> bool {
 /// A cloned project normally has no `node_modules`; relying on a global CLI in
 /// that case hides the problem until another local package is needed. This makes
 /// the project's pinned CLI the source of truth and is a no-op once it is ready.
-pub async fn ensure_project_dependencies(project_dir: &Path, on_data: Option<OnData>) -> Result<(), String> {
+pub async fn ensure_project_dependencies(
+  project_dir: &Path,
+  on_data: Option<OnData>,
+) -> Result<(), String> {
   if project_rayfin_cli_installed(project_dir) {
     return Ok(());
   }
@@ -290,11 +292,17 @@ pub async fn ensure_project_dependencies(project_dir: &Path, on_data: Option<OnD
   }
 
   if !project_dir.join("package.json").is_file() {
-    return Err("This Rayfin project has no package.json, so its dependencies cannot be installed.".to_string());
+    return Err(
+      "This Rayfin project has no package.json, so its dependencies cannot be installed."
+        .to_string(),
+    );
   }
 
   if let Some(on) = &on_data {
-    on(Stream::System, "Project dependencies are missing; running npm install...\n");
+    on(
+      Stream::System,
+      "Project dependencies are missing; running npm install...\n",
+    );
   }
   let result = run(
     "npm",
@@ -309,7 +317,9 @@ pub async fn ensure_project_dependencies(project_dir: &Path, on_data: Option<OnD
   .await;
 
   if result.not_found {
-    return Err("npm was not found on PATH. Install Node.js (which includes npm), then retry.".to_string());
+    return Err(
+      "npm was not found on PATH. Install Node.js (which includes npm), then retry.".to_string(),
+    );
   }
   if !result.ok {
     let code = result
@@ -412,7 +422,16 @@ pub async fn run(file: &str, args: &[&str], opts: RunOptions) -> RunResult {
 /// whose binary lives under `%LOCALAPPDATA%` and is never on `PATH`.
 pub async fn run_program(program: PathBuf, args: &[&str], opts: RunOptions) -> RunResult {
   let missing = !program.is_file();
-  spawn_and_run(Resolved { program, prefix: vec![], not_found: missing }, args, opts).await
+  spawn_and_run(
+    Resolved {
+      program,
+      prefix: vec![],
+      not_found: missing,
+    },
+    args,
+    opts,
+  )
+  .await
 }
 
 /// Run a project's pinned Rayfin CLI (the `npx rayfin` equivalent) by resolving
@@ -424,12 +443,25 @@ pub async fn run_program(program: PathBuf, args: &[&str], opts: RunOptions) -> R
 /// `cwd` to `project_dir` when the caller didn't set one — otherwise commands like
 /// `up list` / `up status` exit with "Not inside a Rayfin project" and report no
 /// deployments even when the project is deployed.
-pub async fn run_project_rayfin(project_dir: &Path, args: &[&str], mut opts: RunOptions) -> RunResult {
+pub async fn run_project_rayfin(
+  project_dir: &Path,
+  args: &[&str],
+  mut opts: RunOptions,
+) -> RunResult {
   let (program, prefix) = project_rayfin(project_dir);
   if opts.cwd.is_none() {
     opts.cwd = Some(project_dir.to_path_buf());
   }
-  spawn_and_run(Resolved { program, prefix, not_found: false }, args, opts).await
+  spawn_and_run(
+    Resolved {
+      program,
+      prefix,
+      not_found: false,
+    },
+    args,
+    opts,
+  )
+  .await
 }
 
 async fn spawn_and_run(resolved: Resolved, args: &[&str], opts: RunOptions) -> RunResult {
@@ -480,14 +512,22 @@ async fn spawn_and_run(resolved: Resolved, args: &[&str], opts: RunOptions) -> R
 
   let out_buf = Arc::new(Mutex::new(String::new()));
   let err_buf = Arc::new(Mutex::new(String::new()));
-  let out_handle = child
-    .stdout
-    .take()
-    .map(|s| tokio::spawn(pump(s, Stream::Stdout, opts.on_data.clone(), out_buf.clone())));
-  let err_handle = child
-    .stderr
-    .take()
-    .map(|s| tokio::spawn(pump(s, Stream::Stderr, opts.on_data.clone(), err_buf.clone())));
+  let out_handle = child.stdout.take().map(|s| {
+    tokio::spawn(pump(
+      s,
+      Stream::Stdout,
+      opts.on_data.clone(),
+      out_buf.clone(),
+    ))
+  });
+  let err_handle = child.stderr.take().map(|s| {
+    tokio::spawn(pump(
+      s,
+      Stream::Stderr,
+      opts.on_data.clone(),
+      err_buf.clone(),
+    ))
+  });
 
   let timeout = opts.timeout_ms.map(std::time::Duration::from_millis);
   let cancel = opts.cancel.clone();
@@ -592,7 +632,10 @@ mod tests {
       project_rayfin_auth_module(Some(&empty)),
       global_rayfin_auth_module()
     );
-    assert_eq!(project_rayfin_auth_module(None), global_rayfin_auth_module());
+    assert_eq!(
+      project_rayfin_auth_module(None),
+      global_rayfin_auth_module()
+    );
 
     let _ = std::fs::remove_dir_all(&dir);
     let _ = std::fs::remove_dir_all(&empty);

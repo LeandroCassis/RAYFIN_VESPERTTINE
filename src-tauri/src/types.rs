@@ -147,6 +147,112 @@ pub struct FabricWorkspacesResult {
   pub error: Option<String>,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricItem {
+    pub id: String,
+    pub display_name: String,
+    pub r#type: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub workspace_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub folder_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricItemsResult {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub items: Option<Vec<FabricItem>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_login: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupWorkspaceSelection {
+    pub id: String,
+    pub display_name: String,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupInput {
+    pub output_root: String,
+    pub workspaces: Vec<FabricBackupWorkspaceSelection>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupItemResult {
+    pub workspace_id: String,
+    pub item_id: String,
+    pub display_name: String,
+    pub r#type: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricBackupResult {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub workspace_count: u32,
+    #[serde(default)]
+    pub item_count: u32,
+    #[serde(default)]
+    pub definition_count: u32,
+    #[serde(default)]
+    pub metadata_only_count: u32,
+    #[serde(default)]
+    pub failed_count: u32,
+    #[serde(default)]
+    pub items: Vec<FabricBackupItemResult>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_login: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricImportAppInput {
+    pub workspace_id: String,
+    pub workspace_name: String,
+    pub item_id: String,
+    pub display_name: String,
+    pub item_type: String,
+    #[serde(default)]
+    pub organization_id: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct FabricImportAppResult {
+    pub ok: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub recoverable: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<StudioProject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub needs_login: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
 /// A dedicated capacity the signed-in user can create a workspace on.
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -485,6 +591,22 @@ pub struct OrganizationProfile {
   pub fabric_user: Option<String>,
   #[serde(default, skip_serializing_if = "Option::is_none")]
   pub github_user: Option<String>,
+  /// Per-Tenant AI connection: `github` (the default) or `openrouter`.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_provider: Option<String>,
+  /// Default AI model for this Tenant. Individual projects can override it.
+  #[serde(default, skip_serializing_if = "Option::is_none")]
+  pub ai_model: Option<String>,
+}
+
+/// Renderer-safe AI connection state. Deliberately contains no credential value.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AiProviderStatus {
+  pub provider: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub model: Option<String>,
+  pub openrouter_configured: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -522,6 +644,17 @@ pub struct CreateProjectInput {
   pub template: String,
   #[serde(default)]
   pub template_name: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrationPrepareInput {
+  /// `github` clones through the authenticated GitHub CLI; `folder` copies locally.
+  pub source_kind: String,
+  /// GitHub owner/repo or URL, or an absolute local folder path.
+  pub source: String,
+  #[serde(default)]
+  pub name: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -763,11 +896,17 @@ pub struct ChatToolCall {
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ChatSegment {
-  Text { text: String },
-  Tool { id: String },
+  Text {
+    text: String,
+  },
+  Tool {
+    id: String,
+  },
   /// A message the user injected mid-turn (conversation steering), shown inline
   /// in the assistant feed as a small "you interjected" bubble.
-  Interjection { text: String },
+  Interjection {
+    text: String,
+  },
 }
 
 /// One structured todo item from the session's SQL `todos` table (via
@@ -1286,7 +1425,10 @@ mod tests {
 
   #[test]
   fn plan_content_event_serializes_camelcase_with_type_tag() {
-    let event = ChatEvent::PlanContent { content: "# Plan".into(), operation: "update".into() };
+    let event = ChatEvent::PlanContent {
+      content: "# Plan".into(),
+      operation: "update".into(),
+    };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "plan-content");
     assert_eq!(json["content"], "# Plan");
@@ -1302,7 +1444,10 @@ mod tests {
         description: None,
         status: "pending".into(),
       }],
-      dependencies: vec![ChatPlanDependency { todo_id: "t2".into(), depends_on: "t1".into() }],
+      dependencies: vec![ChatPlanDependency {
+        todo_id: "t2".into(),
+        depends_on: "t1".into(),
+      }],
     };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "plan-todos");
@@ -1315,7 +1460,9 @@ mod tests {
 
   #[test]
   fn mode_changed_event_serializes() {
-    let event = ChatEvent::ModeChanged { mode: "plan".into() };
+    let event = ChatEvent::ModeChanged {
+      mode: "plan".into(),
+    };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "mode-changed");
     assert_eq!(json["mode"], "plan");
@@ -1338,7 +1485,10 @@ mod tests {
 
   #[test]
   fn plan_question_resolved_omits_absent_answer() {
-    let event = ChatEvent::PlanQuestionResolved { request_id: "req-1".into(), answer: None };
+    let event = ChatEvent::PlanQuestionResolved {
+      request_id: "req-1".into(),
+      answer: None,
+    };
     let json = serde_json::to_value(&event).unwrap();
     assert_eq!(json["type"], "plan-question-resolved");
     assert!(json.get("answer").is_none());

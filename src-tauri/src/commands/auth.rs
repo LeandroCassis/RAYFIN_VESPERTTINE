@@ -8,6 +8,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use once_cell::sync::Lazy;
 use regex::Regex;
 use tauri::AppHandle;
@@ -122,8 +123,7 @@ pub fn get_copilot_auth() -> CopilotAuthStatus {
   }
 }
 
-static NOT_SIGNED_IN_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)not\s+signed\s+in").unwrap());
+static NOT_SIGNED_IN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)not\s+signed\s+in").unwrap());
 static SIGNED_IN_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)signed\s+in").unwrap());
 static USER_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)User:\s*(.+)").unwrap());
 static TENANT_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)Tenant:\s*(.+)").unwrap());
@@ -216,7 +216,71 @@ pub async fn auth_status() -> AuthStatus {
   if rayfin.signed_in && !STARTUP_SIGNIN_SENT.swap(true, Ordering::SeqCst) {
     telemetry::track_signin(cached_identity().as_ref(), "startup");
   }
-  AuthStatus { copilot, rayfin, az }
+  AuthStatus {
+    copilot,
+    rayfin,
+    az,
+  }
+}
+
+/// Get the signed-in Microsoft 365 profile image for the desktop account.
+///
+/// This stays entirely local: Azure CLI obtains the existing Microsoft Graph
+/// token and the image is returned to the renderer as a data URL. Some tenants
+/// disable profile photos or Graph access; those cases intentionally return
+/// `None` so the UI can use initials instead.
+#[tauri::command]
+pub async fn auth_profile_photo() -> Result<Option<String>, String> {
+    let token = exec::run(
+        "az",
+        &[
+            "account",
+            "get-access-token",
+            "--resource-type",
+            "ms-graph",
+            "--query",
+            "accessToken",
+            "--output",
+            "tsv",
+        ],
+        RunOptions::timeout(30_000),
+    )
+    .await;
+
+    if !token.ok || token.stdout.trim().is_empty() {
+        return Ok(None);
+    }
+
+    let response = reqwest::Client::new()
+        .get("https://graph.microsoft.com/v1.0/me/photo/$value")
+        .bearer_auth(token.stdout.trim())
+        .send()
+        .await
+        .map_err(|err| format!("Could not request the Microsoft 365 profile image: {err}"))?;
+
+    if !response.status().is_success() {
+        return Ok(None);
+    }
+
+    let mime = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .filter(|value| value.starts_with("image/"))
+        .unwrap_or("image/jpeg")
+        .to_string();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| format!("Could not read the Microsoft 365 profile image: {err}"))?;
+
+    // Graph profile photos are small. Keep malformed or unexpected payloads out
+    // of the renderer and leave the initials fallback in place.
+    if bytes.is_empty() || bytes.len() > 1_500_000 {
+        return Ok(None);
+    }
+
+    Ok(Some(format!("data:{mime};base64,{}", BASE64.encode(bytes))))
 }
 
 #[tauri::command]
@@ -227,8 +291,14 @@ pub async fn auth_login_copilot(
   let on_data = proc_streamer(&app, "login:copilot");
   on_data(exec::Stream::Stdout, "Starting GitHub Copilot sign-in…\n");
   let Some(cli) = crate::services::copilot::bundled_cli_path() else {
-    on_data(exec::Stream::Stderr, "The bundled Copilot CLI is unavailable on this platform.\n");
-    return Ok(ProcResult { ok: false, exit_code: None });
+    on_data(
+      exec::Stream::Stderr,
+      "The bundled Copilot CLI is unavailable on this platform.\n",
+    );
+    return Ok(ProcResult {
+      ok: false,
+      exit_code: None,
+    });
   };
   let res = exec::run_program(
     cli,

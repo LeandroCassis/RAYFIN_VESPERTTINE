@@ -20,6 +20,7 @@ import {
   type ChatMode,
   type ChatOptions,
   type CreateProjectInput,
+  type MigrationPrepareInput,
   type CustomSkillSaveInput,
   type PreviewBounds,
   type PreviewNavState,
@@ -76,6 +77,7 @@ export const api: RayfinStudioApi = {
 
   auth: {
     status: () => invoke('auth_status'),
+    profilePhoto: () => invoke('auth_profile_photo'),
     loginCopilot: () => invoke('auth_login_copilot'),
     loginRayfin: (tenant?: string) => invoke('auth_login_rayfin', { tenant }),
     loginAz: () => invoke('auth_login_az'),
@@ -90,8 +92,16 @@ export const api: RayfinStudioApi = {
     clone: (repo: string) => invoke('github_clone', { input: repo })
   },
 
+  migrations: {
+    prepare: (input: MigrationPrepareInput) => invoke('migration_prepare', { input })
+  },
+
   fabric: {
     listWorkspaces: () => invoke('fabric_workspaces'),
+    listItems: (workspaceId: string) => invoke('fabric_workspace_items', { workspaceId }),
+    pickBackupFolder: () => invoke('fabric_backup_pick_folder'),
+    backup: (input) => invoke('fabric_backup_run', { input }),
+    importApp: (input) => invoke('fabric_import_app', { input }),
     listCapacities: () => invoke('fabric_capacities'),
     createWorkspace: (name: string, capacityId: string) =>
       invoke('fabric_create_workspace', { name, capacityId }),
@@ -235,7 +245,13 @@ export const api: RayfinStudioApi = {
 
   settings: {
     get: () => invoke('settings_get'),
-    set: (patch: Partial<AppSettings>) => invoke('settings_set', { patch })
+    set: (patch: Partial<AppSettings>) => invoke('settings_set', { patch }),
+    openRouterStatus: (profileId?: string) =>
+      invoke('settings_openrouter_status', { profileId }),
+    saveOpenRouterKey: (profileId: string, apiKey: string) =>
+      invoke('settings_save_openrouter_key', { profileId, apiKey }),
+    removeOpenRouterKey: (profileId: string) =>
+      invoke('settings_remove_openrouter_key', { profileId })
   },
 
   preview: {

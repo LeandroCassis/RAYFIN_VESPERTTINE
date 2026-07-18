@@ -15,6 +15,7 @@ function baseProps(): ComponentProps<typeof HomeView> {
     onNewProject: vi.fn(),
     onOpenExisting: vi.fn(),
     onCloneFromGitHub: vi.fn(),
+    onMigrateToRayfin: vi.fn(),
     onChangeWorkspaceRoot: vi.fn()
   }
 }
@@ -29,10 +30,12 @@ describe('HomeView project launcher', () => {
     fireEvent.click(screen.getByRole('button', { name: /new project/i }))
     fireEvent.click(screen.getByRole('button', { name: /open folder/i }))
     fireEvent.click(screen.getByRole('button', { name: /clone from github/i }))
+    fireEvent.click(screen.getByRole('button', { name: /migrate to rayfin/i }))
 
     expect(props.onNewProject).toHaveBeenCalledTimes(1)
     expect(props.onOpenExisting).toHaveBeenCalledTimes(1)
     expect(props.onCloneFromGitHub).toHaveBeenCalledTimes(1)
+    expect(props.onMigrateToRayfin).toHaveBeenCalledTimes(1)
     expect(screen.queryByRole('button', { name: /open existing/i })).toBeNull()
     expect(document.querySelectorAll('.home-action-icon > svg')).toHaveLength(3)
   })

@@ -1,12 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useId, type CSSProperties } from 'react'
-import {
-  MARK_BRACKET_RX,
-  MARK_BRACKETS,
-  MARK_TILE_RX,
-  MARK_TILES,
-  MARK_VIEWBOX,
-  MarkGradient
-} from './FabricatorMark'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { FabricatorMark } from './FabricatorMark'
 
 /**
  * The deploy view shown while a deploy streams — a flat, modern take on
@@ -157,56 +150,8 @@ function usePrefersReducedMotion(): boolean {
   return reduced
 }
 
-/** Per-brick fly-in offset + stagger, keyed by the shared MARK_* class name. The
- *  bricks glide in from these small offsets, hold assembled, then glide back out
- *  on a slow loop — the "builds itself" motion, kept subtle for a long deploy. */
-const BUILD: Record<string, { tx: number; ty: number; d: number }> = {
-  'tile--topbar': { tx: 0, ty: -22, d: 0 },
-  'tile--stem': { tx: -22, ty: 0, d: 0.08 },
-  'tile--mid': { tx: 22, ty: 0, d: 0.16 },
-  'tile--botleft': { tx: 0, ty: 22, d: 0.24 },
-  'tile--square': { tx: 0, ty: 12, d: 0.32 },
-  'bracket--tl': { tx: -12, ty: -12, d: 0.42 },
-  'bracket--br': { tx: 12, ty: 12, d: 0.48 }
-}
-
-const brickStyle = (cls: string): CSSProperties => {
-  const b = BUILD[cls] ?? { tx: 0, ty: 0, d: 0 }
-  return { ['--tx']: `${b.tx}px`, ['--ty']: `${b.ty}px`, ['--d']: `${b.d}s` } as CSSProperties
-}
-
 function BuildingMark(): JSX.Element {
-  const gid = 'dstage-mark-' + useId().replace(/:/g, '')
-  const fill = `url(#${gid})`
-  return (
-    <svg className="dstage-logo" viewBox={MARK_VIEWBOX} aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <MarkGradient id={gid} />
-      </defs>
-      <g className="dstage-logo-inner">
-        {MARK_TILES.map((t) => (
-          <rect
-            key={t.cls}
-            className={`dstage-brick ${t.cls}`}
-            style={brickStyle(t.cls)}
-            x={t.x}
-            y={t.y}
-            width={t.w}
-            height={t.h}
-            rx={MARK_TILE_RX}
-            fill={fill}
-          />
-        ))}
-        {MARK_BRACKETS.map((b) => (
-          <g key={b.cls} className={`dstage-brick bracket ${b.cls}`} style={brickStyle(b.cls)} fill={fill}>
-            {b.rects.map((r, i) => (
-              <rect key={i} x={r[0]} y={r[1]} width={r[2]} height={r[3]} rx={MARK_BRACKET_RX} />
-            ))}
-          </g>
-        ))}
-      </g>
-    </svg>
-  )
+  return <FabricatorMark className="dstage-logo" />
 }
 
 export default function DeployStage({ log, name }: { log: string[]; name?: string }): JSX.Element {

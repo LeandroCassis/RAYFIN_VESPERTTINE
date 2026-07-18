@@ -4,6 +4,7 @@
 
 pub mod advisor;
 pub mod auth;
+pub mod backup;
 pub mod chat;
 pub mod custom_skills;
 pub mod deploy;
@@ -14,6 +15,7 @@ pub mod fabric;
 pub mod files;
 pub mod git;
 pub mod github;
+pub mod migrations;
 pub mod misc;
 pub mod projects;
 pub mod projects_impl;

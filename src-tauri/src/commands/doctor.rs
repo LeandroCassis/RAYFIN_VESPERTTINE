@@ -139,8 +139,7 @@ fn is_auto_installable(def: &ToolDef) -> bool {
   system_installable(def)
 }
 
-static VERSION_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"\d+\.\d+\.\d+(?:[-.][\w.]+)?").unwrap());
+static VERSION_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\d+\.\d+\.\d+(?:[-.][\w.]+)?").unwrap());
 
 fn parse_version(raw: Option<&str>) -> Option<String> {
   let raw = raw?;
@@ -153,8 +152,7 @@ fn parse_version(raw: Option<&str>) -> Option<String> {
 /// Parse a `major.minor[.patch]` prefix into a comparable tuple (missing parts
 /// default to 0). Tolerates a leading `v` and trailing pre-release/build text.
 fn version_tuple(v: &str) -> Option<(u64, u64, u64)> {
-  static RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?").unwrap());
+  static RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(\d+)(?:\.(\d+))?(?:\.(\d+))?").unwrap());
   let c = RE.captures(v)?;
   let part = |i: usize| c.get(i).map_or(0, |m| m.as_str().parse().unwrap_or(0));
   Some((c.get(1)?.as_str().parse().ok()?, part(2), part(3)))
@@ -231,7 +229,11 @@ fn emit(on_data: &Option<OnData>, stream: Stream, msg: &str) {
   }
 }
 
-async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnData>) -> InstallResult {
+async fn install_system_tool(
+  app: &AppHandle,
+  def: &ToolDef,
+  on_data: Option<OnData>,
+) -> InstallResult {
   if is_windows() {
     if let Some(winget_id) = def.system.as_ref().and_then(|s| s.winget) {
       let has_winget = exec::try_version("winget", &["--version"]).await.is_some();
@@ -239,7 +241,10 @@ async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnD
         emit(
           &on_data,
           Stream::Stdout,
-          &format!("Installing {} via winget (you may see a permission prompt)…\n", def.name),
+          &format!(
+            "Installing {} via winget (you may see a permission prompt)…\n",
+            def.name
+          ),
         );
         let res = exec::run(
           "winget",
@@ -263,7 +268,10 @@ async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnD
           emit(
             &on_data,
             Stream::Stdout,
-            &format!("\nInstalled {}. Restart Fabricator to finish setup.\n", def.name),
+            &format!(
+              "\nInstalled {}. Restart Fabricator to finish setup.\n",
+              def.name
+            ),
           );
           return InstallResult {
             ok: true,
@@ -284,7 +292,10 @@ async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnD
         emit(
           &on_data,
           Stream::Stderr,
-          &format!("\nwinget is unavailable. Opening the official {} installer…\n", def.name),
+          &format!(
+            "\nwinget is unavailable. Opening the official {} installer…\n",
+            def.name
+          ),
         );
       }
     }
@@ -292,7 +303,11 @@ async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnD
     if let Some(brew_id) = def.system.as_ref().and_then(|s| s.brew) {
       let has_brew = exec::try_version("brew", &["--version"]).await.is_some();
       if has_brew {
-        emit(&on_data, Stream::Stdout, &format!("Installing {} via Homebrew…\n", def.name));
+        emit(
+          &on_data,
+          Stream::Stdout,
+          &format!("Installing {} via Homebrew…\n", def.name),
+        );
         let res = exec::run(
           "brew",
           &["install", brew_id],
@@ -307,7 +322,10 @@ async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnD
           emit(
             &on_data,
             Stream::Stdout,
-            &format!("\nInstalled {}. Restart Fabricator to finish setup.\n", def.name),
+            &format!(
+              "\nInstalled {}. Restart Fabricator to finish setup.\n",
+              def.name
+            ),
           );
           return InstallResult {
             ok: true,
@@ -328,7 +346,10 @@ async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnD
         emit(
           &on_data,
           Stream::Stderr,
-          &format!("\nHomebrew is unavailable. Opening the official {} installer…\n", def.name),
+          &format!(
+            "\nHomebrew is unavailable. Opening the official {} installer…\n",
+            def.name
+          ),
         );
       }
     }
@@ -339,7 +360,10 @@ async fn install_system_tool(app: &AppHandle, def: &ToolDef, on_data: Option<OnD
     emit(
       &on_data,
       Stream::Stdout,
-      &format!("\nOpened {url}. Install {}, then click \u{201c}Restart\u{201d}.\n", def.name),
+      &format!(
+        "\nOpened {url}. Install {}, then click \u{201c}Restart\u{201d}.\n",
+        def.name
+      ),
     );
   }
   InstallResult {
@@ -365,7 +389,10 @@ pub async fn install_tool(app: &AppHandle, id: &str, on_data: Option<OnData>) ->
   emit(
     &on_data,
     Stream::Stderr,
-    &format!("{} cannot be installed automatically on this platform.\n", def.name),
+    &format!(
+      "{} cannot be installed automatically on this platform.\n",
+      def.name
+    ),
   );
   if let Some(url) = def.install_url {
     let _ = app.opener().open_url(url.to_string(), None::<&str>);
@@ -407,7 +434,11 @@ pub async fn install_all_missing(app: &AppHandle, on_data: Option<OnData>) -> In
   let mut all_ok = true;
   let mut installed_any = false;
   for def in system_missing {
-    emit(&on_data, Stream::Stdout, &format!("\n\u{203a} Installing {}\n", def.name));
+    emit(
+      &on_data,
+      Stream::Stdout,
+      &format!("\n\u{203a} Installing {}\n", def.name),
+    );
     installed_any = true;
     let res = install_system_tool(app, def, on_data.clone()).await;
     all_ok = all_ok && res.ok;
@@ -461,9 +492,18 @@ mod tests {
     // Node so the doctor upgrades it (and relaunches) before anything else.
     let node = tool_by_id("node").expect("node tool def");
     assert_eq!(node.min_version, Some("20"));
-    assert!(!meets_min_version(Some("18.20.4"), node.min_version.unwrap()));
-    assert!(meets_min_version(Some("20.11.0"), node.min_version.unwrap()));
-    assert!(meets_min_version(Some("22.14.0"), node.min_version.unwrap()));
+    assert!(!meets_min_version(
+      Some("18.20.4"),
+      node.min_version.unwrap()
+    ));
+    assert!(meets_min_version(
+      Some("20.11.0"),
+      node.min_version.unwrap()
+    ));
+    assert!(meets_min_version(
+      Some("22.14.0"),
+      node.min_version.unwrap()
+    ));
   }
 
   #[test]

@@ -8,8 +8,8 @@ use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
 use super::exec::{OnData, Stream};
-use crate::types::{ChatEvent, ChatEventEnvelope, ProcLogEvent};
 use crate::types::{AdvisorEvent, AdvisorEventEnvelope};
+use crate::types::{ChatEvent, ChatEventEnvelope, ProcLogEvent};
 
 /// Event name for streamed process output (matches `IpcChannels.procLog`).
 pub const PROC_LOG: &str = "proc:log";

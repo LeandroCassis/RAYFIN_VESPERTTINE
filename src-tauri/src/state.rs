@@ -93,7 +93,11 @@ pub struct PlanGate {
 impl PlanGate {
   /// Record where a session's current turn is streaming (called at turn start).
   pub fn set_route(&self, session_id: &str, route: TurnRoute) {
-    self.routes.lock().unwrap().insert(session_id.to_string(), route);
+    self
+      .routes
+      .lock()
+      .unwrap()
+      .insert(session_id.to_string(), route);
   }
 
   /// The active turn route for a session, if a turn is in flight.
@@ -109,11 +113,18 @@ impl PlanGate {
   /// Register a pending plan decision and return the receiver the handler awaits.
   /// Any prior outstanding prompt for the session is dropped (its receiver then
   /// resolves to "not approved").
-  pub fn register_pending_plan(&self, session_id: &str, request_id: &str) -> oneshot::Receiver<ExitPlanModeResult> {
+  pub fn register_pending_plan(
+    &self,
+    session_id: &str,
+    request_id: &str,
+  ) -> oneshot::Receiver<ExitPlanModeResult> {
     let (tx, rx) = oneshot::channel();
     self.pending_plans.lock().unwrap().insert(
       session_id.to_string(),
-      PendingPlan { request_id: request_id.to_string(), tx },
+      PendingPlan {
+        request_id: request_id.to_string(),
+        tx,
+      },
     );
     rx
   }
@@ -122,7 +133,12 @@ impl PlanGate {
   /// session, if any. Lets conversation steering treat a message typed while a
   /// plan card is open as plan-revision feedback.
   pub fn pending_plan_request(&self, session_id: &str) -> Option<String> {
-    self.pending_plans.lock().unwrap().get(session_id).map(|p| p.request_id.clone())
+    self
+      .pending_plans
+      .lock()
+      .unwrap()
+      .get(session_id)
+      .map(|p| p.request_id.clone())
   }
 
   /// Resolve a pending plan decision by its request id. Returns `true` when a
@@ -164,7 +180,9 @@ impl PlanGate {
       .find(|(_, p)| p.request_id == request_id)
       .map(|(k, _)| k.clone())?;
     let route = self.routes.lock().unwrap().get(&session_id).cloned()?;
-    Some(PlanOwner { project_id: route.project_id })
+    Some(PlanOwner {
+      project_id: route.project_id,
+    })
   }
 
   /// Register a pending structured question and return the receiver the
@@ -179,7 +197,11 @@ impl PlanGate {
     let (tx, rx) = oneshot::channel();
     self.pending_questions.lock().unwrap().insert(
       session_id.to_string(),
-      PendingQuestion { request_id: request_id.to_string(), allow_freeform, tx },
+      PendingQuestion {
+        request_id: request_id.to_string(),
+        allow_freeform,
+        tx,
+      },
     );
     rx
   }
@@ -232,7 +254,11 @@ impl PlanGate {
         .map(|(k, p)| (k.clone(), p.allow_freeform))?
     };
     let route = self.routes.lock().unwrap().get(&session_id).cloned()?;
-    Some(QuestionOwner { project_id: route.project_id, turn_id: route.turn_id, allow_freeform })
+    Some(QuestionOwner {
+      project_id: route.project_id,
+      turn_id: route.turn_id,
+      allow_freeform,
+    })
   }
 }
 
@@ -372,7 +398,11 @@ mod tests {
   use super::*;
 
   fn route(project_id: &str, turn_id: &str, plan_context: bool) -> TurnRoute {
-    TurnRoute { project_id: project_id.to_string(), turn_id: turn_id.to_string(), plan_context }
+    TurnRoute {
+      project_id: project_id.to_string(),
+      turn_id: turn_id.to_string(),
+      plan_context,
+    }
   }
 
   #[test]
@@ -381,11 +411,18 @@ mod tests {
     gate.set_route("sess-1", route("proj-1", "turn-1", true));
     let mut rx = gate.register_pending_plan("sess-1", "req-1");
 
-    assert_eq!(gate.pending_plan_request("sess-1").as_deref(), Some("req-1"));
+    assert_eq!(
+      gate.pending_plan_request("sess-1").as_deref(),
+      Some("req-1")
+    );
     let owner = gate.plan_owner("req-1").expect("owner");
     assert_eq!(owner.project_id, "proj-1");
 
-    let result = ExitPlanModeResult { approved: true, selected_action: Some("interactive".into()), feedback: None };
+    let result = ExitPlanModeResult {
+      approved: true,
+      selected_action: Some("interactive".into()),
+      feedback: None,
+    };
     assert!(gate.resolve_plan("req-1", result.clone()));
     let got = rx.try_recv().expect("resolved");
     assert!(got.approved);
@@ -421,7 +458,13 @@ mod tests {
     assert_eq!(owner.project_id, "proj-1");
     assert!(owner.allow_freeform);
 
-    assert!(gate.resolve_question("q-1", Some(UserInputResponse { answer: "yes".into(), was_freeform: true })));
+    assert!(gate.resolve_question(
+      "q-1",
+      Some(UserInputResponse {
+        answer: "yes".into(),
+        was_freeform: true
+      })
+    ));
     let got = rx.try_recv().expect("resolved").expect("answered");
     assert_eq!(got.answer, "yes");
     assert!(got.was_freeform);

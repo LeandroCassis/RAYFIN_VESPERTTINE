@@ -19,7 +19,8 @@ import {
   FabricIcon,
   DesignIcon,
   ExpandIcon,
-  CollapseIcon
+  CollapseIcon,
+  Codicon
 } from './icons'
 import DeployStage from './DeployStage'
 
@@ -709,7 +710,7 @@ export default function PreviewPane({
       /* non-fatal — the controller falls back to its default palette */
     }
     let cancelled = false
-    void loadCopilotModels()
+    void loadCopilotModels(project.organizationId)
       .then((models) => {
         if (cancelled) return
         fastModelRef.current = pickFastModel(models)
@@ -727,7 +728,7 @@ export default function PreviewPane({
     return () => {
       cancelled = true
     }
-  }, [designActive])
+  }, [designActive, project.organizationId])
 
   // Generate an HTML/CSS component for a placeholder and inject it. Best-effort:
   // on any failure, `applyGenerated(id, '')` tells the controller to restore the
@@ -1023,7 +1024,7 @@ export default function PreviewPane({
         </div>
         <div className="preview-toolbar-right">
           {loading && showWebview && <span className="preview-loading">Loading…</span>}
-          <div className="seg seg--toolbar">
+          <div className="seg seg--toolbar preview-mode-seg">
             <button
               className={`seg-btn ${previewMode === 'fabric' ? 'seg-btn--on' : ''}`}
               onClick={() => {
@@ -1067,6 +1068,8 @@ export default function PreviewPane({
                     : 'Design'}
               </span>
             </button>
+          </div>
+          <div className="seg seg--toolbar preview-utility-seg">
             <button
               className={`seg-btn seg-btn--icon ${focused ? 'seg-btn--on' : ''}`}
               onClick={onToggleFocus}
@@ -1076,6 +1079,15 @@ export default function PreviewPane({
               }
             >
               {focused ? <CollapseIcon /> : <ExpandIcon />}
+            </button>
+            <button
+              className="seg-btn seg-btn--icon"
+              onClick={openExternal}
+              disabled={!displayUrl && !deployedUrl}
+              aria-label="Open in external browser"
+              title="Open in external browser"
+            >
+              <Codicon name="link-external" />
             </button>
           </div>
         </div>

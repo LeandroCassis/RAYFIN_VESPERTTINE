@@ -226,10 +226,12 @@ pub(crate) fn is_reserved_id(id: &str) -> bool {
 
 /// Extract the YAML block between the leading `---` fences.
 fn frontmatter(raw: &str) -> Option<&str> {
-  static FM_RE: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"(?s)^---\r?\n(.*?)\r?\n---").unwrap());
+  static FM_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?s)^---\r?\n(.*?)\r?\n---").unwrap());
   let text = raw.strip_prefix('\u{feff}').unwrap_or(raw);
-  FM_RE.captures(text).and_then(|c| c.get(1)).map(|m| m.as_str())
+  FM_RE
+    .captures(text)
+    .and_then(|c| c.get(1))
+    .map(|m| m.as_str())
 }
 
 /// True when a SKILL.md is CLI-managed (`rayfin-managed: true` sigil).
@@ -270,7 +272,12 @@ fn read_installed(dir: &str) -> BTreeMap<String, OnDisk> {
     let name = entry.file_name().to_string_lossy().to_string();
     let file = root.join(&name).join("SKILL.md");
     if let Ok(raw) = std::fs::read_to_string(&file) {
-      out.insert(name, OnDisk { managed: is_managed(&raw) });
+      out.insert(
+        name,
+        OnDisk {
+          managed: is_managed(&raw),
+        },
+      );
     }
   }
   out
@@ -445,7 +452,9 @@ pub fn ensure_project_skills(dir: &str) {
 
 /// Write `.github/copilot-instructions.md`, healing the old generated variant.
 fn ensure_agent_instructions(dir: &str) -> std::io::Result<()> {
-  let file = Path::new(dir).join(".github").join("copilot-instructions.md");
+  let file = Path::new(dir)
+    .join(".github")
+    .join("copilot-instructions.md");
   if let Ok(existing) = std::fs::read_to_string(&file) {
     // Keep a user-authored or new-style file; only overwrite the old generated one.
     if !existing.contains(GENERATED_MARKER) {
@@ -699,7 +708,9 @@ mod tests {
 
   #[test]
   fn is_managed_detects_sigil() {
-    assert!(is_managed("---\nname: rayfin\nrayfin-managed: true\n---\nx"));
+    assert!(is_managed(
+      "---\nname: rayfin\nrayfin-managed: true\n---\nx"
+    ));
     assert!(is_managed("---\nrayfin-managed:   true  \nname: y\n---\nx"));
     assert!(!is_managed("---\nname: polished-ui\n---\nx"));
     assert!(!is_managed("---\nrayfin-managed: false\n---\nx"));

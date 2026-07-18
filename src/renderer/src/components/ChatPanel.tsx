@@ -77,6 +77,8 @@ export interface OutboundPrompt {
   id: string
   display: string
   prompt: string
+  /** Force this one-shot handoff into Plan mode even when the selector is hidden. */
+  mode?: ChatMode
   /**
    * When true the prompt is dropped into the composer (and focused) instead of
    * being sent immediately — used to "stage" context (e.g. a slice of history)
@@ -1254,7 +1256,7 @@ const MessageRow = memo(function MessageRow({
         <div className={`turn-avatar${m.pending ? ' turn-avatar--pending' : ''}`}>
           {m.role === 'user' ? <UserIcon /> : <FabricatorMark />}
         </div>
-        <div className="turn-role">{m.role === 'user' ? 'You' : 'VESPERTTINE RAYFIN EDITOR'}</div>
+        <div className="turn-role">{m.role === 'user' ? 'You' : 'VESPERTTINE'}</div>
         {m.role === 'assistant' && !m.pending && m.elapsedMs != null && (
           <span className="turn-time" title="Time this turn took">
             <ClockIcon className="turn-time-ico" />
@@ -1427,7 +1429,9 @@ export default function ChatPanel({
   const [showMode, setShowMode] = useState(false)
   const [planBusyId, setPlanBusyId] = useState<string | null>(null)
   const [dismissedPlanSuggestion, setDismissedPlanSuggestion] = useState<string | null>(null)
-  const { models, loading: modelsLoading } = useCopilotModels(showModel)
+  // Preload models as soon as the project chat opens. The picker therefore has
+  // choices immediately instead of showing Auto alone on its first click.
+  const { models, loading: modelsLoading } = useCopilotModels(true, project.organizationId)
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
   // Referentially-stable wrappers for the per-row callbacks so memoized
@@ -2439,7 +2443,7 @@ export default function ChatPanel({
       setInput(outbound.prompt)
       taRef.current?.focus()
     } else {
-      void dispatch(outbound.display, outbound.prompt, [])
+      void dispatch(outbound.display, outbound.prompt, [], outbound.mode)
     }
     onOutboundConsumed?.()
   }, [outbound?.id])
@@ -2871,7 +2875,7 @@ export default function ChatPanel({
                     <p className="chat-model-hint">
                       {modelsLoading && models.length === 0
                         ? 'Loading models…'
-                        : 'Leave on Auto unless you know what you need.'}
+                        : 'Choose a model, or leave Auto to let the provider decide.'}
                     </p>
                   </div>
                 )}

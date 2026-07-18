@@ -77,7 +77,7 @@ describe('SetupScreen sign-in providers', () => {
     expect(screen.queryByText('Microsoft Fabric')).toBeNull()
   })
 
-  it('selects an organization and switches its tenant before entering the editor', async () => {
+  it('selects a tenant and switches its tenant before entering the editor', async () => {
     const profile = {
       id: 'org-1',
       name: 'Contoso',
@@ -102,7 +102,7 @@ describe('SetupScreen sign-in providers', () => {
       />
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use organization' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Use tenant' }))
 
     await waitFor(() => {
       expect(onSettingsChange).toHaveBeenCalledWith(
@@ -110,5 +110,32 @@ describe('SetupScreen sign-in providers', () => {
       )
       expect(window.api.auth.loginRayfin).toHaveBeenCalledWith('contoso.onmicrosoft.com')
     })
+  })
+
+  it('opens the editor from the active tenant card when the environment is ready', () => {
+    const profile = {
+      id: 'tenant-1',
+      name: 'Contoso',
+      tenantId: 'contoso.onmicrosoft.com',
+      githubUser: 'octocat'
+    }
+    const onEnter = vi.fn()
+    render(
+      <SetupScreen
+        doctor={doctor}
+        auth={{
+          copilot: { signedIn: true, user: 'octocat' },
+          rayfin: { signedIn: true, tenant: profile.tenantId },
+          az: { signedIn: true, user: 'dev@contoso.com' }
+        }}
+        refreshing={false}
+        onRefresh={() => {}}
+        onEnter={onEnter}
+        settings={{ theme: 'dark', organizationProfiles: [profile], activeOrganizationId: profile.id }}
+      />
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open editor →' }))
+    expect(onEnter).toHaveBeenCalledOnce()
   })
 })

@@ -108,7 +108,10 @@ fn persist(cache: &Cache) {
   match serde_json::to_string_pretty(&value) {
     Ok(text) => {
       if let Err(e) = std::fs::write(paths::store_file(), text) {
-        log::error!("failed to persist project store to {}: {e}", paths::store_file().display());
+        log::error!(
+          "failed to persist project store to {}: {e}",
+          paths::store_file().display()
+        );
       }
     }
     Err(e) => log::error!("failed to serialize project store: {e}"),
@@ -124,9 +127,7 @@ pub fn get_settings() -> AppSettings {
 }
 
 fn valid_hex_color(color: &str) -> bool {
-  color.len() == 7
-    && color.starts_with('#')
-    && color.chars().skip(1).all(|c| c.is_ascii_hexdigit())
+  color.len() == 7 && color.starts_with('#') && color.chars().skip(1).all(|c| c.is_ascii_hexdigit())
 }
 
 /// Patch fields of the settings (deep-merging nested settings) and persist.
@@ -181,7 +182,10 @@ pub fn set_settings(
       if let Some(radius) = patch.border_radius {
         current.border_radius = Some(radius.clamp(0.0, 28.0));
       }
-      if let Some(icon) = patch.app_icon.filter(|value| value == "mark" || value == "monogram") {
+      if let Some(icon) = patch
+        .app_icon
+        .filter(|value| value == "mark" || value == "monogram")
+      {
         current.app_icon = Some(icon);
       }
     }
@@ -189,7 +193,9 @@ pub fn set_settings(
       c.settings.organization_profiles = Some(
         profiles
           .into_iter()
-          .filter(|p| !p.id.trim().is_empty() && !p.name.trim().is_empty() && !p.tenant_id.trim().is_empty())
+          .filter(|p| {
+            !p.id.trim().is_empty() && !p.name.trim().is_empty() && !p.tenant_id.trim().is_empty()
+          })
           .collect(),
       );
     }

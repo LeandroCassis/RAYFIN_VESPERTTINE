@@ -1,10 +1,22 @@
-import { useEffect, useId, useState } from 'react'
-import type { AppSettings, AppVersions, AuthStatus, ThemePreference, VisualSettings } from '@shared/ipc'
+import { useEffect, useId, useMemo, useState } from 'react'
+import type {
+  AiProvider,
+  AiProviderStatus,
+  AppSettings,
+  AppVersions,
+  AuthStatus,
+  CopilotModel,
+  OrganizationProfile,
+  ThemePreference,
+  VisualSettings
+} from '@shared/ipc'
 import { applyTheme, applyUiScale, applyVisualSettings, UI_SCALES } from '../theme'
 import { useSuppressPreview } from '../overlay'
 import { useModalFocus } from '../modalFocus'
 import { useUpdates } from '../update'
 import ConfirmModal from './ConfirmModal'
+import { FabricatorMark } from './FabricatorMark'
+import { resetCopilotModels } from '../copilotModels'
 
 interface Props {
   settings: AppSettings
@@ -12,7 +24,7 @@ interface Props {
   auth?: AuthStatus
   onAuthChanged?: () => Promise<void> | void
   /** Persist a settings patch; the parent re-applies theme + stores it. */
-  onChange: (patch: Partial<AppSettings>) => void
+  onChange: (patch: Partial<AppSettings>) => Promise<void> | void
   onClose: () => void
 }
 
@@ -61,9 +73,15 @@ export default function SettingsModal({
   useSuppressPreview()
   const { status: updateStatus, info: updateInfo, checkNow } = useUpdates()
   const [checkedUpdates, setCheckedUpdates] = useState(false)
-  const [tab, setTab] = useState<'general' | 'appearance' | 'accounts'>('general')
+  const [tab, setTab] = useState<'general' | 'appearance' | 'ai' | 'accounts'>('general')
   const [accountBusy, setAccountBusy] = useState<'copilot' | 'github' | null>(null)
   const [accountMessage, setAccountMessage] = useState<string | null>(null)
+  const [aiBusy, setAiBusy] = useState<'provider' | 'key' | 'remove' | null>(null)
+  const [aiMessage, setAiMessage] = useState<string | null>(null)
+  const [aiStatus, setAiStatus] = useState<AiProviderStatus | null>(null)
+  const [openRouterKey, setOpenRouterKey] = useState('')
+  const [aiModels, setAiModels] = useState<CopilotModel[]>([])
+  const [aiModelsLoading, setAiModelsLoading] = useState(false)
   const [showExperiments, setShowExperiments] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [workspaceRoot, setWorkspaceRoot] = useState<string | null>(null)
@@ -74,6 +92,13 @@ export default function SettingsModal({
   // holds the value to revert to if the user declines, keeping the setting from
   // being left half-applied.
   const [restartPrompt, setRestartPrompt] = useState<{ revertTo: boolean } | null>(null)
+  const activeTenant = useMemo(
+    () =>
+      settings.organizationProfiles?.find((profile) => profile.id === settings.activeOrganizationId) ??
+      null,
+    [settings.activeOrganizationId, settings.organizationProfiles]
+  )
+  const selectedAiProvider: AiProvider = activeTenant?.aiProvider ?? 'github'
 
   // Toggling compatibility rendering forces a restart: persist the new value, then
   // require the user to relaunch (or cancel, which reverts the change).
@@ -146,6 +171,113 @@ export default function SettingsModal({
       setAccountBusy(null)
     }
   }
+
+  async function refreshAiStatus(profileId = activeTenant?.id): Promise<void> {
+    if (!profileId) {
+      setAiStatus(null)
+      return
+    }
+    const status = await window.api.settings.openRouterStatus(profileId)
+    setAiStatus(status)
+  }
+
+  async function refreshAiModels(): Promise<void> {
+    if (!activeTenant) {
+      setAiModels([])
+      return
+    }
+    setAiModelsLoading(true)
+    try {
+      // Do not use the renderer cache here: this screen changes providers and
+      // needs the current Tenant's catalog immediately.
+      setAiModels(await window.api.chat.listModels())
+    } catch (error) {
+      setAiModels([])
+      setAiMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setAiModelsLoading(false)
+    }
+  }
+
+  async function updateAiProfile(patch: Partial<OrganizationProfile>): Promise<void> {
+    if (!activeTenant) return
+    const profiles = (settings.organizationProfiles ?? []).map((profile) =>
+      profile.id === activeTenant.id ? { ...profile, ...patch } : profile
+    )
+    await onChange({ organizationProfiles: profiles })
+    // The chat/advisor model picker holds a global cache. Its values belong to
+    // the previous provider/tenant after this mutation, so force a fresh list.
+    resetCopilotModels()
+  }
+
+  async function selectAiProvider(provider: AiProvider): Promise<void> {
+    if (!activeTenant || provider === selectedAiProvider) return
+    setAiBusy('provider')
+    setAiMessage(null)
+    try {
+      await updateAiProfile({ aiProvider: provider, aiModel: undefined })
+      await refreshAiStatus(activeTenant.id)
+      await refreshAiModels()
+    } catch (error) {
+      setAiMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  async function saveOpenRouterKey(): Promise<void> {
+    if (!activeTenant || !openRouterKey.trim()) return
+    setAiBusy('key')
+    setAiMessage(null)
+    try {
+      const status = await window.api.settings.saveOpenRouterKey(activeTenant.id, openRouterKey)
+      setAiStatus(status)
+      setOpenRouterKey('')
+      resetCopilotModels()
+      await refreshAiModels()
+      setAiMessage('OpenRouter key saved securely for this Tenant.')
+    } catch (error) {
+      setAiMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  async function removeOpenRouterKey(): Promise<void> {
+    if (!activeTenant) return
+    setAiBusy('remove')
+    setAiMessage(null)
+    try {
+      setAiStatus(await window.api.settings.removeOpenRouterKey(activeTenant.id))
+      setAiModels([])
+      resetCopilotModels()
+      setAiMessage('OpenRouter key removed from this device.')
+    } catch (error) {
+      setAiMessage(error instanceof Error ? error.message : String(error))
+    } finally {
+      setAiBusy(null)
+    }
+  }
+
+  useEffect(() => {
+    if (tab !== 'ai' || !activeTenant) return
+    let cancelled = false
+    const load = async (): Promise<void> => {
+      try {
+        const status = await window.api.settings.openRouterStatus(activeTenant.id)
+        if (cancelled) return
+        setAiStatus(status)
+        await refreshAiModels()
+      } catch (error) {
+        if (!cancelled) setAiMessage(error instanceof Error ? error.message : String(error))
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+    // Refresh when opening the tab or when the selected Tenant/provider changes.
+  }, [tab, activeTenant?.id, selectedAiProvider])
 
   // Build and reveal a shareable diagnostics bundle. Best-effort: the backend
   // reveals the logs folder on success, and a failure must never throw.
@@ -220,6 +352,15 @@ export default function SettingsModal({
             <button
               type="button"
               role="tab"
+              aria-selected={tab === 'ai'}
+              className={`settings-tab${tab === 'ai' ? ' settings-tab--active' : ''}`}
+              onClick={() => setTab('ai')}
+            >
+              AI
+            </button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={tab === 'accounts'}
               className={`settings-tab${tab === 'accounts' ? ' settings-tab--active' : ''}`}
               onClick={() => setTab('accounts')}
@@ -229,7 +370,109 @@ export default function SettingsModal({
           </div>
 
           <div className="modal-body">
-            {tab === 'accounts' ? (
+            {tab === 'ai' ? (
+              <div className="settings-ai" role="tabpanel">
+                {activeTenant ? (
+                  <>
+                    <div className="settings-ai-tenant">
+                      <span className="field-label">Active Tenant</span>
+                      <strong>{activeTenant.name}</strong>
+                      <span className="field-hint">
+                        Provider, model, and OpenRouter credential are isolated from your other Tenants.
+                      </span>
+                    </div>
+
+                    <div className="settings-ai-provider" role="radiogroup" aria-label="AI provider">
+                      {([
+                        ['github', 'GitHub Copilot', 'Use your linked GitHub Copilot subscription.'],
+                        ['openrouter', 'OpenRouter', 'Use this Tenant’s OpenRouter key and model catalog.']
+                      ] as const).map(([value, label, hint]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="radio"
+                          aria-checked={selectedAiProvider === value}
+                          className={`settings-ai-provider-option${selectedAiProvider === value ? ' settings-ai-provider-option--active' : ''}`}
+                          onClick={() => void selectAiProvider(value)}
+                          disabled={aiBusy !== null}
+                        >
+                          <strong>{label}</strong>
+                          <small>{hint}</small>
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedAiProvider === 'openrouter' && (
+                      <div className="settings-ai-key">
+                        <div>
+                          <span className="field-label">OpenRouter API key</span>
+                          <span className="field-hint">
+                            Stored only in your operating system credential vault — never in project files.
+                          </span>
+                        </div>
+                        <div className="settings-ai-key-row">
+                          <input
+                            type="password"
+                            value={openRouterKey}
+                            onChange={(event) => setOpenRouterKey(event.target.value)}
+                            placeholder={aiStatus?.openrouterConfigured ? 'A key is already saved' : 'sk-or-…'}
+                            aria-label="OpenRouter API key"
+                            autoComplete="off"
+                          />
+                          <button
+                            className="btn btn--sm btn--primary"
+                            onClick={() => void saveOpenRouterKey()}
+                            disabled={aiBusy !== null || !openRouterKey.trim()}
+                          >
+                            {aiBusy === 'key' ? 'Saving…' : 'Save key'}
+                          </button>
+                          {aiStatus?.openrouterConfigured && (
+                            <button
+                              className="btn btn--sm btn--ghost"
+                              onClick={() => void removeOpenRouterKey()}
+                              disabled={aiBusy !== null}
+                            >
+                              {aiBusy === 'remove' ? 'Removing…' : 'Remove'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    <label className="field settings-ai-model">
+                      <span className="field-label">Default model</span>
+                      <select
+                        value={activeTenant.aiModel ?? ''}
+                        onChange={(event) => void updateAiProfile({ aiModel: event.target.value || undefined })}
+                        disabled={
+                          aiModelsLoading ||
+                          aiBusy !== null ||
+                          (selectedAiProvider === 'openrouter' && !aiStatus?.openrouterConfigured)
+                        }
+                      >
+                        <option value="">Provider default</option>
+                        {activeTenant.aiModel && !aiModels.some((model) => model.id === activeTenant.aiModel) && (
+                          <option value={activeTenant.aiModel}>{activeTenant.aiModel}</option>
+                        )}
+                        {aiModels.map((model) => (
+                          <option key={model.id} value={model.id}>{model.name}</option>
+                        ))}
+                      </select>
+                      <span className="field-hint">
+                        {aiModelsLoading
+                          ? 'Loading models…'
+                          : 'Used by the chat, Advisor, and design tools unless a project selects another model.'}
+                      </span>
+                    </label>
+                    {aiMessage && <div className="settings-account-message">{aiMessage}</div>}
+                  </>
+                ) : (
+                  <div className="settings-ai-empty">
+                    Choose a Tenant from the workspace switcher before configuring its AI provider.
+                  </div>
+                )}
+              </div>
+            ) : tab === 'accounts' ? (
               <div className="settings-accounts" role="tabpanel">
                 <div className="settings-account-card">
                   <div>
@@ -252,7 +495,7 @@ export default function SettingsModal({
                     <span className="field-label">GitHub CLI</span>
                     <strong>Repository account</strong>
                     <span className="field-hint">
-                      Used to clone repositories and switch organization accounts.
+                      Used to clone repositories and switch tenant accounts.
                     </span>
                   </div>
                   <button
@@ -327,8 +570,8 @@ export default function SettingsModal({
                   <span className="field-label">Application icon</span>
                   <div className="appearance-icon-grid">
                     {([
-                      ['mark', 'Rayfin mark', 'The tiled product mark.'],
-                      ['monogram', 'V monogram', 'A compact VESPERTTINE monogram.']
+                      ['mark', 'VESPERTTINE mark', 'The high-quality tiled product mark.'],
+                      ['monogram', 'Compact VESPERTTINE', 'A smaller presentation of the VESPERTTINE tiles.']
                     ] as const).map(([value, label, hint]) => (
                       <button
                         key={value}
@@ -336,7 +579,9 @@ export default function SettingsModal({
                         className={`appearance-icon-option${(settings.visual?.appIcon ?? 'mark') === value ? ' appearance-icon-option--active' : ''}`}
                         onClick={() => pickVisual({ appIcon: value })}
                       >
-                        <span className={`appearance-icon-preview appearance-icon-preview--${value}`}>V</span>
+                        <span className={`appearance-icon-preview appearance-icon-preview--${value}`}>
+                          <FabricatorMark />
+                        </span>
                         <span><strong>{label}</strong><small>{hint}</small></span>
                       </button>
                     ))}

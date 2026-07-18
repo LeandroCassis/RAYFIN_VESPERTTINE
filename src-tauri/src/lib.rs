@@ -14,9 +14,9 @@ use tauri::Manager;
 
 use state::AppState;
 
+use services::dev_server::DevServers;
 use services::preview::PreviewState;
 use services::updater::UpdaterState;
-use services::dev_server::DevServers;
 
 /// Read the bundled telemetry connection string (App Insights) if present.
 /// Mirrors the Electron build, which injects `resources/telemetry.json` at
@@ -140,12 +140,16 @@ pub fn run() {
       // settings
       commands::settings::settings_get,
       commands::settings::settings_set,
+      commands::settings::settings_openrouter_status,
+      commands::settings::settings_save_openrouter_key,
+      commands::settings::settings_remove_openrouter_key,
       // doctor
       commands::doctor::doctor_check,
       commands::doctor::doctor_install,
       commands::doctor::doctor_install_all,
       // auth
       commands::auth::auth_status,
+            commands::auth::auth_profile_photo,
       commands::auth::auth_login_copilot,
       commands::auth::auth_login_rayfin,
       commands::auth::auth_login_az,
@@ -156,12 +160,18 @@ pub fn run() {
       commands::github::github_switch_account,
       commands::github::github_list_repos,
       commands::github::github_clone,
+      // migration of non-Rayfin applications into isolated workspaces
+      commands::migrations::migration_prepare,
       // fabric
       commands::fabric::fabric_workspaces,
       commands::fabric::fabric_capacities,
       commands::fabric::fabric_create_workspace,
       commands::fabric::fabric_delete_apps,
       commands::fabric::fabric_semantic_model_schema,
+            commands::backup::fabric_workspace_items,
+            commands::backup::fabric_backup_pick_folder,
+            commands::backup::fabric_backup_run,
+            commands::backup::fabric_import_app,
       // projects
       commands::projects::projects_state,
       commands::projects::projects_templates,
@@ -240,10 +250,9 @@ pub fn run() {
       commands::deploy::deploy_switch,
       commands::deploy::deploy_set_name,
       commands::deploy::deploy_reconcile,
-
-            services::dev_server::dev_start,
-            services::dev_server::dev_stop,
-            services::dev_server::dev_supported_cmd,
+      services::dev_server::dev_start,
+      services::dev_server::dev_stop,
+      services::dev_server::dev_supported_cmd,
       // preview
       services::preview::preview_show_url,
       services::preview::preview_navigate,

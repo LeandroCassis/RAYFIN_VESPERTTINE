@@ -3,8 +3,9 @@
 
 pub mod agent_skills;
 pub mod agent_tools;
-pub mod crashlog;
+pub mod ai_provider;
 pub mod copilot;
+pub mod crashlog;
 pub mod dev_server;
 pub mod diagnostics;
 pub mod emit;

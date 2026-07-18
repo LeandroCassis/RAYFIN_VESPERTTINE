@@ -23,8 +23,9 @@ use crate::types::{DeployInfo, DeployResult, DeployStatus, FabricDeployment, Pro
 const DEPLOY_TIMEOUT_MS: u64 = 20 * 60_000;
 const DEPLOY_CHANNEL: &str = "deploy:run";
 
-static GUID_RE: Lazy<Regex> =
-  Lazy::new(|| Regex::new(r"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").unwrap());
+static GUID_RE: Lazy<Regex> = Lazy::new(|| {
+  Regex::new(r"(?i)^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").unwrap()
+});
 static HOSTING_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?i)Hosting URL:\s*(\S+)").unwrap());
 static NOT_SIGNED_RE: Lazy<Regex> =
   Lazy::new(|| Regex::new(r"(?i)not (logged|signed) in|login|unauthor|authenticate").unwrap());
@@ -49,11 +50,18 @@ fn workspace_args(workspace: Option<&str>) -> Vec<String> {
 
 /// Pull a `Hosting URL:` value out of human deploy output.
 fn scrape_hosting_url(text: &str) -> Option<String> {
-  HOSTING_RE.captures(text).and_then(|c| c.get(1)).map(|m| m.as_str().trim().to_string())
+  HOSTING_RE
+    .captures(text)
+    .and_then(|c| c.get(1))
+    .map(|m| m.as_str().trim().to_string())
 }
 
 /// Best URL to load in the preview, in priority order.
-fn pick_preview_url(hosting: Option<&str>, api: Option<&str>, portal: Option<&str>) -> Option<String> {
+fn pick_preview_url(
+  hosting: Option<&str>,
+  api: Option<&str>,
+  portal: Option<&str>,
+) -> Option<String> {
   hosting.or(api).or(portal).map(|s| s.to_string())
 }
 
@@ -157,7 +165,10 @@ fn parse_deploy_list_opt(
 }
 
 /// Parse `rayfin up list --json` (last line that parses as an array wins).
-fn parse_deploy_list(stdout: &str, names: &std::collections::HashMap<String, String>) -> Vec<FabricDeployment> {
+fn parse_deploy_list(
+  stdout: &str,
+  names: &std::collections::HashMap<String, String>,
+) -> Vec<FabricDeployment> {
   parse_deploy_list_opt(stdout, names).unwrap_or_default()
 }
 
@@ -205,15 +216,36 @@ async fn head_sha(dir: &str) -> Option<String> {
 
 /// Read the persisted deployment status for a project directory.
 async fn status_for(path: &str) -> DeployStatus {
-  let res = exec::run_project_rayfin(Path::new(path), &["up", "status", "--json"], RunOptions::timeout(60_000)).await;
+  let res = exec::run_project_rayfin(
+    Path::new(path),
+    &["up", "status", "--json"],
+    RunOptions::timeout(60_000),
+  )
+  .await;
   let Some(parsed) = parse_status_json(&res.stdout) else {
-    return DeployStatus { deployed: false, url: None, api_url: None, portal_url: None };
+    return DeployStatus {
+      deployed: false,
+      url: None,
+      api_url: None,
+      portal_url: None,
+    };
   };
   if !parsed.deployed {
-    return DeployStatus { deployed: false, url: None, api_url: None, portal_url: None };
+    return DeployStatus {
+      deployed: false,
+      url: None,
+      api_url: None,
+      portal_url: None,
+    };
   }
-  let api = parsed.deployment.as_ref().and_then(|d| d.rayfin_api_url.clone());
-  let portal = parsed.deployment.as_ref().and_then(|d| d.fabric_portal_url.clone());
+  let api = parsed
+    .deployment
+    .as_ref()
+    .and_then(|d| d.rayfin_api_url.clone());
+  let portal = parsed
+    .deployment
+    .as_ref()
+    .and_then(|d| d.fabric_portal_url.clone());
   DeployStatus {
     deployed: true,
     url: pick_preview_url(None, api.as_deref(), portal.as_deref()),
@@ -254,9 +286,18 @@ pub(crate) async fn run_deploy(
   };
 
   // Explicit target wins; otherwise reuse the workspace the user picked before.
-  let explicit = workspace.as_deref().map(str::trim).filter(|w| !w.is_empty()).map(|w| w.to_string());
+  let explicit = workspace
+    .as_deref()
+    .map(str::trim)
+    .filter(|w| !w.is_empty())
+    .map(|w| w.to_string());
   let workspace_target = explicit.clone().or_else(|| {
-    project.workspace.as_deref().map(str::trim).filter(|w| !w.is_empty()).map(|w| w.to_string())
+    project
+      .workspace
+      .as_deref()
+      .map(str::trim)
+      .filter(|w| !w.is_empty())
+      .map(|w| w.to_string())
   });
   if let Some(w) = explicit {
     store::mutate_project(&project_id, move |p| p.workspace = Some(w));
@@ -269,7 +310,10 @@ pub(crate) async fn run_deploy(
   });
 
   let renderer = emit::proc_streamer(&app, DEPLOY_CHANNEL);
-  renderer(Stream::System, &format!("Deploying {} to Fabric…\n", project.name));
+  renderer(
+    Stream::System,
+    &format!("Deploying {} to Fabric…\n", project.name),
+  );
 
   let captured = Arc::new(Mutex::new(String::new()));
   let on_data: OnData = {
@@ -354,7 +398,10 @@ pub(crate) async fn run_deploy(
     };
     let fallback = format!(
       "rayfin up exited with code {}.",
-      result.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".into())
+      result
+        .exit_code
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| "unknown".into())
     );
     let error = error_text(&result, &captured_text, &fallback);
     patch_deploy(&project_id, |d| {
@@ -365,7 +412,9 @@ pub(crate) async fn run_deploy(
     });
     telemetry::track_deploy(get_cached_identity().as_ref(), false);
     let sys = match outcome {
-      "needs-workspace" => "\nThis project has no Fabric workspace yet — choose one to deploy into.\n".to_string(),
+      "needs-workspace" => {
+        "\nThis project has no Fabric workspace yet — choose one to deploy into.\n".to_string()
+      }
       _ => format!("\nDeploy failed: {error}\n"),
     };
     renderer(Stream::System, &sys);
@@ -402,12 +451,19 @@ pub(crate) async fn run_deploy(
   // First successful deploy clears the onboarding "deploy first" gate.
   store::mutate_project(&project_id, |p| p.awaiting_first_deploy = None);
 
-  commit_checkpoint(&project.path, &format!("Deploy {} ({})", project.name, now_iso())).await;
+  commit_checkpoint(
+    &project.path,
+    &format!("Deploy {} ({})", project.name, now_iso()),
+  )
+  .await;
   if let Some(commit) = head_sha(&project.path).await {
     patch_deploy(&project_id, move |d| d.commit = Some(commit));
   }
   telemetry::track_deploy(get_cached_identity().as_ref(), true);
-  let live = url.as_deref().map(|u| format!("Live at {u}")).unwrap_or_default();
+  let live = url
+    .as_deref()
+    .map(|u| format!("Live at {u}"))
+    .unwrap_or_default();
   renderer(Stream::System, &format!("\n✅ Deployed. {live}\n"));
 
   DeployResult {
@@ -424,7 +480,12 @@ pub(crate) async fn run_deploy(
 pub async fn deploy_status(project_id: String) -> DeployStatus {
   match store::find_project(&project_id) {
     Some(project) => status_for(&project.path).await,
-    None => DeployStatus { deployed: false, url: None, api_url: None, portal_url: None },
+    None => DeployStatus {
+      deployed: false,
+      url: None,
+      api_url: None,
+      portal_url: None,
+    },
   }
 }
 
@@ -433,7 +494,12 @@ pub async fn deploy_has_changes(project_id: String) -> bool {
   let Some(project) = store::find_project(&project_id) else {
     return false;
   };
-  let res = exec::run("git", &["status", "--porcelain"], git_opts(&project.path, 30_000)).await;
+  let res = exec::run(
+    "git",
+    &["status", "--porcelain"],
+    git_opts(&project.path, 30_000),
+  )
+  .await;
   res.ok && !res.stdout.trim().is_empty()
 }
 
@@ -443,7 +509,12 @@ pub async fn deploy_list(project_id: String) -> Vec<FabricDeployment> {
     return vec![];
   };
   let names = project.deployment_names.clone().unwrap_or_default();
-  let res = exec::run_project_rayfin(Path::new(&project.path), &["up", "list", "--json"], RunOptions::timeout(60_000)).await;
+  let res = exec::run_project_rayfin(
+    Path::new(&project.path),
+    &["up", "list", "--json"],
+    RunOptions::timeout(60_000),
+  )
+  .await;
   if !res.ok {
     return vec![];
   }
@@ -463,7 +534,12 @@ pub async fn deploy_reconcile(project_id: String) -> ProjectsState {
   };
 
   // Never disturb an in-flight deploy.
-  if project.last_deploy.as_ref().and_then(|d| d.status.as_deref()) == Some("deploying") {
+  if project
+    .last_deploy
+    .as_ref()
+    .and_then(|d| d.status.as_deref())
+    == Some("deploying")
+  {
     return annotate_state(store::get_state());
   }
 
@@ -490,7 +566,11 @@ pub async fn deploy_reconcile(project_id: String) -> ProjectsState {
       let status = status_for(&project.path).await;
       let api = dep.api_url.clone().or(status.api_url);
       let portal = status.portal_url;
-      let url = pick_preview_url(dep.hosting_url.as_deref(), api.as_deref(), portal.as_deref());
+      let url = pick_preview_url(
+        dep.hosting_url.as_deref(),
+        api.as_deref(),
+        portal.as_deref(),
+      );
       let ws_name = match dep.workspace_name.as_str() {
         "" | "(unknown)" => None,
         other => Some(other.to_string()),
@@ -531,7 +611,11 @@ pub async fn deploy_reconcile(project_id: String) -> ProjectsState {
 }
 
 #[tauri::command]
-pub async fn deploy_switch(project_id: String, workspace: String, by_id: Option<bool>) -> DeployResult {
+pub async fn deploy_switch(
+  project_id: String,
+  workspace: String,
+  by_id: Option<bool>,
+) -> DeployResult {
   let by_id = by_id.unwrap_or(false);
   let Some(project) = store::find_project(&project_id) else {
     return DeployResult {
@@ -545,7 +629,12 @@ pub async fn deploy_switch(project_id: String, workspace: String, by_id: Option<
   };
 
   let args: Vec<String> = if by_id {
-    vec!["up".into(), "switch".into(), "--workspace-id".into(), workspace.clone()]
+    vec![
+      "up".into(),
+      "switch".into(),
+      "--workspace-id".into(),
+      workspace.clone(),
+    ]
   } else {
     vec!["up".into(), "switch".into(), workspace.clone()]
   };
@@ -603,8 +692,16 @@ pub async fn deploy_switch(project_id: String, workspace: String, by_id: Option<
       d.url = url;
       d.api_url = api;
       d.portal_url = portal;
-      d.status = if deployed { Some("success".into()) } else { None };
-      d.outcome = if deployed { Some("success".into()) } else { None };
+      d.status = if deployed {
+        Some("success".into())
+      } else {
+        None
+      };
+      d.outcome = if deployed {
+        Some("success".into())
+      } else {
+        None
+      };
       d.error = None;
       d.at = Some(now_iso());
     });
@@ -646,22 +743,43 @@ mod tests {
     assert_eq!(workspace_args(Some("   ")), Vec::<String>::new());
     assert_eq!(
       workspace_args(Some("https://app.fabric.microsoft.com/ws")),
-      vec!["--workspace-uri".to_string(), "https://app.fabric.microsoft.com/ws".to_string()]
+      vec![
+        "--workspace-uri".to_string(),
+        "https://app.fabric.microsoft.com/ws".to_string()
+      ]
     );
     assert_eq!(
       workspace_args(Some("3fa85f64-5717-4562-b3fc-2c963f66afa6")),
-      vec!["--workspace-id".to_string(), "3fa85f64-5717-4562-b3fc-2c963f66afa6".to_string()]
+      vec![
+        "--workspace-id".to_string(),
+        "3fa85f64-5717-4562-b3fc-2c963f66afa6".to_string()
+      ]
     );
-    assert_eq!(workspace_args(Some("My Workspace")), vec!["-w".to_string(), "My Workspace".to_string()]);
+    assert_eq!(
+      workspace_args(Some("My Workspace")),
+      vec!["-w".to_string(), "My Workspace".to_string()]
+    );
   }
 
   #[test]
   fn scrape_and_pick_url() {
-    assert_eq!(scrape_hosting_url("blah\nHosting URL: https://x.dev/app  \nmore").as_deref(), Some("https://x.dev/app"));
+    assert_eq!(
+      scrape_hosting_url("blah\nHosting URL: https://x.dev/app  \nmore").as_deref(),
+      Some("https://x.dev/app")
+    );
     assert_eq!(scrape_hosting_url("nothing here"), None);
-    assert_eq!(pick_preview_url(Some("h"), Some("a"), Some("p")).as_deref(), Some("h"));
-    assert_eq!(pick_preview_url(None, Some("a"), Some("p")).as_deref(), Some("a"));
-    assert_eq!(pick_preview_url(None, None, Some("p")).as_deref(), Some("p"));
+    assert_eq!(
+      pick_preview_url(Some("h"), Some("a"), Some("p")).as_deref(),
+      Some("h")
+    );
+    assert_eq!(
+      pick_preview_url(None, Some("a"), Some("p")).as_deref(),
+      Some("a")
+    );
+    assert_eq!(
+      pick_preview_url(None, None, Some("p")).as_deref(),
+      Some("p")
+    );
     assert_eq!(pick_preview_url(None, None, None), None);
   }
 

@@ -20,10 +20,10 @@ use once_cell::sync::Lazy;
 use regex::Regex;
 use serde::Serialize;
 
-use crate::services::{exec, paths, store};
 use crate::services::exec::RunOptions;
-use crate::types::{FabricDeleteResult, FabricWorkspacesResult};
+use crate::services::{exec, paths, store};
 use crate::types::{FabricCapacitiesResult, FabricCreateWorkspaceResult};
+use crate::types::{FabricDeleteResult, FabricWorkspacesResult};
 
 const FABRIC_API_BASE: &str = "https://api.fabric.microsoft.com/v1";
 
@@ -290,7 +290,7 @@ struct DeleteItem {
 }
 
 /// Write a helper script to the app data dir and return its path.
-fn write_helper(name: &str, source: &str) -> std::io::Result<PathBuf> {
+pub(crate) fn write_helper(name: &str, source: &str) -> std::io::Result<PathBuf> {
   let dir = paths::ensure_data_dir()?;
   let path = dir.join(name);
   std::fs::write(&path, source)?;
@@ -317,7 +317,7 @@ fn failure_error(res: &exec::RunResult, out: &str) -> (bool, String) {
 
 /// Resolve the active project's local CLI auth module, restoring dependencies
 /// first when a clone or manually opened project has no node_modules yet.
-async fn project_auth_module(project_dir: Option<&Path>) -> Result<PathBuf, String> {
+pub(crate) async fn project_auth_module(project_dir: Option<&Path>) -> Result<PathBuf, String> {
   if let Some(dir) = project_dir {
     exec::ensure_project_dependencies(dir, None)
       .await
@@ -352,7 +352,9 @@ pub async fn fabric_workspaces() -> FabricWorkspacesResult {
         ok: false,
         workspaces: None,
         needs_login: None,
-        error: Some(format!("Could not prepare the workspace lookup helper: {err}")),
+        error: Some(format!(
+          "Could not prepare the workspace lookup helper: {err}"
+        )),
       }
     }
   };
@@ -433,7 +435,9 @@ pub async fn fabric_capacities() -> FabricCapacitiesResult {
         ok: false,
         capacities: None,
         needs_login: None,
-        error: Some(format!("Could not prepare the capacities lookup helper: {err}")),
+        error: Some(format!(
+          "Could not prepare the capacities lookup helper: {err}"
+        )),
       }
     }
   };
@@ -471,7 +475,10 @@ pub async fn fabric_capacities() -> FabricCapacitiesResult {
 /// Create a new Fabric workspace and assign it to `capacity_id`. The region is
 /// inherited from the capacity. Returns the new workspace id on success.
 #[tauri::command]
-pub async fn fabric_create_workspace(name: String, capacity_id: String) -> FabricCreateWorkspaceResult {
+pub async fn fabric_create_workspace(
+  name: String,
+  capacity_id: String,
+) -> FabricCreateWorkspaceResult {
   let project_dir = store::active_project().map(|p| PathBuf::from(p.path));
   let auth_path = match project_auth_module(project_dir.as_deref()).await {
     Ok(p) => p,
@@ -491,7 +498,9 @@ pub async fn fabric_create_workspace(name: String, capacity_id: String) -> Fabri
         ok: false,
         workspace_id: None,
         needs_login: None,
-        error: Some(format!("Could not prepare the create-workspace helper: {err}")),
+        error: Some(format!(
+          "Could not prepare the create-workspace helper: {err}"
+        )),
       }
     }
   };
@@ -770,7 +779,8 @@ mod tests {
   fn helper_sources_have_clean_stdout_contract() {
     assert!(HELPER_SOURCE.contains("getRayfinAuth"));
     assert!(HELPER_SOURCE.contains("silentOnly: true"));
-    assert!(HELPER_SOURCE.contains("process.stdout.write(JSON.stringify({ ok: true, workspaces }))"));
+        assert!(HELPER_SOURCE
+            .contains("process.stdout.write(JSON.stringify({ ok: true, workspaces }))"));
     // The helper must follow Fabric's 100/page pagination for both lists.
     assert!(HELPER_SOURCE.contains("fetchAllPages"));
     assert!(HELPER_SOURCE.contains("continuationUri"));

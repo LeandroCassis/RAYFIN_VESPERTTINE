@@ -1,6 +1,6 @@
 [package]
 name = "rayfin-fabricator"
-version = "0.93.0"
+version = "0.93.1"
 description = "Fabricator — a desktop app for building Rayfin apps via chat, wrapping the GitHub Copilot CLI and the Rayfin CLI."
 authors = ["Fabricator"]
 license = "MIT"
@@ -55,6 +55,9 @@ once_cell = "1"
 chrono = { version = "0.4", features = ["clock"], default-features = false }
 
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+# The OpenRouter key is kept in the operating system's credential store, never
+# in studio.json or any renderer-visible IPC response.
+keyring = "4.1.5"
 
 dirs = "5"
 which = "7"

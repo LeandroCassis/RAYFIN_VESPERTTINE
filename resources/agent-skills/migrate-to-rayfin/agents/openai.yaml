@@ -1,0 +1,4 @@
+interface:
+  display_name: "Migrate app to Rayfin"
+  short_description: "Convert existing apps into tested Rayfin projects"
+  default_prompt: "Use $migrate-to-rayfin to assess and convert this copied app to Rayfin."

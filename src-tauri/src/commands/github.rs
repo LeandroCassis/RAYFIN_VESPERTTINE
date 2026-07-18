@@ -104,7 +104,10 @@ pub fn github_login() -> ProcResult {
 pub async fn github_switch_account(user: String) -> ProcResult {
   let user = user.trim();
   if user.is_empty() {
-    return ProcResult { ok: false, exit_code: None };
+    return ProcResult {
+      ok: false,
+      exit_code: None,
+    };
   }
   let res = exec::run(
     "gh",
@@ -112,7 +115,10 @@ pub async fn github_switch_account(user: String) -> ProcResult {
     RunOptions::timeout(20_000),
   )
   .await;
-  ProcResult { ok: res.ok, exit_code: res.exit_code }
+  ProcResult {
+    ok: res.ok,
+    exit_code: res.exit_code,
+  }
 }
 
 #[cfg(target_os = "windows")]
@@ -393,7 +399,10 @@ mod tests {
     assert_eq!(parse_auth_user(current), Some("octocat".to_string()));
     let older = "✓ Logged in to github.com as hub-user (oauth_token)\n";
     assert_eq!(parse_auth_user(older), Some("hub-user".to_string()));
-    assert_eq!(parse_auth_user("You are not logged into any GitHub hosts."), None);
+    assert_eq!(
+      parse_auth_user("You are not logged into any GitHub hosts."),
+      None
+    );
   }
 
   #[test]
@@ -426,7 +435,10 @@ mod tests {
 
   #[test]
   fn clone_target_name_derives_folder_from_various_forms() {
-    assert_eq!(clone_target_name("octocat/Hello-World"), Some("Hello-World".into()));
+    assert_eq!(
+      clone_target_name("octocat/Hello-World"),
+      Some("Hello-World".into())
+    );
     assert_eq!(
       clone_target_name("https://github.com/octocat/Hello-World"),
       Some("Hello-World".into())

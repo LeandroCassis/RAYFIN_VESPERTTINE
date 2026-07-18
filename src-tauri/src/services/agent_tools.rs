@@ -107,12 +107,17 @@ fn failure(message: impl Into<String>) -> ToolResult {
 
 /* ------------------------ semantic-model locator -------------------------- */
 
-
 struct LocateSemanticModelTool;
 
 #[derive(Deserialize)]
 struct LocateParams {
-  #[serde(alias = "url", alias = "id", alias = "link", alias = "report", alias = "app")]
+  #[serde(
+    alias = "url",
+    alias = "id",
+    alias = "link",
+    alias = "report",
+    alias = "app"
+  )]
   target: String,
   #[serde(default)]
   workspace: Option<String>,
@@ -168,7 +173,8 @@ impl ToolHandler for SearchSemanticModelsTool {
         "Provide a description or keywords to search for as `query`.",
       ));
     }
-    let result = semantic_model::search_semantic_models(query, params.types.clone(), params.limit).await;
+    let result =
+      semantic_model::search_semantic_models(query, params.types.clone(), params.limit).await;
     Ok(render_semantic_model_result(&result))
   }
 }
@@ -205,14 +211,22 @@ fn render_semantic_model_result(r: &semantic_model::SemanticModelResult) -> Tool
   if let Some(app) = &r.app {
     let name = app.name.as_deref().unwrap_or("(app)");
     let _ = write!(out, "Resolved app '{name}'");
-    if let Some(ws) = app.workspace_name.as_deref().or(app.workspace_id.as_deref()) {
+    if let Some(ws) = app
+      .workspace_name
+      .as_deref()
+      .or(app.workspace_id.as_deref())
+    {
       let _ = write!(out, " in workspace {ws}");
     }
     out.push_str(".\n");
   } else if let Some(rep) = &r.report {
     let name = rep.name.as_deref().unwrap_or("(report)");
     let _ = write!(out, "Resolved report '{name}'");
-    if let Some(ws) = rep.workspace_name.as_deref().or(rep.workspace_id.as_deref()) {
+    if let Some(ws) = rep
+      .workspace_name
+      .as_deref()
+      .or(rep.workspace_id.as_deref())
+    {
       let _ = write!(out, " in workspace {ws}");
     }
     out.push_str(".\n");
@@ -226,7 +240,11 @@ fn render_semantic_model_result(r: &semantic_model::SemanticModelResult) -> Tool
     });
   } else {
     let n = r.models.len();
-    let _ = writeln!(out, "Found {n} semantic model{}:", if n == 1 { "" } else { "s" });
+    let _ = writeln!(
+      out,
+      "Found {n} semantic model{}:",
+      if n == 1 { "" } else { "s" }
+    );
     for (i, m) in r.models.iter().enumerate() {
       let name = m.name.as_deref().unwrap_or("(unnamed model)");
       let item = m.item_id.as_deref().or(m.id.as_deref()).unwrap_or("?");

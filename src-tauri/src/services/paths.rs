@@ -71,7 +71,13 @@ pub fn advisor_dir() -> PathBuf {
 pub fn advisor_file(project_id: &str) -> PathBuf {
   let safe: String = project_id
     .chars()
-    .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+        c
+      } else {
+        '_'
+      }
+    })
     .collect();
   advisor_dir().join(format!("{safe}.json"))
 }
@@ -88,7 +94,13 @@ pub fn suggest_dir() -> PathBuf {
 pub fn suggest_file(project_id: &str) -> PathBuf {
   let safe: String = project_id
     .chars()
-    .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+    .map(|c| {
+      if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+        c
+      } else {
+        '_'
+      }
+    })
     .collect();
   suggest_dir().join(format!("{safe}.json"))
 }

@@ -92,7 +92,10 @@ static GH_REPO_RE: Lazy<Regex> =
 
 fn parse_github_repo(url: &str) -> Option<(String, String)> {
   let caps = GH_REPO_RE.captures(url.trim())?;
-  Some((caps.get(1)?.as_str().to_string(), caps.get(2)?.as_str().to_string()))
+  Some((
+    caps.get(1)?.as_str().to_string(),
+    caps.get(2)?.as_str().to_string(),
+  ))
 }
 
 /// Fetch text with a timeout; returns None on any non-2xx / network error.
@@ -135,7 +138,9 @@ pub async fn list_community_templates(repo_url: Option<String>) -> CommunityGall
   let Some((owner, repo)) = parse_github_repo(&url) else {
     return CommunityGalleryResult {
       ok: false,
-      error: Some("Enter a GitHub repo URL, e.g. https://github.com/microsoft/awesome-rayfin".into()),
+      error: Some(
+        "Enter a GitHub repo URL, e.g. https://github.com/microsoft/awesome-rayfin".into(),
+      ),
       gallery: None,
     };
   };
@@ -143,9 +148,8 @@ pub async fn list_community_templates(repo_url: Option<String>) -> CommunityGall
   // `rayfin-template.yml` lives at the repo root; try the common default branches.
   let mut raw: Option<String> = None;
   for branch in ["main", "master"] {
-    let candidate = format!(
-      "https://raw.githubusercontent.com/{owner}/{repo}/{branch}/rayfin-template.yml"
-    );
+    let candidate =
+      format!("https://raw.githubusercontent.com/{owner}/{repo}/{branch}/rayfin-template.yml");
     raw = fetch_text(&candidate, Duration::from_millis(15_000)).await;
     if raw.is_some() {
       break;
@@ -199,8 +203,16 @@ pub async fn list_community_templates(repo_url: Option<String>) -> CommunityGall
   let description = yaml_str(metadata.and_then(|m| m.get("description")));
   let gallery = CommunityGallery {
     repo_url: url.clone(),
-    display_name: if display_name.is_empty() { None } else { Some(display_name) },
-    description: if description.is_empty() { None } else { Some(description) },
+    display_name: if display_name.is_empty() {
+      None
+    } else {
+      Some(display_name)
+    },
+    description: if description.is_empty() {
+      None
+    } else {
+      Some(description)
+    },
     templates,
   };
   GALLERY_CACHE.lock().unwrap().insert(url, gallery.clone());
@@ -214,7 +226,9 @@ pub async fn list_community_templates(repo_url: Option<String>) -> CommunityGall
 static NAME_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"(?m)^name:\s*(.+)$").unwrap());
 
 fn now_iso() -> String {
-  chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string()
+  chrono::Utc::now()
+    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+    .to_string()
 }
 
 /// Read the project's display name from rayfin/rayfin.yml (falls back to folder).
@@ -245,7 +259,11 @@ fn read_template(dir: &str) -> Option<String> {
 /// Register a project directory in the store (idempotent by path).
 fn register_project(dir: &Path, display_name: Option<&str>) -> StudioProject {
   let abs = normalize(dir).to_string_lossy().to_string();
-  if let Some(existing) = store::get_state().projects.into_iter().find(|p| same_path(&p.path, &abs)) {
+  if let Some(existing) = store::get_state()
+    .projects
+    .into_iter()
+    .find(|p| same_path(&p.path, &abs))
+  {
     return existing;
   }
   let name = display_name
@@ -286,7 +304,9 @@ fn write_project_name(dir: &str, name: &str) {
     name.to_string()
   };
   if NAME_RE.is_match(&yml) {
-    let next = NAME_RE.replace(&yml, format!("name: {value}").as_str()).to_string();
+    let next = NAME_RE
+      .replace(&yml, format!("name: {value}").as_str())
+      .to_string();
     if next != yml {
       if let Err(e) = std::fs::write(&file, next) {
         log::warn!("failed to update project name in {}: {e}", file.display());
@@ -319,10 +339,25 @@ async fn init_git_repo(dir: &Path, summary: &str, on: &OnData) {
 
   let email = run("git", &["config", "user.email"], run_in(dir, None)).await;
   if email.stdout.trim().is_empty() {
-    run("git", &["config", "user.email", "fabricator@rayfin.local"], run_in(dir, None)).await;
-    run("git", &["config", "user.name", "Fabricator"], run_in(dir, None)).await;
+    run(
+      "git",
+      &["config", "user.email", "fabricator@rayfin.local"],
+      run_in(dir, None),
+    )
+    .await;
+    run(
+      "git",
+      &["config", "user.name", "Fabricator"],
+      run_in(dir, None),
+    )
+    .await;
   }
-  run("git", &["commit", "-m", summary], run_in(dir, Some(on.clone()))).await;
+  run(
+    "git",
+    &["commit", "-m", summary],
+    run_in(dir, Some(on.clone())),
+  )
+  .await;
 }
 
 fn err(message: impl Into<String>) -> ProjectActionResult {
@@ -341,7 +376,11 @@ pub async fn create_project(app: &AppHandle, input: CreateProjectInput) -> Proje
   }
   let template = {
     let t = input.template.trim();
-    if t.is_empty() { "blankapp".to_string() } else { t.to_string() }
+    if t.is_empty() {
+      "blankapp".to_string()
+    } else {
+      t.to_string()
+    }
   };
   let template_name = input
     .template_name
@@ -351,7 +390,10 @@ pub async fn create_project(app: &AppHandle, input: CreateProjectInput) -> Proje
     .map(String::from);
   let is_url = {
     let t = template.to_lowercase();
-    t.starts_with("http://") || t.starts_with("https://") || t.starts_with("git@") || t.starts_with("git+")
+    t.starts_with("http://")
+      || t.starts_with("https://")
+      || t.starts_with("git@")
+      || t.starts_with("git+")
   };
   let slug = crate::commands::util::slugify(&name);
   if slug.is_empty() {
@@ -366,7 +408,9 @@ pub async fn create_project(app: &AppHandle, input: CreateProjectInput) -> Proje
   }
   let dir = Path::new(&root).join(&slug);
   if dir.exists() {
-    return err(format!("A folder named \"{slug}\" already exists in your workspace."));
+    return err(format!(
+      "A folder named \"{slug}\" already exists in your workspace."
+    ));
   }
 
   let on = emit::proc_streamer(app, CREATE_CHANNEL);
@@ -393,7 +437,11 @@ pub async fn create_project(app: &AppHandle, input: CreateProjectInput) -> Proje
     template.clone()
   };
 
-  let label = if is_url { "community template".to_string() } else { format!("{template} template") };
+  let label = if is_url {
+    "community template".to_string()
+  } else {
+    format!("{template} template")
+  };
   say(&on, &format!("Creating \"{slug}\" from the {label}…\n"));
 
   // npm create @microsoft/rayfin@latest -- <slug> -t <source>
@@ -432,10 +480,15 @@ pub async fn create_project(app: &AppHandle, input: CreateProjectInput) -> Proje
   .await;
 
   if init.not_found {
-    return err("npm was not found on PATH. Install Node.js (which includes npm) to create projects.");
+    return err(
+      "npm was not found on PATH. Install Node.js (which includes npm) to create projects.",
+    );
   }
   if !init.ok || !is_rayfin_project(&dir.to_string_lossy()) {
-    let code = init.exit_code.map(|c| c.to_string()).unwrap_or_else(|| "unknown".into());
+    let code = init
+      .exit_code
+      .map(|c| c.to_string())
+      .unwrap_or_else(|| "unknown".into());
     return err(if is_url {
       format!("Creating the project from the template URL failed (exit code {code}). Check the URL is a valid Rayfin template.")
     } else {
@@ -591,7 +644,13 @@ fn count_and_trash(app: &AppHandle, id: &str, root: &Path) {
 }
 
 /// Emit one `delete:progress` event (file-count progress for a project delete).
-fn emit_delete_progress(app: &AppHandle, id: &str, phase: &str, processed: u64, total: Option<u64>) {
+fn emit_delete_progress(
+  app: &AppHandle,
+  id: &str,
+  phase: &str,
+  processed: u64,
+  total: Option<u64>,
+) {
   let _ = app.emit(
     emit::DELETE_PROGRESS,
     DeleteProgressEvent {
@@ -660,7 +719,10 @@ entries:
     assert_eq!(kept[0].path, "apps/todo");
     assert_eq!(kept[1].name, "Notes");
     assert_eq!(kept[1].path, ""); // absent → coerced to empty
-    assert_eq!(yaml_str(doc.get("metadata").and_then(|m| m.get("displayName"))), "Awesome Rayfin");
+    assert_eq!(
+      yaml_str(doc.get("metadata").and_then(|m| m.get("displayName"))),
+      "Awesome Rayfin"
+    );
   }
 
   #[test]
@@ -682,7 +744,11 @@ entries:
     // Blank App leads.
     assert_eq!(
       names,
-      vec!["fabricator-blankapp", "fabricator-todoapp", "fabricator-dataapp"]
+      vec![
+        "fabricator-blankapp",
+        "fabricator-todoapp",
+        "fabricator-dataapp"
+      ]
     );
     assert!(bundled
       .iter()
@@ -692,9 +758,18 @@ entries:
   #[test]
   fn data_app_defaults_to_embedded_fabric_preview() {
     let bundled = bundled_templates();
-    let data = bundled.iter().find(|t| t.name == "fabricator-dataapp").unwrap();
-    let todo = bundled.iter().find(|t| t.name == "fabricator-todoapp").unwrap();
-    let blank = bundled.iter().find(|t| t.name == "fabricator-blankapp").unwrap();
+    let data = bundled
+      .iter()
+      .find(|t| t.name == "fabricator-dataapp")
+      .unwrap();
+    let todo = bundled
+      .iter()
+      .find(|t| t.name == "fabricator-todoapp")
+      .unwrap();
+    let blank = bundled
+      .iter()
+      .find(|t| t.name == "fabricator-blankapp")
+      .unwrap();
     // The Data App opens embedded in the Fabric portal shell by default…
     assert_eq!(data.default_preview_mode.as_deref(), Some("fabric"));
     // …while the Todo App and Blank App use the direct app view.
@@ -704,7 +779,10 @@ entries:
 
   #[test]
   fn fabricator_default_preview_mode_only_fabric_for_data_app() {
-    assert_eq!(fabricator_default_preview_mode("fabricator-dataapp").as_deref(), Some("fabric"));
+    assert_eq!(
+      fabricator_default_preview_mode("fabricator-dataapp").as_deref(),
+      Some("fabric")
+    );
     assert_eq!(fabricator_default_preview_mode("fabricator-todoapp"), None);
     assert_eq!(fabricator_default_preview_mode("fabricator-blankapp"), None);
     assert_eq!(fabricator_default_preview_mode("blankapp"), None);

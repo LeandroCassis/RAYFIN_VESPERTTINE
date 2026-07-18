@@ -5,18 +5,29 @@ import type { CopilotModel } from '@shared/ipc'
 // every ChatPanel instance, rather than re-queried on each open.
 let modelsCache: CopilotModel[] | null = null
 let modelsPromise: Promise<CopilotModel[]> | null = null
+let modelsScope: string | undefined
 
-export function loadCopilotModels(): Promise<CopilotModel[]> {
-  if (modelsCache) return Promise.resolve(modelsCache)
-  if (!modelsPromise) {
+/** Clear the catalog when the active Tenant or its provider changes. */
+export function resetCopilotModels(): void {
+  modelsCache = null
+  modelsPromise = null
+  modelsScope = undefined
+}
+
+export function loadCopilotModels(scope = ''): Promise<CopilotModel[]> {
+  if (modelsCache && modelsScope === scope) return Promise.resolve(modelsCache)
+  if (!modelsPromise || modelsScope !== scope) {
+    modelsScope = scope
     modelsPromise = window.api.chat
       .listModels()
       .then((list) => {
-        modelsCache = list
+        // A Tenant may be switched while this request is in flight. Only retain
+        // the result if it still belongs to the same cache scope.
+        if (modelsScope === scope) modelsCache = list
         return list
       })
       .catch((err) => {
-        modelsPromise = null // allow a retry on the next request
+        if (modelsScope === scope) modelsPromise = null // allow a retry on the next request
         throw err
       })
   }
@@ -25,14 +36,24 @@ export function loadCopilotModels(): Promise<CopilotModel[]> {
 
 /** Fetch the available models once `enabled`, keeping any static fallback until
  * they arrive (or if the engine can't be reached). */
-export function useCopilotModels(enabled: boolean): { models: CopilotModel[]; loading: boolean } {
-  const [models, setModels] = useState<CopilotModel[]>(modelsCache ?? [])
+export function useCopilotModels(
+  enabled: boolean,
+  scope = ''
+): { models: CopilotModel[]; loading: boolean } {
+  const [models, setModels] = useState<CopilotModel[]>(
+    modelsScope === scope ? (modelsCache ?? []) : []
+  )
   const [loading, setLoading] = useState(false)
   useEffect(() => {
-    if (!enabled || modelsCache) return
+    if (!enabled) return
     let cancelled = false
+    if (modelsCache && modelsScope === scope) {
+      setModels(modelsCache)
+      return
+    }
+    setModels([])
     setLoading(true)
-    loadCopilotModels()
+    loadCopilotModels(scope)
       .then((list) => {
         if (!cancelled) setModels(list)
       })
@@ -45,7 +66,7 @@ export function useCopilotModels(enabled: boolean): { models: CopilotModel[]; lo
     return () => {
       cancelled = true
     }
-  }, [enabled])
+  }, [enabled, scope])
   return { models, loading }
 }
 

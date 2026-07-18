@@ -24,7 +24,9 @@ use crate::services::emit::emit_advisor_event;
 use crate::services::fingerprint::fingerprint;
 use crate::services::{paths, store};
 use crate::state::AppState;
-use crate::types::{AdvisorEvent, AdvisorFinding, AdvisorRawReport, AdvisorReport, AdvisorSnapshot};
+use crate::types::{
+  AdvisorEvent, AdvisorFinding, AdvisorRawReport, AdvisorReport, AdvisorSnapshot,
+};
 
 /// 10 minute ceiling for a single review run.
 const RUN_TIMEOUT_MS: u64 = 10 * 60_000;
@@ -141,8 +143,15 @@ fn map_review_event(
 ) -> bool {
   match event_type {
     "assistant.message_delta" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-      let text = data.get("deltaContent").and_then(|v| v.as_str()).unwrap_or("");
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      let text = data
+        .get("deltaContent")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
       if text.is_empty() {
         return false;
       }
@@ -150,7 +159,11 @@ fn map_review_event(
       *st.streamed.entry(id).or_insert(0) += text.chars().count();
     }
     "assistant.message" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
       let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
       let total = content.chars().count();
       let have = *st.streamed.get(&id).unwrap_or(&0);
@@ -271,14 +284,22 @@ pub async fn advisor_run(
 
   // A transient, uncached session keeps the review out of the project's chat
   // history; the chosen model is used (or the engine default when None).
-  let session = match state.copilot.transient_session(&project.path, model, None).await {
+  let session = match state
+    .copilot
+    .transient_session(&project.path, model, None)
+    .await
+  {
     Ok(s) => s,
     Err(e) => {
       state.end_advisor(&project_id);
       emit_advisor_event(&app, &project_id, AdvisorEvent::Error { text: e.clone() });
       emit_advisor_event(&app, &project_id, AdvisorEvent::Done { ok: false });
       return Ok(AdvisorSnapshot {
-        report: AdvisorReport { ok: false, summary: format!("Couldn't start the analysis. {e}"), findings: vec![] },
+        report: AdvisorReport {
+          ok: false,
+          summary: format!("Couldn't start the analysis. {e}"),
+          findings: vec![],
+        },
         analyzed_at: chrono::Utc::now().to_rfc3339(),
         duration_ms: started.elapsed().as_millis() as u64,
         stale: false,
@@ -299,7 +320,11 @@ pub async fn advisor_run(
 
   // Subscribe before sending so no events are missed.
   let mut sub = session.subscribe();
-  let send_err = session.send(MessageOptions::new(ADVISOR_PROMPT)).await.err().map(|e| e.to_string());
+  let send_err = session
+    .send(MessageOptions::new(ADVISOR_PROMPT))
+    .await
+    .err()
+    .map(|e| e.to_string());
 
   if send_err.is_none() {
     // Drain until the session goes idle / errors, honouring cancellation and the
@@ -354,11 +379,23 @@ pub async fn advisor_run(
 
   // Map the outcome to a report, keeping the UI on a single happy path.
   let report = if cancelled {
-    AdvisorReport { ok: false, summary: "Analysis cancelled.".into(), findings: vec![] }
+    AdvisorReport {
+      ok: false,
+      summary: "Analysis cancelled.".into(),
+      findings: vec![],
+    }
   } else if let Some(e) = send_err {
-    AdvisorReport { ok: false, summary: format!("Couldn't complete the analysis. {e}"), findings: vec![] }
+    AdvisorReport {
+      ok: false,
+      summary: format!("Couldn't complete the analysis. {e}"),
+      findings: vec![],
+    }
   } else if let Some(raw) = extract_report(&st.assistant) {
-    AdvisorReport { ok: true, summary: raw.summary, findings: raw.findings }
+    AdvisorReport {
+      ok: true,
+      summary: raw.summary,
+      findings: raw.findings,
+    }
   } else {
     let detail = if let Some(e) = &st.errored {
       e.clone()
@@ -377,7 +414,13 @@ pub async fn advisor_run(
   };
 
   if !report.ok {
-    emit_advisor_event(&app, &project_id, AdvisorEvent::Error { text: report.summary.clone() });
+    emit_advisor_event(
+      &app,
+      &project_id,
+      AdvisorEvent::Error {
+        text: report.summary.clone(),
+      },
+    );
   }
   emit_advisor_event(&app, &project_id, AdvisorEvent::Done { ok: report.ok });
 
@@ -406,7 +449,12 @@ pub fn advisor_cancel(state: State<'_, AppState>, project_id: String) -> bool {
 /// Build the read-only "explain this finding" instruction. The answer is prose /
 /// Markdown (no JSON contract) rendered inline in the Advisor card.
 fn explain_prompt(finding: &AdvisorFinding) -> String {
-  let location = match finding.file.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+  let location = match finding
+    .file
+    .as_deref()
+    .map(str::trim)
+    .filter(|s| !s.is_empty())
+  {
     Some(f) => f.to_string(),
     None => "(not specific to one file)".to_string(),
   };
@@ -444,8 +492,15 @@ fn map_explain_event(
 ) -> bool {
   match event_type {
     "assistant.message_delta" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-      let text = data.get("deltaContent").and_then(|v| v.as_str()).unwrap_or("");
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+      let text = data
+        .get("deltaContent")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
       if text.is_empty() {
         return false;
       }
@@ -454,7 +509,11 @@ fn map_explain_event(
       emit_delta(text.to_string());
     }
     "assistant.message" => {
-      let id = data.get("messageId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+      let id = data
+        .get("messageId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
       let content = data.get("content").and_then(|v| v.as_str()).unwrap_or("");
       let total = content.chars().count();
       let have = *st.streamed.get(&id).unwrap_or(&0);
@@ -509,11 +568,19 @@ pub async fn advisor_explain(
     emit_advisor_event(
       &app,
       &project_id,
-      AdvisorEvent::ExplainDone { explain_id: explain_id.clone(), ok: false, error: Some(detail.clone()) },
+      AdvisorEvent::ExplainDone {
+        explain_id: explain_id.clone(),
+        ok: false,
+        error: Some(detail.clone()),
+      },
     );
   };
 
-  let session = match state.copilot.transient_session(&project.path, model, None).await {
+  let session = match state
+    .copilot
+    .transient_session(&project.path, model, None)
+    .await
+  {
     Ok(s) => s,
     Err(e) => {
       state.end_explain(&project_id, &token);
@@ -618,7 +685,11 @@ pub async fn advisor_explain(
   emit_advisor_event(
     &app,
     &project_id,
-    AdvisorEvent::ExplainDone { explain_id, ok: true, error: None },
+    AdvisorEvent::ExplainDone {
+      explain_id,
+      ok: true,
+      error: None,
+    },
   );
   Ok(answer)
 }

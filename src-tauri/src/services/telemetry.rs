@@ -56,7 +56,9 @@ fn parse_connection_string(cs: &str) -> Option<ParsedConnection> {
   let mut instrumentation_key: Option<String> = None;
   let mut endpoint: Option<String> = None;
   for segment in cs.split(';') {
-    let Some(idx) = segment.find('=') else { continue };
+    let Some(idx) = segment.find('=') else {
+      continue;
+    };
     let key = segment[..idx].trim().to_lowercase();
     let value = segment[idx + 1..].trim().to_string();
     match key.as_str() {

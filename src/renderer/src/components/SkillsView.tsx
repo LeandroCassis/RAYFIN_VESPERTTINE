@@ -219,12 +219,12 @@ export default function SkillsView({ project, onChanged }: Props): JSX.Element {
         <div>
           <h2 className="skills-title">Skills</h2>
           <p className="skills-sub">
-            Skills teach your app builder good habits. Turn one on and it applies to everything you
-            build next — no code required.
+            Give VESPERTTINE focused guidance for this project. Enabled skills apply to every new
+            task and remain available to your team.
           </p>
         </div>
         <div className="skills-head-actions">
-          {skills && <span className="skills-count">{activeCount} active</span>}
+          {skills && <span className="skills-count">{activeCount} enabled</span>}
           <button
             className="btn btn--sm"
             onClick={() => setAuthoring({ kind: 'new', toLibrary: false })}

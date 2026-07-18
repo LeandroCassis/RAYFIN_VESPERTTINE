@@ -12,7 +12,17 @@ use crate::types::{FileContent, FileNode};
 
 /// Folders never worth showing in a code viewer (huge and/or generated).
 const EXCLUDED_DIRS: [&str; 11] = [
-  "node_modules", ".git", "dist", "out", "build", ".next", ".turbo", ".cache", ".vite", "coverage", ".DS_Store",
+  "node_modules",
+  ".git",
+  "dist",
+  "out",
+  "build",
+  ".next",
+  ".turbo",
+  ".cache",
+  ".vite",
+  "coverage",
+  ".DS_Store",
 ];
 const MAX_ENTRIES: usize = 8000;
 const MAX_DEPTH: usize = 12;
@@ -36,7 +46,9 @@ impl Ignores {
     }
     self.dirs.iter().any(|d| {
       path == d.as_str()
-        || (path.len() > d.len() && path.starts_with(d.as_str()) && path.as_bytes()[d.len()] == b'/')
+        || (path.len() > d.len()
+          && path.starts_with(d.as_str())
+          && path.as_bytes()[d.len()] == b'/')
     })
   }
 }
@@ -52,7 +64,14 @@ async fn compute_ignores(cwd: &str) -> Ignores {
   };
   let res = run(
     "git",
-    &["-c", "core.quotepath=false", "status", "--porcelain", "-z", "--ignored"],
+    &[
+      "-c",
+      "core.quotepath=false",
+      "status",
+      "--porcelain",
+      "-z",
+      "--ignored",
+    ],
     opts,
   )
   .await;
@@ -78,7 +97,14 @@ fn ignored_flag(ignored: bool) -> Option<bool> {
   ignored.then_some(true)
 }
 
-fn walk(dir: &Path, rel: &str, depth: usize, budget: &mut usize, ign: &Ignores, parent_ignored: bool) -> Vec<FileNode> {
+fn walk(
+  dir: &Path,
+  rel: &str,
+  depth: usize,
+  budget: &mut usize,
+  ign: &Ignores,
+  parent_ignored: bool,
+) -> Vec<FileNode> {
   if depth > MAX_DEPTH || *budget >= MAX_ENTRIES {
     return vec![];
   }
@@ -101,7 +127,11 @@ fn walk(dir: &Path, rel: &str, depth: usize, budget: &mut usize, ign: &Ignores, 
         continue;
       }
       *budget += 1;
-      let child_rel = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+      let child_rel = if rel.is_empty() {
+        name.clone()
+      } else {
+        format!("{rel}/{name}")
+      };
       let ignored = parent_ignored || ign.is_ignored(&child_rel);
       let children = walk(&entry.path(), &child_rel, depth + 1, budget, ign, ignored);
       dirs.push(FileNode {
@@ -113,7 +143,11 @@ fn walk(dir: &Path, rel: &str, depth: usize, budget: &mut usize, ign: &Ignores, 
       });
     } else if file_type.is_file() {
       *budget += 1;
-      let path = if rel.is_empty() { name.clone() } else { format!("{rel}/{name}") };
+      let path = if rel.is_empty() {
+        name.clone()
+      } else {
+        format!("{rel}/{name}")
+      };
       let ignored = parent_ignored || ign.is_ignored(&path);
       files.push(FileNode {
         name,
@@ -139,7 +173,14 @@ pub async fn files_tree(id: String) -> Vec<FileNode> {
   };
   let ignores = compute_ignores(&project.path).await;
   let mut budget = 0usize;
-  walk(Path::new(&project.path), "", 0, &mut budget, &ignores, false)
+  walk(
+    Path::new(&project.path),
+    "",
+    0,
+    &mut budget,
+    &ignores,
+    false,
+  )
 }
 
 /// Read a single project file for the viewer (text only, size-capped).
